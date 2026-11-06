@@ -288,7 +288,7 @@ public sealed class CentralAccessClient
                 : 0;
             var projectId = sessionElement.TryGetProperty("project_id", out var projectElement)
                 && Guid.TryParse(projectElement.GetString(), out var parsedProjectId)
-                ? parsedProjectId
+                ? (Guid?)parsedProjectId
                 : null;
             var scope = sessionElement.TryGetProperty("scope", out var scopeElement)
                 ? scopeElement.EnumerateArray().Select(item => item.GetString() ?? string.Empty).Where(item => item.Length > 0).ToArray()
