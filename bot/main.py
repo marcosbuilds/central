@@ -15,7 +15,7 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from .cfg import Settings
+from .cfg import Settings, is_valid_central_bridge_key, parse_central_bridge_url
 from .db import PeaceDatabase
 from .ai import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
 from .context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
@@ -24,6 +24,8 @@ from .error_handling import configure_logging, exception_details
 
 log = logging.getLogger("peace")
 ROOT = Path(__file__).resolve().parent.parent
+CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
+CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -1237,35 +1239,34 @@ class PeaceBot(commands.Bot):
             log.exception("Falha ao sincronizar comandos slash")
 
     async def start_central_bridge(self) -> None:
-        if not self.settings.central_bridge_key:
-            log.warning("Ponte local da Central desativada: CENTRAL_BRIDGE_KEY não configurada")
+        if not is_valid_central_bridge_key(self.settings.central_bridge_key):
+            log.warning("Ponte local da Central desativada: CENTRAL_BRIDGE_KEY inválida")
+            return
+        try:
+            host, port, bridge_url = parse_central_bridge_url(self.settings.central_bridge_url)
+        except RuntimeError:
+            log.exception("Ponte local da Central desativada: CENTRAL_BRIDGE_URL inválida")
             return
         app = web.Application()
         app.router.add_post("/v1/central/auth/request", self.central_auth_request)
         app.router.add_post("/v1/central/auth/verify", self.central_auth_verify)
+        app.router.add_post("/v1/central/auth/session", self.central_auth_session)
+        app.router.add_post("/v1/central/auth/revoke", self.central_auth_revoke)
         runner = web.AppRunner(app)
         await runner.setup()
         try:
-            site = web.TCPSite(
-                runner,
-                self.settings.central_bridge_host,
-                self.settings.central_bridge_port,
-            )
+            site = web.TCPSite(runner, host, port)
             await site.start()
         except OSError:
             await runner.cleanup()
             log.exception(
                 "Não consegui abrir a ponte local da Central em %s:%s",
-                self.settings.central_bridge_host,
-                self.settings.central_bridge_port,
+                host,
+                port,
             )
             return
         self.central_bridge_runner = runner
-        log.info(
-            "Ponte local da Central ativa em http://%s:%s",
-            self.settings.central_bridge_host,
-            self.settings.central_bridge_port,
-        )
+        log.info("Ponte local da Central ativa em %s", bridge_url)
 
     async def stop_central_bridge(self) -> None:
         if self.central_bridge_runner is not None:
@@ -1276,41 +1277,90 @@ class PeaceBot(commands.Bot):
         supplied = request.headers.get("X-Central-Bridge-Key", "")
         return bool(
             supplied
-            and self.settings.central_bridge_key
+            and is_valid_central_bridge_key(self.settings.central_bridge_key)
             and secrets.compare_digest(supplied, self.settings.central_bridge_key)
         )
 
-    async def central_auth_member(self, peace_id: int) -> tuple[discord.Member | None, str | None]:
+    @staticmethod
+    def central_client_id(value: object) -> str | None:
+        client_id = str(value or "").strip()
+        return client_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", client_id) else None
+
+    @staticmethod
+    def central_project_id(value: object) -> str | None:
+        project_id = str(value or "").strip()
+        return project_id if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", project_id) else None
+
+    @staticmethod
+    def central_bearer_token(request: web.Request) -> str | None:
+        authorization = request.headers.get("Authorization", "")
+        match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{40,})", authorization)
+        return match.group(1) if match else None
+
+    async def central_auth_member(self, peace_id: int) -> discord.Member | None:
         record = self.database.member_by_peace_id(peace_id)
         if record is None:
-            return None, "ID Peace não encontrado."
+            return None
         guild = self.guild or self.get_guild(self.settings.guild_id)
         if guild is None:
-            return None, "Servidor Discord indisponível."
+            return None
         try:
             member = await guild.fetch_member(int(record["discord_user_id"]))
         except discord.NotFound:
             member = None
         except (discord.Forbidden, discord.HTTPException):
-            return None, "Não foi possível confirmar o membro no Discord."
+            return None
         if member is None or not role_member(member, self.settings.central_access_role_id):
-            return None, "Este ID Peace não possui acesso à Central."
-        return member, None
+            return None
+        return member
+
+    @staticmethod
+    def central_denied() -> web.Response:
+        return web.json_response({"ok": False, "message": CENTRAL_AUTH_DENIAL}, status=403)
+
+    @staticmethod
+    def central_session_response(row, token: str | None = None) -> dict[str, object]:
+        response: dict[str, object] = {
+            "peace_id": int(row["peace_id"]),
+            "subject": f"discord:{row['discord_user_id']}",
+            "client_id": row["client_id"],
+            "scope": str(row["scope"]).split(),
+            "project_id": row["project_id"],
+            "expires_at": row["expires_at"],
+        }
+        if token is not None:
+            response["token"] = token
+        return response
 
     async def central_auth_request(self, request: web.Request) -> web.Response:
         if not self.central_bridge_authorized(request):
             return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
         try:
             payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
             peace_id = int(payload.get("peace_id", 0))
+            client_id = self.central_client_id(payload.get("client_id"))
         except (ValueError, TypeError, json.JSONDecodeError):
-            return web.json_response({"ok": False, "message": "ID Peace inválido."}, status=400)
-        if peace_id <= 0:
-            return web.json_response({"ok": False, "message": "ID Peace inválido."}, status=400)
-        member, error = await self.central_auth_member(peace_id)
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        if peace_id <= 0 or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
         if member is None:
-            return web.json_response({"ok": False, "message": error}, status=403)
-        if not await self.issue_central_login_code(member, peace_id):
+            return self.central_denied()
+        if not self.database.central_login_request_allowed(
+            discord_user_id=member.id,
+            client_id=client_id,
+        ):
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        if not await self.issue_central_login_code(member, peace_id, client_id):
             return web.json_response(
                 {"ok": False, "message": "Não foi possível enviar a DM. Abra suas mensagens privadas."},
                 status=502,
@@ -1322,23 +1372,100 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
         try:
             payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
             peace_id = int(payload.get("peace_id", 0))
             code = str(payload.get("code", "")).strip()
+            client_id = self.central_client_id(payload.get("client_id"))
         except (ValueError, TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
-        if peace_id <= 0 or not re.fullmatch(r"\d{6}", code):
-            return web.json_response({"ok": False, "message": "ID Peace ou código inválido."}, status=400)
-        member, error = await self.central_auth_member(peace_id)
+        if peace_id <= 0 or not re.fullmatch(r"\d{6}", code) or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
         if member is None:
-            return web.json_response({"ok": False, "message": error}, status=403)
+            return self.central_denied()
         valid = self.database.consume_central_login_challenge(
             discord_user_id=member.id,
             peace_id=peace_id,
+            client_id=client_id,
             code=code,
         )
         if not valid:
             return web.json_response({"ok": False, "message": "Código inválido, expirado ou já utilizado."}, status=401)
-        return web.json_response({"ok": True, "message": "Acesso à Central liberado."})
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=self.settings.central_auth_session_ttl_seconds
+        )
+        scope = "central:access central:sync" if project_id else "central:access"
+        token = self.database.create_central_login_session(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            project_id=project_id,
+            scope=scope,
+            expires_at=expires_at.isoformat(),
+        )
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return web.json_response({"ok": False, "message": "Não foi possível criar a sessão da Central."}, status=503)
+        return web.json_response({
+            "ok": True,
+            "message": "Acesso à Central liberado.",
+            "session": self.central_session_response(row, token),
+        })
+
+    async def central_auth_session(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if client_id is None or token is None or (payload.get("project_id") and project_id is None):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return self.central_denied()
+        member = await self.central_auth_member(int(row["peace_id"]))
+        if member is None:
+            self.database.revoke_central_login_session(token=token, client_id=client_id)
+            return self.central_denied()
+        return web.json_response({
+            "ok": True,
+            "message": "Sessão válida.",
+            "session": self.central_session_response(row),
+        })
+
+    async def central_auth_revoke(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        if client_id is None or token is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        self.database.revoke_central_login_session(token=token, client_id=client_id)
+        return web.json_response({"ok": True, "message": "Sessão encerrada."})
 
     async def close(self) -> None:
         await self.stop_central_bridge()
@@ -3273,7 +3400,7 @@ class PeaceBot(commands.Bot):
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
 
-    async def issue_central_login_code(self, member: discord.Member, peace_id: int) -> bool:
+    async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool:
         code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(
             seconds=self.settings.central_auth_code_ttl_seconds
@@ -3281,6 +3408,7 @@ class PeaceBot(commands.Bot):
         self.database.create_central_login_challenge(
             discord_user_id=member.id,
             peace_id=peace_id,
+            client_id=client_id,
             code=code,
             expires_at=expires_at.isoformat(),
         )

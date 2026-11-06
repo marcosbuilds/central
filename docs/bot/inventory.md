@@ -27,6 +27,8 @@ credentials are intentionally omitted.
 - structural changes are idempotent and require a recoverable snapshot;
 - visual roles do not participate in authorization;
 - provider credentials remain in protected environment configuration.
+- the Central bridge stores only challenge and session hashes; the Discord
+  access role is rechecked before issuing or validating a session.
 
 ## Data boundary
 

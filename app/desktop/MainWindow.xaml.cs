@@ -31,6 +31,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _viewModel = new CentralViewModel();
+        _viewModel.SetCentralAccessClient(_centralAccessClient);
         DataContext = _viewModel;
 
         _dashboardView = new DashboardView { DataContext = _viewModel };
@@ -267,8 +268,13 @@ public partial class MainWindow : Window
         CentralAuthStatusText.Text = result.Message;
         if (result.Success)
         {
-            CentralAuthOverlay.Visibility = Visibility.Collapsed;
-            ContentHost.Focus();
+            var session = await _centralAccessClient.ValidateSessionAsync();
+            CentralAuthStatusText.Text = session.Message;
+            if (session.Success)
+            {
+                CentralAuthOverlay.Visibility = Visibility.Collapsed;
+                ContentHost.Focus();
+            }
         }
         VerifyCentralCodeButton.IsEnabled = true;
     }
@@ -286,6 +292,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        await _centralAccessClient.RevokeSessionAsync();
         await _viewModel.ShutdownAsync();
     }
 

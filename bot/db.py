@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS central_login_challenges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     discord_user_id TEXT NOT NULL,
     peace_id INTEGER NOT NULL,
+    client_id TEXT NOT NULL DEFAULT '',
     code_hash TEXT NOT NULL,
     code_salt TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -188,6 +189,23 @@ CREATE TABLE IF NOT EXISTS central_login_challenges (
 
 CREATE INDEX IF NOT EXISTS idx_central_login_challenges_user
     ON central_login_challenges(discord_user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS central_login_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_user_id TEXT NOT NULL,
+    peace_id INTEGER NOT NULL,
+    client_id TEXT NOT NULL,
+    project_id TEXT,
+    scope TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    token_salt TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_central_login_sessions_client
+    ON central_login_sessions(client_id, id DESC);
 """
 
 
@@ -199,6 +217,15 @@ def _central_code_hash(code: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac(
         "sha256",
         code.encode("utf-8"),
+        salt.encode("utf-8"),
+        120_000,
+    ).hex()
+
+
+def _central_token_hash(token: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        token.encode("utf-8"),
         salt.encode("utf-8"),
         120_000,
     ).hex()
@@ -250,6 +277,9 @@ class PeaceDatabase:
             developer_columns = {row["name"] for row in connection.execute("PRAGMA table_info(developer_requests)")}
             if developer_columns and "motivation" not in developer_columns:
                 connection.execute("ALTER TABLE developer_requests ADD COLUMN motivation TEXT NOT NULL DEFAULT ''")
+            challenge_columns = {row["name"] for row in connection.execute("PRAGMA table_info(central_login_challenges)")}
+            if challenge_columns and "client_id" not in challenge_columns:
+                connection.execute("ALTER TABLE central_login_challenges ADD COLUMN client_id TEXT NOT NULL DEFAULT ''")
             connection.commit()
 
     def _next_peace_id(self, connection: sqlite3.Connection) -> int:
@@ -396,6 +426,7 @@ class PeaceDatabase:
         peace_id: int,
         code: str,
         expires_at: str,
+        client_id: str = "",
     ) -> int:
         self.initialize()
         timestamp = now_iso()
@@ -413,13 +444,14 @@ class PeaceDatabase:
             cursor = connection.execute(
                 """
                 INSERT INTO central_login_challenges (
-                    discord_user_id, peace_id, code_hash, code_salt,
+                    discord_user_id, peace_id, client_id, code_hash, code_salt,
                     attempts, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, 0, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
                 """,
                 (
                     str(discord_user_id),
                     int(peace_id),
+                    client_id,
                     code_hash,
                     salt,
                     timestamp,
@@ -428,6 +460,34 @@ class PeaceDatabase:
             )
             connection.commit()
             return int(cursor.lastrowid)
+
+    def central_login_request_allowed(
+        self,
+        *,
+        discord_user_id: int,
+        client_id: str,
+        window_seconds: int = 600,
+        max_user_requests: int = 3,
+        max_client_requests: int = 6,
+    ) -> bool:
+        self.initialize()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        with self.connect() as connection:
+            user_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE discord_user_id = ? AND created_at >= ?
+                """,
+                (str(discord_user_id), cutoff),
+            ).fetchone()["total"]
+            client_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE client_id = ? AND created_at >= ?
+                """,
+                (client_id, cutoff),
+            ).fetchone()["total"]
+        return int(user_count) < max_user_requests and int(client_count) < max_client_requests
 
     def revoke_central_login_challenges(self, discord_user_id: int | str) -> None:
         self.initialize()
@@ -448,6 +508,7 @@ class PeaceDatabase:
         discord_user_id: int,
         peace_id: int,
         code: str,
+        client_id: str = "",
         max_attempts: int = 5,
     ) -> bool:
         self.initialize()
@@ -457,10 +518,11 @@ class PeaceDatabase:
                 """
                 SELECT * FROM central_login_challenges
                 WHERE discord_user_id = ? AND peace_id = ?
+                  AND client_id = ?
                   AND consumed_at IS NULL
                 ORDER BY id DESC LIMIT 1
                 """,
-                (str(discord_user_id), int(peace_id)),
+                (str(discord_user_id), int(peace_id), client_id),
             ).fetchone()
             if row is None or row["expires_at"] <= timestamp or int(row["attempts"]) >= max_attempts:
                 return False
@@ -479,6 +541,83 @@ class PeaceDatabase:
                 )
             connection.commit()
             return valid
+
+    def create_central_login_session(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        project_id: str | None,
+        scope: str,
+        expires_at: str,
+    ) -> str:
+        self.initialize()
+        token = secrets.token_urlsafe(32)
+        salt = secrets.token_hex(16)
+        token_hash = _central_token_hash(token, salt)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO central_login_sessions (
+                    discord_user_id, peace_id, client_id, project_id, scope,
+                    token_hash, token_salt, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(peace_id),
+                    client_id,
+                    project_id,
+                    scope,
+                    token_hash,
+                    salt,
+                    now_iso(),
+                    expires_at,
+                ),
+            )
+            connection.commit()
+        return token
+
+    def validate_central_login_session(
+        self,
+        *,
+        token: str,
+        client_id: str,
+        project_id: str | None = None,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM central_login_sessions
+                WHERE client_id = ? AND revoked_at IS NULL AND expires_at > ?
+                ORDER BY id DESC
+                """,
+                (client_id, timestamp),
+            ).fetchall()
+        for row in rows:
+            if project_id is not None and row["project_id"] != project_id:
+                continue
+            if hmac.compare_digest(
+                str(row["token_hash"]),
+                _central_token_hash(token, str(row["token_salt"])),
+            ):
+                return row
+        return None
+
+    def revoke_central_login_session(self, *, token: str, client_id: str) -> bool:
+        row = self.validate_central_login_session(token=token, client_id=client_id)
+        if row is None:
+            return False
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE central_login_sessions SET revoked_at = ? WHERE id = ?",
+                (now_iso(), int(row["id"])),
+            )
+            connection.commit()
+        return True
 
     def update_nickname(self, discord_user_id: int | str, nickname: str) -> None:
         self.initialize()
