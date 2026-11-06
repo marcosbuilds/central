@@ -29,6 +29,14 @@ Deployment-specific account names, WSGI paths, environment values, and live
 URLs are intentionally kept outside the public repository. The gateway must
 receive no database password, service-role key, bot token, or provider key.
 
+The desktop reads `CENTRAL_SUPABASE_URL`,
+`CENTRAL_SUPABASE_PUBLISHABLE_KEY`, and the related account/project values from
+the operator's environment or local settings. The desktop reads
+`CENTRAL_GATEWAY_URL` only when an availability gateway has been deployed. The
+gateway is optional: when that variable is absent, the desktop remains in its
+local/offline state and skips the `/healthz` request. No Supabase project URL or
+gateway URL is compiled into the public source tree.
+
 ## Package for computers
 
 The Windows package is self-contained x64 and remains offline-first. The

@@ -8,6 +8,30 @@ namespace Central.Desktop.Tests;
 public sealed class SyncConnectivityTests
 {
     [Fact]
+    public void SupabaseOptions_require_explicit_environment_configuration()
+    {
+        var previousUrl = Environment.GetEnvironmentVariable("CENTRAL_SUPABASE_URL");
+        var previousKey = Environment.GetEnvironmentVariable("CENTRAL_SUPABASE_PUBLISHABLE_KEY");
+        try
+        {
+            Environment.SetEnvironmentVariable("CENTRAL_SUPABASE_URL", null);
+            Environment.SetEnvironmentVariable("CENTRAL_SUPABASE_PUBLISHABLE_KEY", "publishable-key");
+            Assert.Null(SupabaseOptions.FromEnvironment());
+
+            Environment.SetEnvironmentVariable("CENTRAL_SUPABASE_URL", "https://central.example");
+            var options = SupabaseOptions.FromEnvironment();
+
+            Assert.NotNull(options);
+            Assert.Equal(new Uri("https://central.example/"), options!.Url);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CENTRAL_SUPABASE_URL", previousUrl);
+            Environment.SetEnvironmentVariable("CENTRAL_SUPABASE_PUBLISHABLE_KEY", previousKey);
+        }
+    }
+
+    [Fact]
     public void ProjectEventCursor_rejects_duplicates_and_detects_a_gap()
     {
         var cursor = new ProjectEventCursor();

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using Central.Core.Connectivity;
+using Central.Desktop.ViewModels;
 using Xunit;
 
 namespace Central.Desktop.Tests;
@@ -50,6 +51,40 @@ public sealed class GatewayHealthClientTests
         Assert.False(snapshot.IsReachable);
         Assert.False(called);
         Assert.Contains("HTTP", snapshot.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CheckAsync_skips_the_request_when_gateway_is_not_configured()
+    {
+        var called = false;
+        using var client = new GatewayHealthClient(new HttpClient(new StubHandler(_ =>
+        {
+            called = true;
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        })));
+
+        var snapshot = await client.CheckAsync(null);
+
+        Assert.False(called);
+        Assert.False(snapshot.IsReachable);
+        Assert.Equal("not-configured", snapshot.Status);
+        Assert.Contains("não está configurado", snapshot.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveGatewayBaseUri_returns_null_without_an_explicit_environment_value()
+    {
+        var previous = Environment.GetEnvironmentVariable("CENTRAL_GATEWAY_URL");
+        try
+        {
+            Environment.SetEnvironmentVariable("CENTRAL_GATEWAY_URL", null);
+
+            Assert.Null(CentralViewModel.ResolveGatewayBaseUri());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CENTRAL_GATEWAY_URL", previous);
+        }
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
