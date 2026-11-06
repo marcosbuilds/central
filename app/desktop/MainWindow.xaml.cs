@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Closing += MainWindow_Closing;
 
-        SidebarColumn.Width = new GridLength(78);
+        SidebarColumn.Width = new GridLength(72);
         SetSidebarCollapsedVisual(true);
         ShowPage("Dashboard");
         _ = _viewModel.CheckGatewayAsync();
@@ -140,7 +140,7 @@ public partial class MainWindow : Window
     private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
     {
         _isSidebarCollapsed = !_isSidebarCollapsed;
-        var target = _isSidebarCollapsed ? 78d : 238d;
+        var target = _isSidebarCollapsed ? 72d : 216d;
         var current = SidebarColumn.ActualWidth > 0 ? SidebarColumn.ActualWidth : SidebarColumn.Width.Value;
 
         if (_reduceMotion)
@@ -190,7 +190,7 @@ public partial class MainWindow : Window
     private void SetSidebarCollapsedVisual(bool collapsed)
     {
         var visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        SidebarContent.Margin = collapsed ? new Thickness(10, 14, 10, 12) : new Thickness(14, 14, 14, 12);
+        SidebarContent.Margin = collapsed ? new Thickness(8, 12, 8, 10) : new Thickness(12, 12, 12, 10);
         BrandIdentity.Visibility = visibility;
         BrandMark.Visibility = visibility;
         BrandText.Visibility = visibility;
@@ -211,7 +211,7 @@ public partial class MainWindow : Window
         foreach (var button in new[] { DashboardNav, ProjectsNav, ProjectNav })
         {
             button.HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-            button.Padding = collapsed ? new Thickness(8) : new Thickness(12, 10, 12, 10);
+            button.Padding = collapsed ? new Thickness(8) : new Thickness(10, 8, 10, 8);
             button.ToolTip = button.Tag switch
             {
                 "Dashboard" => "Home",

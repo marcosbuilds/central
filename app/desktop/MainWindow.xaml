@@ -21,7 +21,7 @@
 
     <Grid x:Name="WindowRoot">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="78" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="72" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -31,23 +31,23 @@
                 BorderBrush="{StaticResource LineBrush}"
                 BorderThickness="0,0,1,0"
                 ClipToBounds="True">
-            <Grid x:Name="SidebarContent" Margin="10,14,10,12">
+            <Grid x:Name="SidebarContent" Margin="8,12,8,10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid x:Name="BrandRow" Height="40">
+                <Grid x:Name="BrandRow" Height="38">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel x:Name="BrandIdentity" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border x:Name="BrandMark" Width="32" Height="32" CornerRadius="10" Background="{StaticResource AccentBrush}">
+                        <Border x:Name="BrandMark" Width="30" Height="30" CornerRadius="7" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1">
                             <Path Data="M23,7 H14 C8,7 5,10 5,16 S8,25 14,25 H23"
-                                  Stroke="{StaticResource InkBrush}"
-                                  StrokeThickness="2.8"
+                                  Stroke="{StaticResource AccentBrush}"
+                                  StrokeThickness="2.1"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
                                   Stretch="Uniform"
@@ -78,8 +78,8 @@
                     </Button>
                 </Grid>
 
-                <StackPanel x:Name="NavigationStack" Grid.Row="1" Margin="0,22,0,0">
-                    <TextBlock x:Name="NavigateCaption" Text="NAVEGAR" Style="{StaticResource CaptionText}" FontSize="9" Margin="5,0,0,8" />
+                <StackPanel x:Name="NavigationStack" Grid.Row="1" Margin="0,20,0,0">
+                    <TextBlock x:Name="NavigateCaption" Text="NAVEGAÇÃO" Style="{StaticResource CaptionText}" FontSize="9" Margin="5,0,0,7" />
                     <Button x:Name="DashboardNav" Tag="Dashboard" ToolTip="Home" AutomationProperties.Name="Home" Style="{StaticResource NavButton}" Click="Navigation_Click">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -98,8 +98,8 @@
                             <TextBlock x:Name="ProjectsLabel" Grid.Column="1" Text="Projetos" Margin="10,0,0,0" VerticalAlignment="Center" />
                         </Grid>
                     </Button>
-                    <Border Background="{StaticResource LineBrush}" Height="1" Margin="7,18,7,18" />
-                    <TextBlock x:Name="ContextCaption" Text="PROJETO" Style="{StaticResource CaptionText}" FontSize="9" Margin="5,0,0,8" />
+                    <Border Background="{StaticResource LineBrush}" Height="1" Margin="7,16,7,16" />
+                    <TextBlock x:Name="ContextCaption" Text="CONTEXTO" Style="{StaticResource CaptionText}" FontSize="9" Margin="5,0,0,7" />
                     <Button x:Name="ProjectNav" Tag="Project" ToolTip="Projeto selecionado" AutomationProperties.Name="Projeto selecionado" Style="{StaticResource NavButton}" Click="Navigation_Click">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -125,7 +125,7 @@
                             <ColumnDefinition x:Name="UserTextColumn" Width="*" />
                             <ColumnDefinition x:Name="UserSettingsColumn" Width="28" />
                         </Grid.ColumnDefinitions>
-                        <Border x:Name="UserAvatar" Width="28" Height="28" CornerRadius="14" Background="{StaticResource BlueSoftBrush}">
+                        <Border x:Name="UserAvatar" Width="28" Height="28" CornerRadius="6" Background="{StaticResource BlueSoftBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
                             <TextBlock Text="LD" Foreground="{StaticResource BlueBrush}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <StackPanel x:Name="UserText" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
@@ -145,7 +145,7 @@
 
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
-                <RowDefinition Height="58" />
+                <RowDefinition Height="52" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -154,17 +154,17 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="28,0,0,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,0,0">
                     <TextBlock Text="Central / " Style="{StaticResource MutedText}" FontSize="12" />
                     <TextBlock x:Name="HeaderTitle" Text="Home" FontFamily="{StaticResource AppleDisplayFont}" FontSize="12" FontWeight="SemiBold" />
-                    <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="8,4" Margin="16,0,0,0" ToolTip="{Binding GatewayStatusDetail}" AutomationProperties.Name="Status do servidor">
+                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="5" Padding="7,3" Margin="14,0,0,0" ToolTip="{Binding GatewayStatusDetail}" AutomationProperties.Name="Status do servidor">
                         <TextBlock Text="{Binding GatewayStatusLabel}" Foreground="{StaticResource BlueBrush}" FontSize="9" FontWeight="Bold" />
                     </Border>
-                    <Border Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="8,4" Margin="7,0,0,0" ToolTip="{Binding SyncStatusDetail}" AutomationProperties.Name="Status da sincronização">
-                        <TextBlock Text="{Binding SyncStatusLabel}" Foreground="{StaticResource AccentBrush}" FontSize="9" FontWeight="Bold" />
+                    <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="5" Padding="7,3" Margin="6,0,0,0" ToolTip="{Binding SyncStatusDetail}" AutomationProperties.Name="Status da sincronização">
+                        <TextBlock Text="{Binding SyncStatusLabel}" Foreground="{StaticResource SuccessBrush}" FontSize="9" FontWeight="Bold" />
                     </Border>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                     <Button AutomationProperties.Name="Minimizar janela" ToolTip="Minimizar" Style="{StaticResource QuietButton}" Width="36" Height="36" Padding="10" Click="Minimize_Click">
                         <Path Data="M4,12 H20" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" Stretch="Uniform" />
                     </Button>
@@ -183,12 +183,12 @@
                 <Border x:Name="ToastBorder"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Bottom"
-                        Margin="0,0,28,24"
+                        Margin="0,0,24,20"
                         Background="{StaticResource SuccessSoftBrush}"
                         BorderBrush="{StaticResource SuccessBrush}"
                         BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="14,11"
+                        CornerRadius="6"
+                        Padding="13,10"
                         MaxWidth="520"
                         Visibility="Collapsed"
                         Panel.ZIndex="30"
@@ -219,8 +219,8 @@
               AutomationProperties.Name="Configurações abertas">
             <Border x:Name="SettingsScrim" Background="{StaticResource ScrimBrush}" />
             <local:AutomationDialogBorder x:Name="SettingsPanel"
-                    Width="430"
-                    MaxHeight="520"
+                    Width="420"
+                    MaxHeight="540"
                     MaxWidth="700"
                     Margin="20"
                     HorizontalAlignment="Center"
@@ -245,7 +245,7 @@
                             <Path Data="M5,5 L19,19 M19,5 L5,19" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" Stretch="Uniform" />
                         </Button>
                     </Grid>
-                    <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,22,0,0">
+                    <Border Grid.Row="1" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,20,0,0">
                         <StackPanel>
                             <TextBlock Text="APARÊNCIA" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" />
                             <CheckBox x:Name="ReducedMotionCheckBox" Content="Reduzir movimento" Foreground="{StaticResource TextBrush}" Margin="0,14,0,0" AutomationProperties.Name="Reduzir movimento" Checked="ReducedMotion_Changed" Unchecked="ReducedMotion_Changed" />
@@ -255,7 +255,7 @@
                     <StackPanel Grid.Row="2" Margin="0,18,0,0">
                         <TextBlock Text="INTEGRAÇÕES" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" />
                         <TextBlock Text="Claude, Codex e MCP continuam desligados. A pasta de arquivos e os eventos de coordenação agora têm uma integração real opcional, com identidade e estado explícitos." Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
-                        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+                        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,14,0,0">
                             <StackPanel>
                                 <TextBlock Text="CONEXÃO DO PROJETO" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" />
                                 <TextBlock Text="Esses dados ficam salvos somente neste Windows. A senha permanece apenas na memória e nunca é gravada no arquivo de preferências." Style="{StaticResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,8" />
@@ -280,7 +280,7 @@
                         </Border>
                         <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
                             <StackPanel>
-                                <TextBlock Text="SINCRONIZAÇÃO REAL · SYNCTHING + SUPABASE REALTIME" Style="{StaticResource CaptionText}" Foreground="{StaticResource AccentBrush}" />
+                                <TextBlock Text="SINCRONIZAÇÃO REAL · SYNCTHING + SUPABASE REALTIME" Style="{StaticResource CaptionText}" Foreground="{StaticResource SuccessBrush}" />
                                 <TextBlock Text="{Binding SyncStatusLabel}" FontSize="12" FontWeight="Bold" Margin="0,6,0,0" />
                                 <TextBlock Text="{Binding SyncStatusDetail}" Style="{StaticResource MutedText}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
@@ -290,7 +290,7 @@
                                 <TextBlock Text="A senha é enviada somente ao Auth do Supabase para criar a sessão. O gateway PythonAnywhere não recebe arquivos nem credenciais. Sem conexão autenticada, nenhum arquivo é configurado." Style="{StaticResource CaptionText}" FontSize="10" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </StackPanel>
                         </Border>
-                        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+                        <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,14,0,0">
                             <StackPanel>
                                 <TextBlock Text="SMOKE TEST DO SERVIDOR" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" />
                                 <TextBlock Text="{Binding GatewayStatusLabel}" FontSize="12" FontWeight="Bold" Margin="0,6,0,0" />

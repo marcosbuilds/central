@@ -4,43 +4,41 @@
              xmlns:local="clr-namespace:Central.Desktop"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
-        <!-- Semantic palette: dark canvas, quiet surfaces, explicit state colors. -->
-        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#090D11" />
-        <SolidColorBrush x:Key="SidebarBrush" Color="#0C1216" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#11181D" />
-        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#172129" />
-        <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#1C2932" />
-        <SolidColorBrush x:Key="LineBrush" Color="#293943" />
-        <SolidColorBrush x:Key="TextBrush" Color="#F6FAFC" />
-        <SolidColorBrush x:Key="MutedTextBrush" Color="#B1BDC7" />
-        <SolidColorBrush x:Key="SubtleTextBrush" Color="#7B8A95" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#CFFF4E" />
-        <SolidColorBrush x:Key="AccentSoftBrush" Color="#2B3C1A" />
-        <SolidColorBrush x:Key="BlueBrush" Color="#7EA9FF" />
-        <SolidColorBrush x:Key="BlueSoftBrush" Color="#202F4E" />
-        <SolidColorBrush x:Key="SuccessBrush" Color="#42D6AE" />
-        <SolidColorBrush x:Key="SuccessSoftBrush" Color="#173F38" />
-        <SolidColorBrush x:Key="AmberBrush" Color="#F2B660" />
-        <SolidColorBrush x:Key="AmberSoftBrush" Color="#46331D" />
-        <SolidColorBrush x:Key="RedBrush" Color="#F17E86" />
-        <SolidColorBrush x:Key="RedSoftBrush" Color="#45242D" />
+        <!-- Obsidian Workspace: semantic tokens for a quiet, technical desktop UI. -->
+        <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#000000" />
+        <SolidColorBrush x:Key="SidebarBrush" Color="#08090B" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#0D0F12" />
+        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#15181C" />
+        <SolidColorBrush x:Key="HoverBrush" Color="#1C2026" />
+        <SolidColorBrush x:Key="SurfaceSoftBrush" Color="#1B2838" />
+        <SolidColorBrush x:Key="LineBrush" Color="#272C33" />
+        <SolidColorBrush x:Key="TextBrush" Color="#EDF0F3" />
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#ACB5C0" />
+        <SolidColorBrush x:Key="SubtleTextBrush" Color="#818B98" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#8BA7D0" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#1B2838" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#45B890" />
+        <SolidColorBrush x:Key="SuccessSoftBrush" Color="#102A24" />
+        <SolidColorBrush x:Key="AmberBrush" Color="#D5AB6B" />
+        <SolidColorBrush x:Key="AmberSoftBrush" Color="#302719" />
+        <SolidColorBrush x:Key="RedBrush" Color="#E47B83" />
+        <SolidColorBrush x:Key="RedSoftBrush" Color="#321C22" />
+        <SolidColorBrush x:Key="BlueBrush" Color="#8BA7D0" />
+        <SolidColorBrush x:Key="BlueSoftBrush" Color="#1B2838" />
         <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
-        <!-- Action text is intentionally dark: the lime action surface must remain
-             legible instead of inheriting the muted light text used elsewhere. -->
-        <SolidColorBrush x:Key="InkBrush" Color="#071006" />
-        <SolidColorBrush x:Key="ScrimBrush" Color="#B8000000" />
+        <SolidColorBrush x:Key="InkBrush" Color="#071019" />
+        <SolidColorBrush x:Key="ScrimBrush" Color="#CC000000" />
 
-        <!-- Typography: SF Pro is the preferred Apple display face when available;
-             Windows falls back to its native variable UI face. Seloryn is bundled
-             locally from the project's MIT-licensed release asset. -->
-        <FontFamily x:Key="AppleDisplayFont">SF Pro Display, Segoe UI Variable Display, Segoe UI</FontFamily>
-        <FontFamily x:Key="AppleTextFont">SF Pro Text, Segoe UI Variable, Segoe UI</FontFamily>
+        <FontFamily x:Key="AppleDisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
+        <FontFamily x:Key="AppleTextFont">Segoe UI Variable Text, Segoe UI</FontFamily>
         <FontFamily x:Key="SelorynFont">/Central;component/Assets/Fonts/Seloryn/#Seloryn Font</FontFamily>
         <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 
         <Style TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{StaticResource AppleTextFont}" />
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
         </Style>
 
         <Style TargetType="ToolTip">
@@ -48,7 +46,7 @@
             <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Padding" Value="9,6" />
             <Setter Property="FontFamily" Value="{StaticResource AppleTextFont}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Template">
@@ -57,7 +55,7 @@
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7"
+                                CornerRadius="5"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter Content="{TemplateBinding Content}"
                                               TextElement.Foreground="{TemplateBinding Foreground}"
@@ -74,57 +72,52 @@
         </Style>
 
         <Style x:Key="CaptionText" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
-            <!-- Seloryn is a brand/subtitle face, not a microcopy face. Dense labels
-                 stay in the platform text face so scanning remains reliable. -->
-            <Setter Property="FontFamily" Value="{StaticResource AppleTextFont}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
         <Style x:Key="SubtitleText" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
-            <Setter Property="FontFamily" Value="{StaticResource SelorynFont}" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="LineHeight" Value="21" />
+            <Setter Property="FontFamily" Value="{StaticResource AppleTextFont}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="20" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
         <Style x:Key="DisplayText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="FontFamily" Value="{StaticResource AppleDisplayFont}" />
-            <Setter Property="FontSize" Value="30" />
+            <Setter Property="FontSize" Value="28" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="LineHeight" Value="38" />
+            <Setter Property="LineHeight" Value="34" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
         <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="FontFamily" Value="{StaticResource AppleDisplayFont}" />
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontSize" Value="17" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
 
         <Style x:Key="CardBorder" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="18" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="16" />
         </Style>
 
         <Style x:Key="PanelBorder" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="CornerRadius" Value="7" />
         </Style>
 
         <Style x:Key="DialogPanel" TargetType="Border" BasedOn="{StaticResource CardBorder}">
             <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-            <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="Padding" Value="24" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="20" />
         </Style>
 
         <Style x:Key="SoftCardBorder" TargetType="Border" BasedOn="{StaticResource CardBorder}">
@@ -132,9 +125,11 @@
         </Style>
 
         <Style x:Key="PillBorder" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SurfaceSoftBrush}" />
-            <Setter Property="CornerRadius" Value="9" />
-            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="7,3" />
         </Style>
 
         <Style x:Key="BaseButton" TargetType="Button">
@@ -145,8 +140,7 @@
             <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="12,9" />
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="11,8" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -157,7 +151,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                 CornerRadius="7"
+                                CornerRadius="5"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -166,17 +160,17 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HoverBrush}" />
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                <Setter TargetName="Chrome" Property="Opacity" Value="0.94" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Chrome" Property="Opacity" Value="0.76" />
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.78" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Chrome" Property="Opacity" Value="0.68" />
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.48" />
                                 <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                 <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                             </Trigger>
@@ -190,12 +184,8 @@
             <Setter Property="Background" Value="{StaticResource AccentBrush}" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="TextElement.Foreground" Value="{StaticResource InkBrush}" />
-            <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-            <!-- A string presented by ContentPresenter can otherwise inherit the
-                 global light TextBlock style. Bind the actual text node to the
-                 button state so lime actions always use readable dark ink, while
-                 disabled actions still receive their muted foreground. -->
+            <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="ContentTemplate">
                 <Setter.Value>
                     <DataTemplate>
@@ -211,7 +201,7 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="{StaticResource SurfaceSoftBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
                     <Setter Property="Foreground" Value="{StaticResource SubtleTextBrush}" />
                     <Setter Property="TextElement.Foreground" Value="{StaticResource SubtleTextBrush}" />
                     <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
@@ -223,7 +213,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Padding" Value="9,7" />
         </Style>
 
         <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
@@ -231,9 +221,9 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="12,10" />
-            <Setter Property="Margin" Value="0,2,0,2" />
-            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,1,0,1" />
+            <Setter Property="MinHeight" Value="38" />
         </Style>
 
         <Style x:Key="TextBoxStyle" TargetType="TextBox">
@@ -246,10 +236,10 @@
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="SelectionBrush" Value="{StaticResource BlueBrush}" />
-            <Setter Property="SelectionTextBrush" Value="{StaticResource WhiteBrush}" />
+            <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="SelectionTextBrush" Value="{StaticResource InkBrush}" />
             <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                     <Setter Property="BorderThickness" Value="2" />
                 </Trigger>
@@ -258,8 +248,8 @@
 
         <Style x:Key="TabButton" TargetType="Button" BasedOn="{StaticResource QuietButton}">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Padding" Value="12,10" />
-            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,0,2,0" />
         </Style>
 
         <Style TargetType="TabControl">
@@ -270,15 +260,19 @@
 
         <Style TargetType="TabItem">
             <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
-            <Setter Property="FontFamily" Value="{StaticResource SelorynFont}" />
+            <Setter Property="FontFamily" Value="{StaticResource AppleTextFont}" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Padding" Value="11,9" />
+            <Setter Property="Padding" Value="11,8" />
             <Setter Property="Margin" Value="0,0,3,0" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="TabChrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,2" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" />
+                        <Border x:Name="TabChrome"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0,0,0,2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
@@ -297,21 +291,19 @@
             </Setter>
         </Style>
 
-        <!-- Contained, high-contrast scrollbars: the page never borrows the OS
-             white scrollbar and data tables may still opt into local horizontal scroll. -->
         <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
             <Setter Property="Background" Value="{StaticResource SubtleTextBrush}" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="5" Margin="2" />
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Margin="2" />
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource AccentBrush}" /></Trigger>
-                <Trigger Property="IsDragging" Value="True"><Setter Property="Background" Value="{StaticResource BlueBrush}" /></Trigger>
+                <Trigger Property="IsDragging" Value="True"><Setter Property="Background" Value="{StaticResource AccentBrush}" /></Trigger>
             </Style.Triggers>
         </Style>
 
@@ -354,8 +346,8 @@
         </Style>
 
         <Style x:Key="StatusDotStyle" TargetType="Ellipse">
-            <Setter Property="Width" Value="8" />
-            <Setter Property="Height" Value="8" />
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Height" Value="7" />
             <Setter Property="Fill" Value="{StaticResource SubtleTextBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding StatusTone}" Value="open"><Setter Property="Fill" Value="{StaticResource SuccessBrush}" /></DataTrigger>
@@ -373,15 +365,15 @@
         <Style x:Key="ActivityDotStyle" TargetType="Ellipse" BasedOn="{StaticResource StatusDotStyle}">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Tone}" Value="accent"><Setter Property="Fill" Value="{StaticResource SuccessBrush}" /></DataTrigger>
-                <DataTrigger Binding="{Binding Tone}" Value="blue"><Setter Property="Fill" Value="{StaticResource BlueBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Tone}" Value="blue"><Setter Property="Fill" Value="{StaticResource AccentBrush}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Tone}" Value="amber"><Setter Property="Fill" Value="{StaticResource AmberBrush}" /></DataTrigger>
                 <DataTrigger Binding="{Binding Tone}" Value="blocked"><Setter Property="Fill" Value="{StaticResource RedBrush}" /></DataTrigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="ConnectionDotStyle" TargetType="Ellipse">
-            <Setter Property="Width" Value="8" />
-            <Setter Property="Height" Value="8" />
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Height" Value="7" />
             <Setter Property="Fill" Value="{StaticResource SubtleTextBrush}" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsOnline}" Value="True"><Setter Property="Fill" Value="{StaticResource SuccessBrush}" /></DataTrigger>

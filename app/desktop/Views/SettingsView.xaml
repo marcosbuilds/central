@@ -3,16 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="0">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="32,28,32,34">
+        <Grid Margin="24,22,24,28">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <StackPanel>
                 <TextBlock Text="Configurações" Style="{StaticResource DisplayText}" />
-                <TextBlock Text="Políticas locais e integrações futuras, com a fronteira de conexão sempre visível." Style="{StaticResource MutedText}" FontSize="14" TextWrapping="Wrap" Margin="0,7,0,0" />
+                <TextBlock Text="Políticas locais e integrações futuras, com a fronteira de conexão sempre visível." Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,5,0,0" />
             </StackPanel>
 
-            <Grid Grid.Row="1" Margin="0,24,0,14">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,7,0">
+            <WrapPanel Grid.Row="1" Margin="0,20,0,12">
+                <Border Width="330" Style="{StaticResource CardBorder}" Margin="0,0,10,10">
                     <StackPanel>
                         <TextBlock Text="Identidade local" Style="{StaticResource SectionTitle}" />
                         <Grid Margin="0,3,0,12"><TextBlock Text="Sessão" Style="{StaticResource MutedText}" /><TextBlock Text="ATIVA NESTA INSTALAÇÃO" Foreground="{StaticResource SuccessBrush}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" /></Grid>
@@ -20,26 +19,25 @@
                         <Grid><TextBlock Text="2FA / passkey" Style="{StaticResource MutedText}" /><TextBlock Text="FUTURO" Foreground="{StaticResource AmberBrush}" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" /></Grid>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Style="{StaticResource CardBorder}" Margin="7,0,0,0">
+                <Border Width="330" Style="{StaticResource CardBorder}" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock Text="Política de telemetria" Style="{StaticResource SectionTitle}" />
                         <TextBlock Text="Mostramos somente eventos observáveis: conexão, tarefa, reserva, patch, teste e revisão. Não coletamos raciocínio privado, teclas, tokens ou terminal completo." Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" />
                         <Border Style="{StaticResource PillBorder}" Background="{StaticResource SuccessSoftBrush}" HorizontalAlignment="Left" Margin="0,15,0,0"><TextBlock Text="REGRA LOCAL · DEMO" Foreground="{StaticResource SuccessBrush}" FontSize="10" FontWeight="Bold" /></Border>
                     </StackPanel>
                 </Border>
-            </Grid>
+            </WrapPanel>
 
             <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,0,0,14">
                 <StackPanel>
                     <TextBlock Text="Integrações futuras" Style="{StaticResource SectionTitle}" />
                     <TextBlock Text="Estas conexões não estão ativas. Os cartões abaixo documentam o contrato futuro; nenhum deles altera a instalação ou envia dados." Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14" />
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Border Grid.Column="0" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="0,0,8,0"><StackPanel><TextBlock Text="Codex" FontWeight="SemiBold" /><TextBlock Text="Não conectado" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" Margin="0,6,0,0" /></StackPanel></Border>
-                        <Border Grid.Column="1" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="8,0,8,0"><StackPanel><TextBlock Text="Claude" FontWeight="SemiBold" /><TextBlock Text="Não conectado" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" Margin="0,6,0,0" /></StackPanel></Border>
-                        <Border Grid.Column="2" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="8,0,8,0"><StackPanel><TextBlock Text="Discord OAuth" FontWeight="SemiBold" /><TextBlock Text="Contrato futuro" Style="{StaticResource CaptionText}" Foreground="{StaticResource SubtleTextBrush}" Margin="0,6,0,0" /></StackPanel></Border>
-                        <Border Grid.Column="3" Background="{StaticResource SurfaceRaisedBrush}" CornerRadius="8" Padding="12" Margin="8,0,0,0"><StackPanel><TextBlock Text="Gateway API" FontWeight="SemiBold" /><TextBlock Text="Contrato v1 proposto" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" Margin="0,6,0,0" /></StackPanel></Border>
-                    </Grid>
+                    <WrapPanel>
+                        <Border Width="190" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,8"><StackPanel><TextBlock Text="Codex" FontWeight="SemiBold" /><TextBlock Text="Não conectado" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" Margin="0,5,0,0" /></StackPanel></Border>
+                        <Border Width="190" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,8"><StackPanel><TextBlock Text="Claude" FontWeight="SemiBold" /><TextBlock Text="Não conectado" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" Margin="0,5,0,0" /></StackPanel></Border>
+                        <Border Width="190" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,8"><StackPanel><TextBlock Text="Discord OAuth" FontWeight="SemiBold" /><TextBlock Text="Contrato futuro" Style="{StaticResource CaptionText}" Foreground="{StaticResource SubtleTextBrush}" Margin="0,5,0,0" /></StackPanel></Border>
+                        <Border Width="190" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,8"><StackPanel><TextBlock Text="Gateway API" FontWeight="SemiBold" /><TextBlock Text="Contrato v1 proposto" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" Margin="0,5,0,0" /></StackPanel></Border>
+                    </WrapPanel>
                 </StackPanel>
             </Border>
 
