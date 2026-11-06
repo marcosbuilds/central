@@ -28,6 +28,12 @@ completes the set flow and the panel is open.
 To open applications, set `SET_VAGAS_ABERTAS=true` in `.env` and restart the
 bot. The existing server panel remains closed while the value is `false`.
 
+The Central bridge is optional at startup but, when enabled, requires an
+explicit `DISCORD_CENTRAL_ACCESS_ROLE_ID`, a loopback-only
+`CENTRAL_BRIDGE_URL`, and a randomly generated `CENTRAL_BRIDGE_KEY` of at least
+32 characters. Never commit that key. The desktop receives a one-time DM code,
+then a short session bound to its installation client and configured project.
+
 Iris support uses a local model. Keep the service available at `IRIS_URL` before
 starting the bot. Iris builds context from ticket data and recent messages;
 this is local context retrieval, not a change to the model weights.

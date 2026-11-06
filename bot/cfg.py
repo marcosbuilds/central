@@ -3,12 +3,20 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
+
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+BRIDGE_PLACEHOLDERS = {
+    "generate-a-local-secret",
+    "replace-with-a-local-secret",
+    "replace-with-a-32-byte-secret",
+}
 
 
 def _required(name: str) -> str:
@@ -51,6 +59,40 @@ def _ids_env(name: str, default: tuple[int, ...] = ()) -> tuple[int, ...]:
     return tuple(dict.fromkeys(values)) or default
 
 
+def is_valid_central_bridge_key(value: str) -> bool:
+    normalized = value.strip()
+    return (
+        len(normalized) >= 32
+        and normalized.casefold() not in BRIDGE_PLACEHOLDERS
+        and not normalized.casefold().startswith("replace-with-")
+    )
+
+
+def _central_bridge_key_env() -> str:
+    value = _required("CENTRAL_BRIDGE_KEY")
+    if not is_valid_central_bridge_key(value):
+        raise RuntimeError("CENTRAL_BRIDGE_KEY precisa ser um segredo local aleatório de pelo menos 32 caracteres")
+    return value
+
+
+def parse_central_bridge_url(value: str) -> tuple[str, int, str]:
+    """Return a safe loopback binding; the bridge never binds a remote host."""
+    parsed = urlsplit(value.strip())
+    if parsed.scheme != "http" or parsed.hostname not in LOOPBACK_HOSTS:
+        raise RuntimeError("CENTRAL_BRIDGE_URL precisa ser uma URL HTTP de loopback")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
+        raise RuntimeError("CENTRAL_BRIDGE_URL contém componentes não permitidos")
+    try:
+        port = parsed.port or 8765
+    except ValueError as exc:
+        raise RuntimeError("CENTRAL_BRIDGE_URL contém uma porta inválida") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("CENTRAL_BRIDGE_URL contém uma porta inválida")
+    host = parsed.hostname
+    assert host is not None
+    return host, port, f"http://[{host}]:{port}/" if ":" in host else f"http://{host}:{port}/"
+
+
 @dataclass(frozen=True)
 class Settings:
     token: str
@@ -73,6 +115,11 @@ class Settings:
     recruiter_role_id: int | None
     visitor_role_id: int | None
     booster_role_id: int | None
+    central_access_role_id: int
+    central_auth_code_ttl_seconds: int
+    central_auth_session_ttl_seconds: int
+    central_bridge_url: str
+    central_bridge_key: str
     private_call_category_id: int | None
     automod_channel_id: int | None
     website_url: str
@@ -117,6 +164,11 @@ class Settings:
             recruiter_role_id=_int_env("DISCORD_RECRUITER_ROLE_ID", None),
             visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
             booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
+            central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID"),
+            central_auth_code_ttl_seconds=_int_env("CENTRAL_AUTH_CODE_TTL_SECONDS", 600),
+            central_auth_session_ttl_seconds=_int_env("CENTRAL_AUTH_SESSION_TTL_SECONDS", 1800),
+            central_bridge_url=parse_central_bridge_url(_required("CENTRAL_BRIDGE_URL"))[2],
+            central_bridge_key=_central_bridge_key_env(),
             private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
