@@ -1,0 +1,240 @@
+<UserControl x:Class="Central.Desktop.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Central.Desktop"
+             xmlns:views="clr-namespace:Central.Desktop.Views"
+             MinWidth="0">
+    <ScrollViewer x:Name="HomeScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+        <Grid Margin="30,26,30,34">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="HomeHeader" Grid.Row="0">
+                <StackPanel>
+                    <TextBlock Text="HOME" Style="{StaticResource CaptionText}" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="{Binding HomeTitle}" Style="{StaticResource DisplayText}" FontSize="30" Margin="0,5,0,0" />
+                    <TextBlock Text="{Binding HomeSubtitle}" Style="{StaticResource SubtitleText}" FontSize="12" Margin="0,5,0,0" />
+                </StackPanel>
+            </Grid>
+
+            <Border x:Name="HomeWorkSurface" Grid.Row="1" Style="{StaticResource PanelBorder}" Padding="18,16" Margin="0,18,0,0">
+            <Grid x:Name="HomeSplit" Margin="0" SizeChanged="HomeSplit_SizeChanged">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="0" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.16*" />
+                    <ColumnDefinition Width="0.84*" />
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="FocusPanel" Grid.Column="0" Background="Transparent" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0" Padding="0,0,18,0" Margin="0,0,0,0">
+                    <Grid>
+                        <local:AutomationStateGrid x:Name="FocusProjectState">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Setter Property="AutomationProperties.IsOffscreenBehavior" Value="Onscreen" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding FeaturedProject}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Setter Property="AutomationProperties.IsOffscreenBehavior" Value="Offscreen" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <TextBlock Text="FOCO ATUAL" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" />
+                                <Button x:Name="OpenProjectButton" AutomationProperties.Name="Abrir projeto em contexto" ToolTip="Abrir projeto" Style="{StaticResource QuietButton}" HorizontalAlignment="Right" Width="34" Height="34" Padding="9" Click="OpenFeaturedProject_Click">
+                                    <Path Data="M5,19 L19,5 M10,5 H19 V14" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.75" StrokeStartLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" />
+                                </Button>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="0,16,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="52" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Path Data="{Binding FeaturedProject.LogoPathData}" Stroke="{StaticResource AccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" Margin="4" />
+                                <StackPanel Grid.Column="1" Margin="12,0,14,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding FeaturedProject.Name}" FontFamily="{StaticResource AppleDisplayFont}" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding FeaturedProject.Id}" Style="{StaticResource MutedText}" FontFamily="{StaticResource MonoFont}" FontSize="11" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <Border Grid.Column="2" Style="{StaticResource PillBorder}" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top">
+                                    <TextBlock Text="{Binding FeaturedProject.PriorityTier}" Foreground="{StaticResource AccentBrush}" Style="{StaticResource CaptionText}" FontSize="10" />
+                                </Border>
+                            </Grid>
+                            <Grid Grid.Row="2" Margin="0,18,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Ellipse Style="{StaticResource StatusDotStyle}" Width="8" Height="8" Margin="0,5,8,0" DataContext="{Binding FeaturedProject}" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding FeaturedProject.StatusLabel}" Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="{Binding FeaturedProject.Description}" Style="{StaticResource MutedText}" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Grid.Row="3" Background="Transparent" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,18,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <TextBlock Text="PRÓXIMA DECISÃO" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" />
+                                    <TextBlock Grid.Row="1" Text="{Binding FeaturedTask.Title, TargetNullValue=Nenhuma tarefa pronta nesta fixture}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,7,0,0" />
+                                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                                        <TextBlock Text="{Binding FeaturedTask.Id, TargetNullValue=—}" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" FontFamily="{StaticResource MonoFont}" />
+                                        <TextBlock Text="{Binding FeaturedTask.Area, TargetNullValue=nenhuma área pronta}" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </local:AutomationStateGrid>
+                        <local:AutomationStateGrid x:Name="FocusEmptyState">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Setter Property="AutomationProperties.IsOffscreenBehavior" Value="Offscreen" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding FeaturedProject}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Setter Property="AutomationProperties.IsOffscreenBehavior" Value="Onscreen" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="330">
+                                <TextBlock Text="NENHUM PROJETO EM FOCO" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" />
+                                 <TextBlock Text="Escolha um projeto para começar." FontFamily="{StaticResource SelorynFont}" FontSize="20" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="300" Margin="0,10,0,0" />
+                                <TextBlock Text="O catálogo resolve a identidade antes da próxima decisão." Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0" />
+                                <Button Content="Abrir projetos" AutomationProperties.Name="Abrir catálogo de projetos" Style="{StaticResource AccentButton}" HorizontalAlignment="Center" Margin="0,16,0,0" Padding="16,10" Click="OpenProjects_Click" />
+                            </StackPanel>
+                        </local:AutomationStateGrid>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="UsagePanel" Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="18,0,0,0" Margin="0,0,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="172" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="USO DE IA" Style="{StaticResource CaptionText}" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="N/D · fonte ausente" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" FontSize="9" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button x:Name="RangeDayButton" Content="1D" Tag="1 dia" AutomationProperties.Name="Uso em um dia" Style="{StaticResource TabButton}" Click="UsageRange_Click" />
+                                <Button x:Name="RangeWeekButton" Content="7D" Tag="7 dias" AutomationProperties.Name="Uso em sete dias" Style="{StaticResource TabButton}" Click="UsageRange_Click" />
+                                <Button x:Name="RangeMonthButton" Content="31D" Tag="31 dias" AutomationProperties.Name="Uso em trinta e um dias" Style="{StaticResource TabButton}" Click="UsageRange_Click" />
+                            </StackPanel>
+                        </Grid>
+                        <views:UsageChart x:Name="UsageChart" Grid.Row="1" Margin="-6,8,-6,0" AutomationProperties.Name="Uso técnico de IA; dados indisponíveis sem gateway" />
+                        <Grid Grid.Row="2" Margin="0,6,0,0">
+                            <TextBlock x:Name="UsageRangeLabel" Text="1 dia · sem medição" Style="{StaticResource CaptionText}" />
+                            <TextBlock Text="horas · tokens · requests" Style="{StaticResource CaptionText}" HorizontalAlignment="Right" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+            </Border>
+
+            <Border Grid.Row="2" Style="{StaticResource PanelBorder}" Margin="0,14,0,0" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="18,16,18,13">
+                        <StackPanel>
+                            <TextBlock Text="REQUEST LOGS" Style="{StaticResource SectionTitle}" Margin="0" />
+                            <TextBlock Text="Somente requisições medidas pelo gateway; contas e chaves ficam mascaradas." Style="{StaticResource SubtitleText}" FontSize="11" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <Border Style="{StaticResource PillBorder}" Background="{StaticResource SurfaceRaisedBrush}" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <TextBlock Text="FONTE · N/D" Style="{StaticResource CaptionText}" FontSize="9" />
+                        </Border>
+                    </Grid>
+                     <Grid Grid.Row="1">
+                     <ScrollViewer x:Name="RequestTableViewport" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                         <ScrollViewer.Style>
+                             <Style TargetType="ScrollViewer">
+                                 <Setter Property="Visibility" Value="Visible" />
+                                 <Style.Triggers>
+                                     <DataTrigger Binding="{Binding RequestLogs.Count}" Value="0"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                 </Style.Triggers>
+                             </Style>
+                         </ScrollViewer.Style>
+                    <StackPanel MinWidth="900">
+                     <local:AutomationStateBorder x:Name="RequestTableHeader" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,1" Padding="16,9">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding RequestLogs.Count}" Value="0"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="86" /><ColumnDefinition Width="1.15*" /><ColumnDefinition Width="62" /><ColumnDefinition Width="92" /><ColumnDefinition Width="1.25*" /><ColumnDefinition Width="98" /><ColumnDefinition Width="64" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions>
+                            <TextBlock Text="HORA" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="1" Text="CONTA" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="2" Text="PLANO" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="3" Text="CHAVE" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="4" Text="MODELO" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="5" Text="TRANSPORTE" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="6" Text="STATUS" Style="{StaticResource CaptionText}" FontSize="9" />
+                            <TextBlock Grid.Column="7" Text="TTFT" Style="{StaticResource CaptionText}" FontSize="9" HorizontalAlignment="Right" />
+                        </Grid>
+                     </local:AutomationStateBorder>
+                    <ScrollViewer x:Name="RequestRows" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MaxHeight="280" Padding="0,0,0,8">
+                        <ItemsControl ItemsSource="{Binding RequestLogs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,10">
+                                        <Grid AutomationProperties.Name="{Binding AccessibleLabel}">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="86" /><ColumnDefinition Width="1.15*" /><ColumnDefinition Width="62" /><ColumnDefinition Width="92" /><ColumnDefinition Width="1.25*" /><ColumnDefinition Width="98" /><ColumnDefinition Width="64" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Time}" FontSize="11" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Account}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Plan}" Style="{StaticResource CaptionText}" FontSize="10" />
+                                            <TextBlock Grid.Column="3" Text="{Binding ApiKeyLabel}" Style="{StaticResource CaptionText}" FontSize="10" />
+                                            <TextBlock Grid.Column="4" Text="{Binding Model}" FontFamily="{StaticResource MonoFont}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Grid.Column="5"><TextBlock Text="{Binding Transport}" Foreground="{StaticResource BlueBrush}" FontSize="10" /><TextBlock Text="{Binding TransportDetail}" Style="{StaticResource CaptionText}" FontSize="9" /></StackPanel>
+                                            <Border Grid.Column="6" Background="{StaticResource SuccessSoftBrush}" CornerRadius="8" Padding="7,3" HorizontalAlignment="Left"><TextBlock Text="{Binding Status}" Foreground="{StaticResource SuccessBrush}" FontSize="9" FontWeight="Bold" /></Border>
+                                            <TextBlock Grid.Column="7" Text="{Binding Ttft}" FontSize="10" HorizontalAlignment="Right" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            <ItemsControl.Style>
+                                <Style TargetType="ItemsControl">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RequestLogs.Count}" Value="0"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ItemsControl.Style>
+                        </ItemsControl>
+                    </ScrollViewer>
+                     </StackPanel>
+                     </ScrollViewer>
+                     <local:AutomationStateBorder x:Name="RequestEmptyState" Background="{StaticResource SurfaceBrush}" Margin="0,8,0,12" Padding="10" CornerRadius="8">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding RequestLogs.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel HorizontalAlignment="Center">
+                             <TextBlock Text="nenhuma requisição medida" FontFamily="{StaticResource SelorynFont}" FontSize="13" HorizontalAlignment="Center" />
+                             <TextBlock Text="O gateway ainda não forneceu fonte ou frescor verificáveis." Style="{StaticResource MutedText}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" Margin="0,4,0,0" />
+                        </StackPanel>
+                     </local:AutomationStateBorder>
+                     </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

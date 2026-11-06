@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Suporte Peace">
+  <rect width="1200" height="360" rx="32" fill="#101827"/>
+  <path d="M120 110h160v140H120z" fill="#5865f2"/>
+  <path d="M120 145h160M150 190h100M150 225h75" stroke="#fff" stroke-width="16" stroke-linecap="round"/>
+  <text x="340" y="205" fill="#fff" font-family="Arial,sans-serif" font-size="76" font-weight="700">SUPORTE PEACE</text>
+</svg>

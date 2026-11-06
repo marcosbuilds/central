@@ -1,0 +1,2 @@
+"""Real Peace Discord bot."""
+

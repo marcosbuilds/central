@@ -1,0 +1,34 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Central.Desktop", "app\desktop\Central.Desktop.csproj", "{6C1B9AD0-52B7-4D55-9C0A-6A6A9B2C1E01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Central.Core", "app\core\Central.Core.csproj", "{E7F1D3F4-4E44-4E9E-8B11-9B1D9DCC1F37}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Central.Desktop.Tests", "tests\app\Central.Desktop.Tests\Central.Desktop.Tests.csproj", "{B9EA4A0E-89E9-4E55-9FD3-7DF47A77C0D2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6C1B9AD0-52B7-4D55-9C0A-6A6A9B2C1E01}.Debug|x64.ActiveCfg = Debug|x64
+		{6C1B9AD0-52B7-4D55-9C0A-6A6A9B2C1E01}.Debug|x64.Build.0 = Debug|x64
+		{6C1B9AD0-52B7-4D55-9C0A-6A6A9B2C1E01}.Release|x64.ActiveCfg = Release|x64
+		{6C1B9AD0-52B7-4D55-9C0A-6A6A9B2C1E01}.Release|x64.Build.0 = Release|x64
+		{E7F1D3F4-4E44-4E9E-8B11-9B1D9DCC1F37}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E7F1D3F4-4E44-4E9E-8B11-9B1D9DCC1F37}.Debug|x64.Build.0 = Debug|Any CPU
+		{E7F1D3F4-4E44-4E9E-8B11-9B1D9DCC1F37}.Release|x64.ActiveCfg = Release|Any CPU
+		{E7F1D3F4-4E44-4E9E-8B11-9B1D9DCC1F37}.Release|x64.Build.0 = Release|Any CPU
+		{B9EA4A0E-89E9-4E55-9FD3-7DF47A77C0D2}.Debug|x64.ActiveCfg = Debug|x64
+		{B9EA4A0E-89E9-4E55-9FD3-7DF47A77C0D2}.Debug|x64.Build.0 = Debug|x64
+		{B9EA4A0E-89E9-4E55-9FD3-7DF47A77C0D2}.Release|x64.ActiveCfg = Release|x64
+		{B9EA4A0E-89E9-4E55-9FD3-7DF47A77C0D2}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

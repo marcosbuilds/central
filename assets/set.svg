@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Pedir set">
+  <rect width="1200" height="360" rx="32" fill="#101827"/>
+  <circle cx="180" cy="180" r="92" fill="#5865f2"/>
+  <path d="M180 120v120m-60-60h120" stroke="#fff" stroke-width="22" stroke-linecap="round"/>
+  <text x="330" y="205" fill="#fff" font-family="Arial,sans-serif" font-size="76" font-weight="700">PEDIR SET</text>
+</svg>
