@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 
@@ -79,7 +80,7 @@ public sealed class CentralAccessClient
 
         _clientId = IsValidClientId(clientId) ? clientId!.Trim() : LoadOrCreateClientId();
         _configuredProjectId = Guid.TryParse(projectId, out var parsedProjectId)
-            ? parsedProjectId
+            ? (Guid?)parsedProjectId
             : null;
     }
 
