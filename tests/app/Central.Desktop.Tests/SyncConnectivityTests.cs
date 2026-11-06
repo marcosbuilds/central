@@ -29,7 +29,7 @@ public sealed class SyncConnectivityTests
     public void RealtimeProtocol_builds_an_authenticated_project_join_and_parses_notifications()
     {
         var projectId = Guid.NewGuid();
-        var session = new SupabaseSession("access", "refresh", DateTimeOffset.UtcNow.AddMinutes(10), Guid.NewGuid(), "marcos@example.test");
+        var session = new SupabaseSession("access", "refresh", DateTimeOffset.UtcNow.AddMinutes(10), Guid.NewGuid(), "developer@example.test");
         var join = SupabaseRealtimeProtocol.CreateJoinMessage(projectId, session);
 
         Assert.Contains("phx_join", join, StringComparison.Ordinal);
@@ -49,7 +49,7 @@ public sealed class SyncConnectivityTests
     public void RealtimeProtocol_requires_a_private_channel_and_supports_token_refresh_replies()
     {
         var projectId = Guid.NewGuid();
-        var session = new SupabaseSession("access", "refresh", DateTimeOffset.UtcNow.AddMinutes(10), Guid.NewGuid(), "marcos@example.test");
+        var session = new SupabaseSession("access", "refresh", DateTimeOffset.UtcNow.AddMinutes(10), Guid.NewGuid(), "developer@example.test");
         var join = SupabaseRealtimeProtocol.CreateJoinMessage(projectId, session);
         Assert.Contains("\"private\":true", join, StringComparison.Ordinal);
         Assert.Contains("\"enabled\":true", join, StringComparison.Ordinal);
@@ -78,7 +78,7 @@ public sealed class SyncConnectivityTests
             if (request.RequestUri!.AbsolutePath.EndsWith("/auth/v1/token", StringComparison.Ordinal))
             {
                 return Json("""
-                    {"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"user":{"id":"00000000-0000-0000-0000-000000000001","email":"marcos@example.test"}}
+                    {"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600,"user":{"id":"00000000-0000-0000-0000-000000000001","email":"developer@example.test"}}
                     """);
             }
 
@@ -89,7 +89,7 @@ public sealed class SyncConnectivityTests
 
         var options = new SupabaseOptions(new Uri("https://central.example/"), "publishable-key");
         var supabase = new SupabaseRestClient(client, options);
-        await supabase.SignInPasswordAsync("marcos@example.test", "password");
+        await supabase.SignInPasswordAsync("developer@example.test", "password");
         var device = await supabase.RegisterDeviceAsync(Guid.NewGuid(), "client", "PC principal", "ABC");
 
         Assert.Equal(userId, device.Id);
@@ -142,7 +142,7 @@ public sealed class SyncConnectivityTests
             "refresh-token",
             DateTimeOffset.UtcNow.AddMinutes(-1),
             Guid.Parse("00000000-0000-0000-0000-000000000001"),
-            "marcos@example.test"));
+            "developer@example.test"));
 
         await supabase.HeartbeatDeviceAsync(Guid.Parse("00000000-0000-0000-0000-000000000010"));
 
@@ -172,7 +172,7 @@ public sealed class SyncConnectivityTests
             "refresh",
             DateTimeOffset.UtcNow.AddMinutes(10),
             Guid.NewGuid(),
-            "marcos@example.test"));
+            "developer@example.test"));
 
         await supabase.EnsureSyncFolderAsync(
             Guid.Parse("00000000-0000-0000-0000-000000000002"),
@@ -231,7 +231,7 @@ public sealed class SyncConnectivityTests
             "refresh",
             DateTimeOffset.UtcNow.AddMinutes(10),
             Guid.NewGuid(),
-            "marcos@example.test"));
+            "developer@example.test"));
 
         var devices = await supabase.GetProjectDevicesAsync(Guid.Parse("00000000-0000-0000-0000-000000000002"));
 

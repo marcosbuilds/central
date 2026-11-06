@@ -1,5 +1,9 @@
 # Central
 
+<p align="center">
+  <img src="assets/docs/central-mark.png" alt="Central collaboration mark" width="176">
+</p>
+
 Central is a Windows desktop workspace for collaborative software development.
 It brings project context, coordination, shared-state boundaries, verification,
 and review-led delivery into one public codebase.
@@ -20,27 +24,30 @@ separately; a proposal is never presented as a production capability.
 
 ## Repository map
 
-- `app/` — desktop application and shared core.
-- `bot/` — companion automation bot.
-- `db/` — database migrations.
-- `ops/` — gateway, installer, and scripts.
-- `tests/` — application and bot tests.
-- `assets/` — visual and bot assets.
-- `data/` — local markers only.
-- `docs/` — public documentation and plan.
-- `.github/` — CI and Pull Request templates.
+| Path | Responsibility |
+|---|---|
+| `app/` | desktop application and shared core |
+| `bot/` | companion automation bot |
+| `db/` | database migrations |
+| `ops/` | gateway, installer, and operational scripts |
+| `tests/` | application and bot tests |
+| `assets/docs/` | public documentation visuals |
+| `assets/bot/` | runtime artwork used by the bot |
+| `docs/` | public guides, decisions, integrations, and plans |
+| `.github/` | CI and Pull Request templates |
 
 ## Documentation
 
 Start with [`docs/README.md`](docs/README.md). It defines the reading order and
-links to the architecture, build, test, design, integration, operations, and
-planning documents.
+connects the architecture, build, test, integration, operations, and planning
+documents.
 
-- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — branch, commit, and Pull
+- [`docs/guide/contribute.md`](docs/guide/contribute.md) — commit and Pull
   Request workflow.
-- [`docs/BRANCHES.md`](docs/BRANCHES.md) — branch purposes and lifecycle.
-- [`docs/DOCS-PLAN.md`](docs/DOCS-PLAN.md) — public documentation roadmap and
-  maintenance rules.
+- [`docs/guide/branches.md`](docs/guide/branches.md) — branch purposes and
+  lifecycle.
+- [`docs/guide/maintenance.md`](docs/guide/maintenance.md) — documentation and
+  asset maintenance rules.
 - [`docs/plan/`](docs/plan/) — public product and development planning.
 
 ## Development workflow
@@ -58,18 +65,20 @@ or copied private conversations. Examples must use placeholders. See
 From PowerShell at the repository root:
 
 ```powershell
-& .\tools\dotnet\dotnet.exe restore .\Central.sln
-& .\tools\dotnet\dotnet.exe build .\Central.sln -c Release --no-restore
-& .\tools\dotnet\dotnet.exe test .\Central.sln -c Release --no-restore
+dotnet restore .\Central.sln
+dotnet build .\Central.sln -c Release --no-restore
+dotnet test .\Central.sln -c Release --no-restore
 python -m pytest tests/peace -q
 ```
 
 The bot test command requires the project's Python environment and dependencies.
-The exact packaging flow is in [`docs/BUILD.md`](docs/BUILD.md).
+The exact packaging flow is in [`docs/guide/build.md`](docs/guide/build.md).
 
-## Phase boundary
+## Coordination boundary
 
-The current codebase documents which surfaces are local, synchronized, or
-planned. The public repository does not claim an unobserved multi-computer
-proof, a production authentication broker, or an automatic deployment flow.
-Check the relevant decision and test documents before extending a boundary.
+![Synchronization stream](assets/docs/sync-stream.png)
+
+The visual above explains the intended relationship between local endpoints and
+the coordination layer. It is a conceptual representation, not evidence that a
+two-computer synchronization test has passed. Check the architecture and
+decision records for the current implementation status and limitations.

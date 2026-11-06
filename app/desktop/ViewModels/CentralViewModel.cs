@@ -291,7 +291,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de reservar uma tarefa.", OperationState.Denied)
-            : Store.ClaimTask(project, task, "Marcos · sessão local");
+            : Store.ClaimTask(project, task, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -302,7 +302,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de aplicar uma alteração.", OperationState.Denied)
-            : Store.ApplyWorkspaceChange(project, "Marcos · sessão local", summary);
+            : Store.ApplyWorkspaceChange(project, "Local developer · local session", summary);
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -313,7 +313,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de avançar o Pulso local.", OperationState.Denied)
-            : Store.AdvanceSimulation(project, "Marcos · sessão local");
+            : Store.AdvanceSimulation(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -324,7 +324,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma tag local.", OperationState.Denied)
-            : Store.CreateWorkspaceTag(project, "Marcos · sessão local");
+            : Store.CreateWorkspaceTag(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -335,7 +335,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma release local.", OperationState.Denied)
-            : Store.CreateWorkspaceRelease(project, "Marcos · sessão local");
+            : Store.CreateWorkspaceRelease(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -514,7 +514,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de publicar uma mensagem.", OperationState.Denied)
-            : Store.PostMessage(project, "Marcos Pereira", body);
+            : Store.PostMessage(project, "Local developer", body);
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -525,7 +525,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma entrega.", OperationState.Denied)
-            : Store.CreateDelivery(project, "Marcos · sessão local");
+            : Store.CreateDelivery(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -536,7 +536,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de revisar uma entrega.", OperationState.Denied)
-            : Store.ApproveDelivery(project, delivery, "Marcos · revisor independente");
+            : Store.ApproveDelivery(project, delivery, "Independent reviewer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -569,7 +569,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de alterar o ciclo de vida.", OperationState.Denied)
-            : Store.ToggleProjectLifecycle(project, "Marcos · administrador local");
+            : Store.ToggleProjectLifecycle(project, "Local administrator");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -769,7 +769,7 @@ public sealed class CentralViewModel : ObservableObject
                 : new Uri(configuredUri + "/");
         }
 
-        return new Uri("https://marcosbuilds.pythonanywhere.com/");
+        return new Uri("https://example.invalid/");
     }
 
     private static string FormatCount(int count, string singular, string plural)

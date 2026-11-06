@@ -31,9 +31,18 @@ The public boundary is strict:
 ├── db/        # database migrations
 ├── ops/       # gateway, installer, and operational scripts
 ├── tests/     # application and bot tests
-├── assets/    # versioned visual and bot assets
+├── assets/
+│   ├── docs/  # public visuals used by documentation
+│   └── bot/   # runtime artwork used by the bot
 ├── data/      # local markers only; runtime data stays out of Git
-├── docs/      # public guides, decisions, integration, and plan
+├── docs/
+│   ├── guide/         # build, tests, branches, contribution, maintenance
+│   ├── architecture/  # runtime, design, server, and decisions
+│   ├── integration/   # public component contracts
+│   ├── operations/    # deployment boundaries and smoke checks
+│   ├── bot/           # companion bot documentation
+│   ├── plan/          # product and development planning
+│   └── template/      # reusable project-delivery structure
 └── .github/   # CI and review templates
 ```
 
@@ -64,7 +73,7 @@ guessing a contract that is not documented.
 - Use one purpose per branch and keep the branch name short and explicit.
 - Historical `import/` branches are evidence of migration, not a place for new
   feature work.
-- See [`docs/BRANCHES.md`](docs/BRANCHES.md) for the branch contract and the
+- See [`docs/guide/branches.md`](docs/guide/branches.md) for the branch contract and the
   review flow.
 
 ## Commit and Pull Request rules
@@ -89,8 +98,10 @@ substitute for review:
 - Keep documentation in English and use direct filenames that describe their
   contents.
 - Update the relevant guide in the same Pull Request as the implementation.
-- Keep `docs/README.md`, `docs/BRANCHES.md`, and `docs/DOCS-PLAN.md` aligned
-  with the actual tree and workflow.
+- Keep `docs/README.md`, `docs/guide/branches.md`, and
+  `docs/guide/maintenance.md` aligned with the actual tree and workflow.
+- Keep `assets/README.md` aligned with the distinction between documentation
+  visuals and bot runtime artwork.
 - Visual assets must have a clear purpose, a stable filename, no secret or
   private text, and a documented source or generation note.
 - Prefer transparent PNGs with a restrained neutral palette for documentation
@@ -101,8 +112,8 @@ substitute for review:
 Run the smallest complete set that proves the change, and record the result in
 the Pull Request:
 
-- Central: `tools/dotnet/dotnet.exe build Central.sln -c Release` and
-  `tools/dotnet/dotnet.exe test Central.sln -c Release`.
+- Central: `dotnet build Central.sln -c Release` and
+  `dotnet test Central.sln -c Release`.
 - Bot: `python -m pytest tests/peace -q` in the project virtual environment.
 - Documentation/assets: link and filename review, `git diff --check`, and a
   final scan for secrets, local paths, and generated state.

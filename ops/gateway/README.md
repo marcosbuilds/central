@@ -6,14 +6,15 @@ because it does not depend on Flask, FastAPI, or a separate resident process.
 
 ## Web app configuration
 
-1. Create a manual web app with Python 3.12 for `MarcosBuilds.pythonanywhere.com`.
-2. Upload `central_gateway.py` to `/home/MarcosBuilds/central_gateway.py`.
+1. Create a manual web app with Python 3.12 on the operator's account.
+2. Upload `central_gateway.py` to a private project directory chosen by the
+   operator. Do not publish the account name or absolute host path.
 3. In the web app's WSGI file, use:
 
    ```python
    import sys
 
-   project_home = "/home/MarcosBuilds"
+   project_home = "/home/<pythonanywhere-user>/central"
    if project_home not in sys.path:
        sys.path.insert(0, project_home)
 

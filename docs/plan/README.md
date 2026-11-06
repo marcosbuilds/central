@@ -1,7 +1,7 @@
 # Software startup + Central Colaborativa for development
 
-**Planning version:** 1.1 · **Date:** 2026-11-03 · **Initial team:** 9 people
-**Source state:** the original planning is preserved as public product context;
+**Planning version:** 1.1 · **Date:** 2026-11-03
+**Source state:** this planning is public product context;
 the current implementation and its evidence live in the repository documents.
 
 ## What we will build
@@ -42,22 +42,22 @@ official versions and publication.
 
 | Path | Content |
 |---|---|
-| `01-team.md` | current team and future openings |
-| `02-cases.md` | frontend, backend, and systems with examples |
-| `03-delivery.md` | client, documenter, architecture, and initial ZIP |
-| `04-central.md` | platform screens, modules, and rules |
-| `05-architecture.md` | components, servers, integration, and boundaries |
-| `06-data.md` | entities, contracts, and events |
-| `07-collaboration.md` | live workspace, logic reservations, connectors, and streaming |
-| `08-security.md` | Discord, identity, tokens, projects, and delegations |
-| `09-operations.md` | metrics, reviews, deployments, and operations |
-| `10-roadmap.md` | recommended build order |
-| `11-acceptance.md` | verifiable scenarios for testing Central |
-| `12-references.md` | official documentation consulted and limits |
-| `13-catalog.md` | AI project selection, pausing, and closing |
-| `14-approval.md` | **commit/delivery policy, approval, and AI conversations** |
-| `15-protocol.md` | suggested API, entities, events, and integration rules |
-| `template/` | short template for a project delivered to the team |
+| `team.md` | team responsibilities and collaboration roles |
+| `cases.md` | frontend, backend, and systems with examples |
+| `delivery.md` | client, documentation, architecture, and delivery package |
+| `central.md` | platform screens, modules, and rules |
+| `architecture.md` | components, servers, integration, and boundaries |
+| `data.md` | entities, contracts, and events |
+| `collaboration.md` | live workspace, reservations, connectors, and streaming |
+| `security.md` | identity, tokens, projects, and delegations |
+| `operations.md` | metrics, reviews, deployments, and operations |
+| `roadmap.md` | recommended build order |
+| `acceptance.md` | verifiable scenarios for testing Central |
+| `references.md` | official documentation consulted and limits |
+| `catalog.md` | project selection, pausing, and closing |
+| `approval.md` | commit, delivery, approval, and agent conversations |
+| `protocol.md` | suggested API, entities, events, and integration rules |
+| [`../template/`](../template/) | reusable project-delivery template |
 
 ## Simple glossary
 
@@ -118,4 +118,4 @@ focus and does not silently choose the first fixture.
 The interface also must not invent streaming, productivity, tokens, presence,
 Git, CI, or a gateway. Without a source, usage and Request Logs are `N/D`/empty;
 local states are declared as local. The desktop implementation and its auditable
-decisions are in `docs\DESIGN-CONTRACT.md` and `docs\DESIGN-DECISIONS-2026-11-04.md`.
+decisions are in `docs/architecture/design.md` and `docs/architecture/decisions/2026-11-04-visual.md`.

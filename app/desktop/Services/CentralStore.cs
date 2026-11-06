@@ -624,7 +624,7 @@ public sealed class CentralStore : ObservableObject
             "evt-local-201",
             201,
             "próximo",
-            "Marcos",
+            "Local developer",
             "sessão local",
             "TASK-29",
             "module:cli/tests",
