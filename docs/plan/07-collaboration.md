@@ -1,125 +1,197 @@
-# 04 — Workspace vivo: mesmo código, IAs diferentes, sem choque
+# 04 — Live workspace: same code, different AIs, no collisions
 
-> **Requisito central definido pela equipe:** agentes trabalham sobre o mesmo projeto compartilhado e enxergam rapidamente as mudanças uns dos outros. Reservas proíbem concorrência na mesma parte/ lógica. Branch isolada por IA **não é** a experiência principal. Uma versão estável aprovada fica separada da área de edição viva por motivo de segurança operacional.
+> **Core requirement defined by the team:** agents work on the same shared
+> project and quickly see one another's changes. Reservations prohibit
+> concurrency in the same part/logic. An AI-isolated branch **is not** the main
+> experience. An approved stable version is separated from the live editing area
+> for operational safety.
 
-## Por que somente “travar arquivo” não resolve
+## Why “locking a file” alone is not enough
 
-A lógica “criar pedido” pode estar distribuída entre `api/orders.py`, uma tabela SQL, um contrato de tipos e uma interface web. Duas IAs mexendo em arquivos diferentes podem quebrar a mesma regra. E um arquivo enorme pode conter funções que não se afetam. Portanto é preciso coordenar em **camadas de intenção**, além de arquivo.
+The “create order” logic may be distributed across `api/orders.py`, an SQL table,
+a type contract, and a web interface. Two AIs changing different files can break
+the same rule. A large file may also contain unrelated functions. Coordination
+is therefore needed in **layers of intent**, in addition to files.
 
-## Três camadas de coordenação
+## Three coordination layers
 
-1. **Reserva de tarefa**: uma pessoa/agente é responsável pela entrega definida no planejamento.
-2. **Reserva lógica/semântica**: módulo, serviço, recurso, endpoint, modelo de dados, contrato externo, esquema, função ou conjunto de responsabilidades.
-3. **Reserva física**: arquivos e diretórios que podem ser alterados, com exclusividade quando a análise de código não for confiável.
+1. **Task reservation:** a person/agent owns the delivery defined in planning.
+2. **Logical/semantic reservation:** module, service, resource, endpoint, data
+   model, external contract, schema, function, or set of responsibilities.
+3. **Physical reservation:** files and directories that may be changed, exclusive
+   when code analysis is not reliable.
 
-Exemplo: `auth.login` é uma reserva lógica que cobre validação da senha, sessão e seus contratos de autorização. Ninguém altera os mesmos pontos sem solicitar transferência ou negociar divisão.
+Example: `auth.login` is a logical reservation covering password validation,
+session, and authorization contracts. Nobody changes the same points without
+requesting a transfer or negotiating a split.
 
-## Origem da verdade
+## Source of truth
 
-- Um **workspace canônico vivo** é a fonte dos arquivos que todos consultam.
-- O servidor mantém revisão `workspace_revision` monotônica e manifesto de caminhos/hashes por revisão.
-- A camada de sincronização transmite mudanças **confirmadas** à visão dos demais em segundos, não promete simultaneidade absoluta em redes instáveis.
-- Toda alteração possui `change_set_id`, autor humano, agente/sessão, tarefa, reservas, revisão-base e hashes.
-- O gateway aplica o conjunto de mudanças de forma **atômica**, ou rejeita o lote inteiro; grava evento e snapshot recuperável.
-- Alterações em análise são **visíveis e etiquetadas**, mas ainda não aparecem na versão estável publicada.
+- A **canonical live workspace** is the source of the files everyone reads.
+- The server maintains monotonic `workspace_revision` and a path/hash manifest per revision.
+- The synchronization layer transmits **confirmed** changes to others within
+  seconds; it does not promise absolute simultaneity on unstable networks.
+- Every change has `change_set_id`, human author, agent/session, task,
+  reservations, base revision, and hashes.
+- The gateway applies the change set **atomically** or rejects the entire batch;
+  it records an event and recoverable snapshot.
+- Changes under review are **visible and labeled**, but do not appear in the published stable version.
 
-## Protocolo obrigatório da IA
+## Required AI protocol
 
-1. `discover`: consultar projeto, tarefas abertas, reservas, dependências e contratos.
-2. `claim`: pedir tarefa e reservas de lógica/arquivos, informando intenção e previsão.
-3. `refresh`: obter revisão atual + documentação e arquivos necessários.
-4. `plan`: declarar arquivos e lógica previstos; a central pode expandir áreas protegidas conforme dependências.
-5. `heartbeat`: manter reserva ativa enquanto trabalha.
-6. `propose_patch`: enviar diferenças e hashes-base; o servidor inspeciona caminhos, operações, dependências e mudanças inesperadas.
-7. `apply_patch`: gateway valida novamente **no momento exato** da aplicação; em transação/controle de exclusão, atualiza workspace e emite evento ordenado.
-8. `verify`: executar testes apropriados e análise de código; registrar resultados.
-9. `request_review`: enviar mudança para revisão independente.
-10. `release_claim`: liberar reserva e atualizar mapa para os demais; fechar sessão ao terminar.
+1. `discover`: query project, open tasks, reservations, dependencies, and contracts.
+2. `claim`: request task and logic/file reservations, stating intent and estimate.
+3. `refresh`: obtain current revision, documentation, and required files.
+4. `plan`: declare planned files and logic; Central may expand protected areas through dependencies.
+5. `heartbeat`: keep the reservation active while working.
+6. `propose_patch`: submit differences and base hashes; the server inspects paths,
+   operations, dependencies, and unexpected changes.
+7. `apply_patch`: the gateway validates again **at the exact moment** of
+   application; in a transaction/exclusion control, it updates the workspace and emits an ordered event.
+8. `verify`: run appropriate tests and code analysis; record results.
+9. `request_review`: send the change for independent review.
+10. `release_claim`: release the reservation and update the map for others; close the session when finished.
 
-**Importante:** `claim` por si só não pode garantir que a IA nunca acesse outro caminho se ela possuir acesso livre ao disco. O sistema deve controlar a capacidade de escrita do adaptador e do ambiente executado.
+**Important:** `claim` alone cannot guarantee that an AI never accesses another
+path if it has free disk access. The system must control the adapter's and the
+executed environment's write capability.
 
-## Política de reservas
+## Reservation policy
 
-- Exclusividade para gravação na mesma área lógica ou física, compartilhamento de leitura.
-- Reservas cobrem **dependências impactadas**, não só arquivo selecionado.
-- Dependências são declaradas no projeto e inferidas gradualmente com imports, call graph, contrato de API e mapa de ownership; inferência é **heurística**, nunca garantia formal.
-- Se a linguagem não puder ser analisada com confiança, reservar o arquivo todo (ou módulo todo em mudanças estruturais).
-- Documentos e contratos centrais têm reserva reforçada e aviso aos responsáveis por módulos dependentes.
-- Reserva por tarefa tem dono humano, agente(s) associados, escopo, prazo de expiração e heartbeats.
-- Deadlock: solicitar múltiplos recursos numa ordem estável, com pedido atômico; se indisponível, não segurar parcialmente recursos por tempo indefinido.
-- Expiração: sessão sem sinais entra em `suspect`; após período configurado, cancelamento seguro da escrita e recuperação supervisionada de bloqueios; não liberar no meio de patch.
-- Deslocamento manual: líder com justificativa, aviso, auditoria e confirmação de que não há operação ativa.
-- Um recurso sensível pode exigir reserva de um único agente por vez, mesmo que dois editem símbolos diferentes.
+- Exclusive writing in the same logical or physical area; shared reading.
+- Reservations cover **affected dependencies**, not only the selected file.
+- Dependencies are declared in the project and gradually inferred through
+  imports, call graph, API contracts, and ownership map; inference is a
+  **heuristic**, never a formal guarantee.
+- If a language cannot be analyzed reliably, reserve the entire file (or module for structural changes).
+- Central documents and contracts have reinforced reservations and notify owners of dependent modules.
+- Task reservation has a human owner, associated agent(s), scope, expiration,
+  and heartbeats.
+- Deadlock: request multiple resources in a stable order with an atomic request;
+  if unavailable, do not hold partial resources indefinitely.
+- Expiration: a session without signals enters `suspect`; after a configured
+  period, safely cancel writing and supervise lock recovery; do not release in the middle of a patch.
+- Manual displacement: leader with reason, notice, audit, and confirmation that no active operation exists.
+- A sensitive resource may require one agent at a time even when two agents edit different symbols.
 
-## Conflitos e atualização simultânea
+## Conflicts and simultaneous updates
 
-**Cenário 1 — Mesma lógica:** IA A reservou `payments.capture`. IA B tenta tocar essa lógica: **negação** com quem é dono, tarefa atual e opções de pedir ajuda, aguardar ou escolher parte independente.
+**Scenario 1 — Same logic:** AI A reserved `payments.capture`. AI B tries to
+touch that logic: **deny** with owner, current task, and options to request help,
+wait, or choose an independent part.
 
-**Cenário 2 — Arquivos diferentes, mesma API:** IA A altera resposta de `/bookings`. IA B altera o app que consome `/bookings`. Central detecta dependência, bloqueia alteração de contrato sem acordo, avisa IA B e exige teste de contrato.
+**Scenario 2 — Different files, same API:** AI A changes `/bookings` response.
+AI B changes the app consuming `/bookings`. Central detects dependency, blocks a
+contract change without agreement, informs AI B, and requires a contract test.
 
-**Cenário 3 — Mesmo arquivo, funções independentes:** somente liberar concorrência por símbolo quando parser/AST + mapa de ownership da linguagem permitirem diferenciar trechos e validar hashes por trecho. Caso contrário, o arquivo inteiro é exclusivo.
+**Scenario 3 — Same file, independent functions:** allow symbol-level concurrency
+only when parser/AST and language ownership map can distinguish sections and
+validate per-section hashes. Otherwise the entire file is exclusive.
 
-**Cenário 4 — Ambas leram a revisão 15:** IA A aplica patch e gera revisão 16. IA B envia patch baseado na revisão 15. Gateway compara hashes dos trechos tocados e dependências: se ainda aplicável, reconcilia e gera revisão 17; caso contrário retorna `409 STALE_BASE` e exige recarregar/reescrever. Nunca aplicar cegamente com base antiga.
+**Scenario 4 — Both read revision 15:** AI A applies a patch and creates revision
+16. AI B sends a patch based on revision 15. The gateway compares hashes of
+touched sections and dependencies: if still applicable, reconcile and create
+revision 17; otherwise return `409 STALE_BASE` and require reload/rewrite. Never
+apply blindly from an old base.
 
-**Cenário 5 — Rede caiu:** o cliente enfileira somente alterações locais seguras, marcadas `aguardando sincronização`, sem prometer que estão no workspace vivo. Ao reconectar, revalida reservas, hashes e revisão. Caso inválidas, não sincroniza por força bruta.
+**Scenario 5 — Network loss:** the client queues only safe local changes marked
+`awaiting synchronization`, without claiming they are in the live workspace.
+On reconnect, revalidate reservations, hashes, and revision. If invalid, do not force synchronization.
 
-**Cenário 6 — Mudança reprovada:** o conjunto foi visto na área viva, mas não pode entrar na versão estável. Reverter seletivamente por change set e testar, avaliando mudanças dependentes; se outros agentes construíram sobre ele, abrir tarefa de recuperação e bloquear publicação até resolver.
+**Scenario 6 — Rejected change:** the set was visible in the live area but cannot
+enter the stable version. Revert selectively by change set and test, evaluating
+dependent changes; if other agents built on it, open a recovery task and block
+publication until resolved.
 
-**Cenário 7 — Agente altera nomes/estrutura sem anunciar:** gateway exige reserva do diretório/módulo antigo e novo, analisa referências, invalidando tarefas dependentes e exigindo revisão reforçada.
+**Scenario 7 — Agent changes names/structure without announcing:** the gateway
+requires reservation of the old and new directory/module, analyzes references,
+invalidates dependent tasks, and requires strengthened review.
 
-## Risco fundamental: alteração compartilhada pode quebrar o projeto vivo
+## Fundamental risk: shared changes can break the live project
 
-Um workspace global em edição é inerentemente mais vulnerável a falhas transitórias que ambientes de desenvolvimento isolados. Redução de risco:
+A global editing workspace is inherently more vulnerable to transient failures
+than isolated development environments. Reduce risk with:
 
-- Lotes pequenos e reversíveis; *checkpoint* antes de cada lote.
-- Testes rápidos pré-aplicação para operações críticas; testes completos pós-aplicação.
-- Preview e build/execução em contêiner isolado, nunca diretamente no servidor com dados reais.
-- **Snapshot estável sempre recuperável**; nunca executar produção diretamente da árvore viva.
-- Se falhar um teste essencial, sinalizar e bloquear promoção; em regras estritas, reverter o lote antes de liberar dependências.
-- **Não prometer prevenção de 100% dos conflitos semânticos.** Reservas, validação de base e testes reduzem riscos conhecidos; contratos e revisão humana cobrem lacunas.
+- small reversible batches; *checkpoint* before each batch;
+- fast pre-application tests for critical operations; full tests after application;
+- preview and build/execution in an isolated container, never directly on the
+  server with real data;
+- **always recoverable stable snapshot**; never run production directly from the live tree;
+- if an essential test fails, signal and block promotion; under strict rules,
+  revert the batch before releasing dependencies;
+- **do not promise prevention of 100% of semantic conflicts.** Reservations,
+  base validation, and tests reduce known risks; contracts and human review cover gaps.
 
-## Caso especial: as IAs de cada um estão no próprio computador
+## Special case: each member's AI is on their own computer
 
-O app desktop/daemon local observa operações permitidas, conecta-se ao gateway e mantém uma cópia sincronizada. A fonte de verdade é central. Uma cópia local pode ficar atrasada; o patch só é aceito depois que o servidor revalida. A integração por SDK/hook é **instrumentada**: ferramentas de escrita/terminal precisam passar pelo controlador ou ser executadas em um workspace com acesso restrito. Agentes soltos em diretórios de usuários sem agente controlador não podem receber garantia de exclusividade.
+The local desktop app/daemon observes allowed operations, connects to the gateway,
+and keeps a synchronized copy. The central source is authoritative. A local copy
+may lag; a patch is accepted only after the server revalidates it. SDK/hook
+integration is **instrumented**: writing/terminal tools must pass through the
+controller or run in a restricted-access workspace. Loose agents in user
+directories without a controller cannot receive an exclusivity guarantee.
 
-## Teste de aceite obrigatório
+## Required acceptance test
 
-Executar 9 sessões simuladas, misturando provedores, com 4 tarefas sem conflito e 5 tentativas de sobreposição. A central deve permitir independentes, negar todas as sobreposições configuradas, rejeitar patches com base obsoleta, exibir eventos ordenados, recuperar-se de queda de conexão e preservar versão estável. Testar também que uma tentativa de bypass não consegue publicar no workspace canônico.
-
+Run 9 simulated sessions mixing providers, with 4 non-conflicting tasks and 5
+overlap attempts. Central must allow independent work, deny all configured
+overlaps, reject stale-base patches, show ordered events, recover from connection
+loss, and preserve the stable version. Also test that a bypass attempt cannot
+publish to the canonical workspace.
 
 ---
 
-# 05 — IA própria de cada integrante: conexão e streaming
+# 05 — Each member's own AI: connection and streaming
 
-## Ideia
+## Idea
 
-Cada dev pode continuar usando Codex, Claude Code ou outra ferramenta compatível. A central **não substitui** o modelo; adiciona contexto compartilhado, reservas, autorização, observabilidade e publicação controlada.
+Each developer may continue using Codex, Claude Code, or another compatible tool.
+Central **does not replace** the model; it adds shared context, reservations,
+authorization, observability, and controlled publication.
 
-## Componentes
+## Components
 
-- **App do integrante**: interface, sessões, tarefas, alertas.
-- **Agente local de sincronização**: autentica máquina, obtém planos/contratos, observa mudanças, transmite eventos e submete patches.
-- **Adaptador por provedor**: traduz chamadas e eventos da ferramenta para contratos da central.
-- **Gateway da central**: autentica, verifica escopo, reserva, controla gravação, versões e auditoria.
-- **Canal de eventos**: servidor envia presença, progresso, diff, bloqueio e revisão pelo WebSocket (ou SSE para clientes só de leitura).
+- **Member app:** interface, sessions, tasks, and alerts.
+- **Local synchronization agent:** authenticates the machine, retrieves plans/
+  contracts, watches changes, transmits events, and submits patches.
+- **Provider adapter:** translates tool calls/events to Central contracts.
+- **Central gateway:** authenticates, checks scope, reserves, controls writing,
+  versions, and audit.
+- **Event channel:** server sends presence, progress, diff, blocker, and review
+  over WebSocket (or SSE for read-only clients).
 
-## Compatibilidade baseada em APIs documentadas
+## Compatibility based on documented APIs
 
-- **Codex**: o SDK ajuda a automatizar sessões; **Codex App Server** é opção de integração mais rica, com eventos, aprovações e controle. Evitar presumir que todo modo do Codex permitirá bloquear todas as escritas externas sem um adaptador controlador.
-- **Claude Code**: Agent SDK em Python/TypeScript tem streaming, permissões e hooks capazes de interceptar chamadas de ferramentas; usá-los para aplicar regras e registrar eventos, sujeito a comportamento e versões reais da instalação.
-- **Outros agentes**: adaptadores versionados; requerem capacidade de reportar atividade e submeter mudanças por um gateway. Se a ferramenta não suporta integração confiável, oferecer modo somente leitura ou trabalho manual, não selo falso de 'sem conflitos'.
+- **Codex:** the SDK helps automate sessions; **Codex App Server** is a richer
+  integration option with events, approvals, and control. Do not assume every
+  Codex mode can block all external writes without a controlling adapter.
+- **Claude Code:** the Python/TypeScript Agent SDK has streaming, permissions,
+  and hooks capable of intercepting tool calls; use them to apply rules and
+  record events, subject to real installation behavior and versions.
+- **Other agents:** versioned adapters require the ability to report activity and
+  submit changes through a gateway. If a tool lacks reliable integration, offer
+  read-only or manual work, not a false “conflict-free” seal.
 
-## Token pessoal da central
+## Personal Central token
 
-Criar token por integrante, projeto, dispositivo e tempo de validade. Identificador público do token + segredo mostrado só uma vez. Guardar hash do token, não texto puro. Permissões mínimas: `project.read`, `tasks.read`, `claims.create`, `workspace.read`, `patch.propose`, `patch.apply.claimed`, `tests.run`, `review.read`. `deploy.production` e administração nunca embutidos no token padrão da IA.
+Create a token per member, project, device, and validity period. The public token
+identifier plus secret is shown only once. Store a token hash, not plaintext.
+Minimum permissions: `project.read`, `tasks.read`, `claims.create`,
+`workspace.read`, `patch.propose`, `patch.apply.claimed`, `tests.run`,
+`review.read`. `deploy.production` and administration are never included in a
+default AI token.
 
-Rotação, revogação instantânea, expiração, limite de taxa e auditoria. Token é vinculado a projeto e usuário. Um membro removido deixa de acessar mesmo que tenha cópia antiga do token.
+Rotation, immediate revocation, expiration, rate limiting, and audit are required.
+The token is bound to project and user. A removed member loses access even with an
+old copy of the token.
 
-## Sessões e eventos
+## Sessions and events
 
-Sessão: `session_id`, `member_id`, `provider`, `project_id`, `task_id`, `agent_version`, `client_version`, `status`, `started_at`, `last_heartbeat_at`, `resource_claims`, `last_workspace_revision`.
+Session: `session_id`, `member_id`, `provider`, `project_id`, `task_id`,
+`agent_version`, `client_version`, `status`, `started_at`, `last_heartbeat_at`,
+`resource_claims`, `last_workspace_revision`.
 
-Eventos mínimos:
+Minimum events:
 
 - `agent.connected`, `agent.disconnected`, `agent.heartbeat`;
 - `task.claimed`, `claim.blocked`, `claim.released`;
@@ -127,28 +199,36 @@ Eventos mínimos:
 - `patch.proposed`, `patch.denied`, `patch.applied`, `workspace.revision_updated`;
 - `test.started`, `test.finished`, `review.requested`, `review.decided`.
 
-**Streaming útil**, em vez de capturar raciocínio privado ou teclado: mostrar o passo atual autorizado, tarefa, arquivo/contrato afetado, operação e seu resultado. Não coletar *chain of thought*, senhas, prompts confidenciais ou saída completa de terminal por padrão.
+**Useful streaming**, rather than capturing private reasoning or keystrokes:
+show the current authorized step, task, affected file/contract, operation, and
+result. Do not collect *chain of thought*, passwords, confidential prompts, or
+complete terminal output by default.
 
-## Processo de conexão da IA
+## AI connection process
 
-1. Integrante faz login na central e obtém aprovação para o projeto.
-2. Cria um token restrito para sua máquina e seu agente, com data de expiração.
-3. Instala e configura o adaptador/agente local; segredo fica no armazenamento seguro do dispositivo.
-4. Adaptador registra a sessão e obtém o manifesto de tarefas/contratos.
-5. Antes de agir, a IA consulta reservas e propõe plano de trabalho.
-6. Central libera escopo; o adaptador limita operações de escrita ao escopo.
-7. Atividades e patches aparecem em streaming; mudanças confirmadas entram no workspace compartilhado.
-8. Revisor aprova ou pede correção; após testes, cria snapshot estável.
+1. The member signs in to Central and receives project approval.
+2. They create a restricted token for their machine and agent, with an expiration date.
+3. They install/configure the local adapter/agent; the secret stays in secure device storage.
+4. The adapter registers the session and obtains the task/contract manifest.
+5. Before acting, the AI queries reservations and proposes a work plan.
+6. Central releases the scope; the adapter limits write operations to the scope.
+7. Activities and patches stream; confirmed changes enter the shared workspace.
+8. A reviewer approves or requests correction; after tests, a stable snapshot is created.
 
-## Limites reais e segurança
+## Real limits and security
 
-- Não basta informar à IA em prompt “não toque em arquivos alheios”: é uma regra **operacional** imposta ao gateway e, sempre que possível, à camada de execução.
-- Um plugin apenas observador não impede o processo local de editar arquivos; precisa controlar a publicação e preferencialmente mediar a escrita.
-- Subprocessos e terminal podem modificar arquivos fora da ferramenta de edição. Executá-los com permissões delimitadas e validar toda diferença antes de sincronizar.
-- Nunca copiar credencial de provedor para a central sem necessidade; preferir credenciais geridas localmente pelo usuário ou acesso empresarial autorizado.
-- Limitar o conteúdo transmitido; arquivos e logs de clientes podem ser confidenciais. Definir autorização e transparência contratual de uso de IA.
+- It is not enough to tell an AI in a prompt “do not touch other files”: this is
+  an **operational** rule enforced by the gateway and, whenever possible, execution layer.
+- An observer-only plugin does not stop the local process from editing files; it
+  must control publication and preferably mediate writing.
+- Subprocesses and terminals can modify files outside the editor. Run them with
+  bounded permissions and validate every difference before synchronization.
+- Never copy a provider credential to Central without need; prefer user-managed
+  local credentials or authorized enterprise access.
+- Limit transmitted content; client files and logs may be confidential. Define
+  authorization and contractual transparency for AI use.
 
-## Exemplo de mensagem da central para um agente
+## Example Central message to an agent
 
 ```json
 {
@@ -158,10 +238,13 @@ Eventos mínimos:
   "current_owner": "session_A",
   "blocked_task": "T-104",
   "available_tasks": ["T-109", "T-112"],
-  "suggestion": "Escolha uma tarefa independente ou peça acordo de interface ao responsável."
+  "suggestion": "Choose an independent task or request an interface agreement from the owner."
 }
 ```
 
-## Metas de desempenho — propostas para testar, não evidências
+## Performance goals — proposals to test, not evidence
 
-Objetivo de sensação em rede normal: status da reserva/atividade chega a outros clientes em poucos segundos; propagação do patch após confirmação igualmente rápida; reestabelecimento após desconexão sem alterações perdidas/duplicadas. Latência exata e escala serão definidas e medidas com protótipo e testes, não prometidas agora.
+Target experience on a normal network: reservation/activity status reaches other
+clients within a few seconds; patch propagation after confirmation is similarly
+fast; reconnection restores state without lost/duplicated changes. Exact latency
+and scale will be defined and measured through prototypes and tests, not promised now.

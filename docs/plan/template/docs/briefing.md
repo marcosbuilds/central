@@ -1,13 +1,13 @@
 # Briefing
 
-## Problema atual
-[PREENCHER]
+## Current problem
+[TO FILL IN]
 
-## Pessoas que usarão a solução
-[PREENCHER]
+## People who will use the solution
+[TO FILL IN]
 
-## Resultado esperado
-[PREENCHER]
+## Expected outcome
+[TO FILL IN]
 
-## Perguntas e dúvidas abertas
-[PREENCHER]
+## Open questions and unknowns
+[TO FILL IN]

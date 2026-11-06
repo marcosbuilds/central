@@ -1,23 +1,23 @@
-# Mensagens recuperadas do bot original
+# Messages recovered from the original bot
 
-Snapshot consultado em 30/09/2026 (horário do projeto):
+Snapshot consulted on 2026-09-30 (project time):
 
-- servidor: `1427129030427279503`
-- bot observado: `Peace tools` (`1495083108083433643`)
-- mensagens únicas recuperadas: `238`
-- fonte completa: os JSONs em `data/snapshots/discord_snapshot_*.json`
-- armazenamento local: tabela `bot_messages` em `data/peace.sqlite3`
+- server: `1427129030427279503`
+- observed bot: `Peace tools` (`1495083108083433643`)
+- unique messages recovered: `238`
+- complete source: the JSON files in `data/snapshots/discord_snapshot_*.json`
+- local storage: `bot_messages` table in `data/peace.sqlite3`
 
-## Painéis e interações identificadas
+## Identified panels and interactions
 
-| Canal | Mensagem/título | Custom IDs observados |
+| Channel | Message/title | Observed custom IDs |
 | --- | --- | --- |
-| `1459443839998759042` · pedir-set | `🔹 Pedir set 🔹` | `peace_pedir_set_open` |
+| `1459443839998759042` · request-set | `🔹 Pedir set 🔹` | `peace_pedir_set_open` |
 | `1459446670411567105` · ticket | `Suporte Peace` | `peace_support_open_ticket` |
-| `1495087589604982785` · painel | `Painel de operações` | `clock_in_btn` |
-| tickets fechados/abertos | `Ticket aberto`, `Ticket encerrado`, `Atendimento assumido` | `peace_support_poke_ticket`, `peace_support_poke_staff`, `peace_support_close_ticket`, `peace_support_rename_ticket`, `peace_support_claim_ticket`, `peace_support_create_call` |
+| `1495087589604982785` · panel | `Painel de operações` | `clock_in_btn` |
+| closed/open tickets | `Ticket aberto`, `Ticket encerrado`, `Atendimento assumido` | `peace_support_poke_ticket`, `peace_support_poke_staff`, `peace_support_close_ticket`, `peace_support_rename_ticket`, `peace_support_claim_ticket`, `peace_support_create_call` |
 
-## Famílias de mensagens observadas
+## Observed message families
 
 - `Pedir set`
 - `Set aprovado`
@@ -29,15 +29,15 @@ Snapshot consultado em 30/09/2026 (horário do projeto):
 - `Top 3 da temporada`
 - `Solicitação de ausência`
 - `Painel de operações`
-- avisos de metas e registros sem embed/título
+- goal and record notices without an embed/title
 
-O primeiro recorte implementado neste projeto preserva o custom ID do pedido de
-set e recria a entrevista inicial, incluindo apelido, RG, telefone, origem
-(`recrutado`, `streamer` ou `clipes`) e seleção do recrutador quando aplicável.
+The first slice implemented in this project preserves the set-request custom ID
+and recreates the initial interview, including nickname, national ID, phone,
+source (`recruited`, `streamer`, or `clips`), and recruiter selection when
+applicable.
 
-Também foram reintegrados os painéis de suporte e operações. A migração de
-apelidos atualiza somente o ID Peace salvo no SQLite; membros acima da
-hierarquia do bot e o dono do servidor ficam preservados para evitar erro de
-permissão. Tickets encerrados têm seus componentes removidos na sincronização e
-também são rejeitados no callback, mesmo que uma mensagem antiga ainda exista.
-
+The support and operations panels were also reintegrated. The nickname
+migration updates only the Peace ID stored in SQLite; members above the bot's
+hierarchy and the server owner remain untouched to avoid permission errors.
+Closed tickets have their components removed during synchronization and are also
+rejected in the callback, even if an old message still exists.

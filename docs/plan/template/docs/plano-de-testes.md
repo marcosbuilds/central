@@ -1,4 +1,0 @@
-# Testes
-
-## Cenários críticos
-[PREENCHER]

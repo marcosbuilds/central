@@ -1,243 +1,360 @@
-# Contrato de design — Central Colaborativa v1.1
+# Design contract — Central Colaborativa v1.1
 
-Status: contrato de domínio e base de acessibilidade; a revisão visual vigente está em `docs/DESIGN-DECISIONS-2026-11-04.md`
-Responsável pela decisão: implementação da Fase 1, sujeita à validação humana posterior
-Data: 2026-11-04
+Status: domain and accessibility foundation contract; the current visual review
+is in `docs/DESIGN-DECISIONS-2026-11-04.md`
+Decision owner: Phase 1 implementation, subject to later human validation
+Date: 2026-11-04
 
-> Nota de precedência: o adendo de decisões acima governa o shell/Home redesenhado nesta data. As seções de Pulso, workspace e governança abaixo continuam válidas para o detalhe do projeto e para o domínio futuro; não devem reintroduzir Linha de Contexto, Sequência observável ou Agentes e estados na Home.
+> Precedence note: the decision addendum above governs the shell/Home redesigned
+> on this date. The Pulse, workspace, and governance sections below remain valid
+> for project detail and the future domain; they must not reintroduce Context
+> Line, Observable Sequence, or Agents and states to Home.
 
-## Evidência adicional e decisão de redesign
+## Additional evidence and redesign decision
 
-A avaliação humana registrada em `artifacts/qa-screens/HUMAN-REVIEW-2026-11-04.md` reconheceu a organização, mas pediu menos texto e mais representação visual: agentes trabalhando em sequência observável, tarefas específicas, discussões com menções e referências, workspace com arquivos, commits titulados, tags e releases. A revisão independente da arquitetura confirmou que o modelo anterior não possuía identidade/ordenação de eventos, árvore de arquivos nem destinos para referências.
+The human review recorded in `artifacts/qa-screens/HUMAN-REVIEW-2026-11-04.md`
+recognized the organization but asked for less text and more visual
+representation: agents working in an observable sequence, specific tasks,
+discussions with mentions and references, and a workspace with files, titled
+commits, tags, and releases. The independent architecture review confirmed that
+the previous model had no event identity/order, file tree, or destinations for
+references.
 
-Decisão: a assinatura “Linha de Contexto” permanece como orientação, mas a superfície principal do projeto passa a ser o **Pulso local**. Ele exibe agentes, tarefa, área lógica, operação e resultado em uma sequência manual e determinística. O usuário avança cada evento pelo botão `Avançar simulação`; isso não é streaming real, presença online, sincronização ou atividade externa.
+Decision: the “Context Line” signature remains as guidance, but the project's
+main surface becomes the **local Pulse**. It shows agents, task, logical area,
+operation, and result in a manual deterministic sequence. The user advances each
+event with the `Advance simulation` button; this is not real streaming, online
+presence, synchronization, or external activity.
 
-Escopo permitido nesta revisão: fixtures locais em memória para arquivos, commits técnicos titulados, tags, releases, referências de discussão e eventos de stream. Cada item terá origem e estado explícitos. O projeto não terá Git, servidor, CI, WebSocket, Discord, Codex ou Claude conectados; releases/tags/commits são registros de demonstração local e não produzem deploy.
+Allowed scope in this review: local in-memory fixtures for files, titled
+technical commits, tags, releases, discussion references, and stream events.
+Each item has an explicit source and state. The project has no connected Git,
+server, CI, WebSocket, Discord, Codex, or Claude; releases/tags/commits are
+local demonstration records and do not produce a deployment.
 
-## Limite de evidência
+## Evidence boundary
 
-Este contrato separa o que a documentação autoriza do que é interpretação visual. As superfícies de catálogo, Pulso manual, workspace e governança continuam sendo WPF/.NET 8 com `CentralStore` em memória e fixtures locais; elas não são convertidas em dados remotos por aparência. Em paralelo, a vertical slice de pasta compartilhada usa o `CentralSyncRuntime` com Syncthing, Supabase Auth/PostgreSQL/Realtime e estado de conexão explícito. Discord, Codex, Claude, Git, CI e deploy continuam fora do escopo.
+This contract separates what the documentation authorizes from visual
+interpretation. The catalog, manual Pulse, workspace, and governance surfaces
+remain WPF/.NET 8 with in-memory `CentralStore` and local fixtures; they are not
+turned into remote data by appearance. In parallel, the shared-folder vertical
+slice uses `CentralSyncRuntime` with Syncthing, Supabase Auth/PostgreSQL/Realtime,
+and explicit connection state. Discord, Codex, Claude, Git, CI, and deployment
+remain out of scope.
 
-Fontes principais usadas:
+Main sources used:
 
-- `docs/plan/04-central.md`: navegação, coordenação, planejamento, reservas e telemetria observável.
-- `docs/plan/07-collaboration.md`: claims, revisão-base, eventos, sessões e reconciliação.
-- `docs/plan/08-security.md`: permissões por membro/projeto/tarefa/recurso e limites de aprovação.
-- `docs/plan/09-operations.md`: métricas permitidas, auditoria, publicação e rollback.
-- `docs/plan/10-roadmap.md`: priorizar o núcleo de coordenação antes de dashboard decorativo.
-- `docs/plan/11-acceptance.md`: isolamento, estados, concorrência e validação.
-- `docs/plan/13-catalog.md`: seleção por ID, contexto, ciclo de vida e bloqueio de escrita em projeto fechado.
-- `docs/plan/14-approval.md`: edição local, workspace vivo, entrega aprovada, integração e publicação como conceitos distintos.
-- `docs/plan/15-protocol.md`: eventos observáveis e sem raciocínio privado.
+- `docs/plan/04-central.md`: navigation, coordination, planning, reservations,
+  and observable telemetry.
+- `docs/plan/07-collaboration.md`: claims, base revision, events, sessions, and reconciliation.
+- `docs/plan/08-security.md`: permissions by member/project/task/resource and approval limits.
+- `docs/plan/09-operations.md`: allowed metrics, audit, publishing, and rollback.
+- `docs/plan/10-roadmap.md`: prioritize the coordination core before a decorative dashboard.
+- `docs/plan/11-acceptance.md`: isolation, states, concurrency, and validation.
+- `docs/plan/13-catalog.md`: selection by ID, context, lifecycle, and write blocking in a closed project.
+- `docs/plan/14-approval.md`: local editing, live workspace, approved delivery, integration, and publishing as distinct concepts.
+- `docs/plan/15-protocol.md`: observable events without private reasoning.
 
-## Jobs primários
+## Primary jobs
 
-1. Identificar o projeto correto e recuperar contexto sem escolher por nome ambíguo.
-2. Encontrar a próxima tarefa pronta, compatível e não bloqueada.
-3. Ver reservas de tarefa, lógica, caminho físico e dependências antes de escrever.
-4. Entender a revisão atual, a base, os bloqueios e o próximo gate.
-5. Conversar sobre contrato/integração sem confundir pedido com resposta ou permissão.
-6. Inspecionar evidências e revisão sem confundir aprovação com integração ou publicação.
-7. Consultar pessoas, sessões e governança global sem transformar presença em produtividade.
+1. Identify the correct project and recover context without choosing by ambiguous name.
+2. Find the next ready, compatible, unblocked task.
+3. Check task, logical, physical-path, and dependency reservations before writing.
+4. Understand the current revision, base, blockers, and next gate.
+5. Discuss a contract/integration without confusing a request with a response or permission.
+6. Inspect evidence and review without confusing approval with integration or publication.
+7. Consult people, sessions, and global governance without turning presence into productivity.
 
-Frequência real não é mensurável nesta fase: os dados são fixtures locais. As frequências acima são prioridades estruturais do protocolo, não telemetria de uso.
+Real frequency is not measurable in this phase: the data is local fixtures. The
+frequencies above are structural protocol priorities, not usage telemetry.
 
-## Conteúdo autorizado e ações
+## Authorized content and actions
 
-Autorizado na Fase 1:
+Authorized in Phase 1:
 
-- navegar por Home, Projetos e o projeto explicitamente selecionado; configurações locais ficam no diálogo da engrenagem;
-- selecionar projeto, visualizar ciclo de vida, tarefas, reservas simuladas, workspace simulado, discussões, entregas, qualidade, publicações e histórico;
-- executar somente simulações locais já suportadas pelo `CentralStore`, sempre com rótulo de simulação;
-- mostrar fonte, revisão, timestamp/frescor quando o dado existir; quando não existir, dizer que o indicador é local/simulado;
-- bloquear visualmente ações incompatíveis com projeto fechado, estado da entrega ou falta de evidência.
+- navigate Home, Projects, and the explicitly selected project; local settings
+  live in the gear dialog;
+- select a project and view lifecycle, tasks, simulated reservations, simulated
+  workspace, discussions, deliveries, quality, publications, and history;
+- execute only local simulations already supported by `CentralStore`, always
+  labeled as simulations;
+- show source, revision, timestamp/freshness when the data exists; otherwise say
+  that the indicator is local/simulated;
+- visually block actions incompatible with a closed project, delivery state, or missing evidence.
 
-Não autorizado:
+Not authorized:
 
-- alegar integração real, sincronização, segurança operacional, CI, Git, deploy, aprovação humana ou presença online real;
-- mostrar raciocínio privado, tokens, tempo conectado ou atividade como produtividade;
-- inventar ACL, aliases, fonte de eventos, stale threshold, reconexão ou garantia de entrega;
-- oferecer “aprovar”, “integrar master” ou “publicar” como se produzissem efeito externo.
+- claim real integration, synchronization, operational security, CI, Git,
+  deployment, human approval, or real online presence;
+- show private reasoning, tokens, connected time, or activity as productivity;
+- invent ACLs, aliases, event sources, stale thresholds, reconnection, or delivery guarantees;
+- offer “approve”, “integrate master”, or “publish” as though they had external effects.
 
-## Hipótese de informação e navegação
+## Information and navigation hypothesis
 
-Hipótese: a Central é uma fila de decisões ancorada em contexto, não um painel de contagens. A primeira resposta da interface deve ser: “em qual projeto estou, qual decisão pode avançar, o que bloqueia e qual é a próxima ação permitida?”.
+Hypothesis: Central is a context-anchored decision queue, not a count dashboard.
+The interface's first response should be: “which project am I in, which decision
+can move forward, what is blocking it, and what is the next permitted action?”
 
-Navegação global vigente:
+Current global navigation:
 
-- **Home**: contexto sem projeto ou triagem do projeto já escolhido; uso técnico e request logs permanecem honestos quando não há gateway.
-- **Projetos**: catálogo, busca inequívoca, ciclo de vida e escolha explícita.
-- **Projeto selecionado**: acesso contextual aos quatro modos canônicos; pessoas/sessões e configurações não competem como destinos globais.
+- **Home**: context without a project or triage for the already selected project;
+  technical usage and request logs remain honest when no gateway exists.
+- **Projects**: catalog, unambiguous search, lifecycle, and explicit selection.
+- **Selected project**: contextual access to the four canonical modes; people/
+  sessions and settings do not compete as global destinations.
 
-Dentro do projeto:
+Inside the project:
 
-- **Operar**: próximo passo, bloqueios e ação permitida.
-- **Workspace**: tarefas, dependências, reservas, arquivos, pulso local, commits, tags e releases.
-- **Coordenação**: discussões locais, contratos e referências.
-- **Provar**: qualidade, evidências, entregas e estados de publicação.
+- **Operate**: next step, blockers, and permitted action.
+- **Workspace**: tasks, dependencies, reservations, files, local Pulse, commits,
+  tags, and releases.
+- **Coordination**: local discussions, contracts, and references.
+- **Prove**: quality, evidence, deliveries, and publication states.
 
-`Planejar`, `Publicar`, `Pessoas e sessões` e `Contexto` não são destinos equivalentes no shell atual. Seus objetos continuam acessíveis no modo canônico em que podem ser entendidos.
+`Plan`, `Publish`, `People and sessions`, and `Context` are not equivalent
+destinations in the current shell. Their objects remain accessible in the
+canonical mode where they can be understood.
 
-## Assinatura visual do detalhe: Pulso local
+## Detail visual signature: local Pulse
 
-Gancho: **Contexto certo. Próximo passo claro.**
+Hook: **Right context. Clear next step.**
 
-O antigo conceito de Linha de Contexto não é uma faixa da Home nem um destino de navegação. No detalhe, o Pulso local mostra eventos observáveis sem afirmar execução externa. Ele não é um progresso genérico nem um ticker.
+The former Context Line concept is not a Home strip or a navigation destination.
+In detail, local Pulse shows observable events without claiming external
+execution. It is not generic progress or a ticker.
 
-### Pulso local
+### Local Pulse
 
-O Pulso local é a representação visual prioritária da atividade autorizada. Cada evento mostra:
+Local Pulse is the primary visual representation of authorized activity. Each
+event shows:
 
-`evento + sequência → agente/provedor → tarefa → arquivo/recurso → operação → resultado`
+`event + sequence → agent/provider → task → file/resource → operation → result`
 
-Eventos futuros ficam em uma fila manual; avançar a simulação revela um evento por vez, seleciona seu detalhe e atualiza a atividade local sem auto-rolagem. A lista mantém identidade e sequência para que repetição, inspeção e origem não sejam confundidas com um stream externo.
+Future events remain in a manual queue; advancing the simulation reveals one
+event at a time, selects its detail, and updates local activity without
+auto-scrolling. The list preserves identity and sequence so repetition,
+inspection, and origin are not confused with an external stream.
 
-O workspace usa uma composição mestre-detalhe: árvore de arquivos à esquerda, stream no centro e detalhe selecionado à direita. Abaixo do stream ficam commits técnicos locais com título, tags e releases locais. Referências resolvíveis aparecem como chips acionáveis; referências sem objeto modelado continuam visíveis, mas desabilitadas e rotuladas como indisponíveis nesta simulação.
+The workspace uses a master-detail composition: file tree on the left, stream in
+the center, and selected detail on the right. Below the stream are local
+technical commits with a title, tags, and local releases. Resolvable references
+appear as actionable chips; references without a modeled object remain visible,
+but disabled and labeled unavailable in this simulation.
 
-Exceções têm precedência visual sobre a lista: projeto fechado, dependência bloqueada, sessão offline, fonte indisponível, revisão obsoleta, evidência ausente e erro devem aparecer acima/com destaque textual. O usuário deve entender o bloqueio antes de perceber a sequência.
+Exceptions have visual precedence over the list: closed project, blocked
+dependency, offline session, unavailable source, stale revision, missing
+evidence, and error must appear above/with textual emphasis. The user must
+understand the block before noticing the sequence.
 
-## Modelo de estado e confiança
+## State and trust model
 
-Cada região deve distinguir, sempre que aplicável:
+Each region must distinguish, whenever applicable:
 
-- estado de negócio: aberto, fechado, em revisão, aprovado, pendente;
-- disponibilidade: local, conectado, offline, stale, fonte desconhecida;
-- resultado: pass, fail, erro de execução, não executado;
-- fonte/frescor: simulação local, observação e momento; sem “ao vivo” sem stream real;
-- permissão: permitido, leitura, negado ou bloqueado por ciclo de vida.
+- business state: open, closed, in review, approved, pending;
+- availability: local, connected, offline, stale, unknown source;
+- result: pass, fail, execution error, not run;
+- source/freshness: local simulation, observation, and time; no “live” without a real stream;
+- permission: allowed, read-only, denied, or lifecycle-blocked.
 
-Matriz mínima:
+Minimum matrix:
 
-| Região | Estado local honesto |
+| Region | Honest local state |
 |---|---|
-| Projeto | aberto / fechando / fechado / reabrindo; fechado continua legível e bloqueia escrita |
-| Tarefa | pronta / reservada / em andamento / em revisão / bloqueada / concluída / cancelada |
-| Workspace | revisão simulada; patch local pendente/aplicado; sem arquivo real alterado |
-| Discussão | persistida localmente, pendente, negada ou erro; nunca resposta inventada |
-| Entrega | rascunho/preparada/em revisão/aprovada localmente; integração externa não confirmada |
-| Qualidade | PASS/FAIL/PENDENTE/STALE/ERRO; execução separada do resultado |
-| Sessão | observável local, desconectada, pendente; sem inferência de produtividade |
+| Project | open / closing / closed / reopening; closed remains readable and blocks writing |
+| Task | ready / reserved / in progress / in review / blocked / completed / cancelled |
+| Workspace | simulated revision; local patch pending/applied; no real file changed |
+| Discussion | persisted locally, pending, denied, or error; never an invented response |
+| Delivery | draft/prepared/in review/approved locally; external integration unconfirmed |
+| Quality | PASS/FAIL/PENDING/STALE/ERROR; execution is separate from result |
+| Session | locally observable, disconnected, pending; no productivity inference |
 
-## Tokens visuais
+## Visual tokens
 
-Valores semânticos iniciais, sujeitos a teste de contraste:
+Initial semantic values, subject to contrast testing:
 
 - canvas `#0E1216`;
 - surface `#151B20`;
-- surface elevada `#1C252C`;
+- elevated surface `#1C252C`;
 - border/divider `#2A353D`;
-- texto principal `#F3F6F7`;
-- texto secundário `#A9B3BD`;
-- ação/foco `#D8FF63`;
-- informação `#7EA9FF`;
-- sucesso/verificado `#42D6AE`;
-- atenção/pendente `#F2B660`;
-- erro/negado `#F17E86`;
-- indisponível `#8D9AAD`.
+- primary text `#F3F6F7`;
+- secondary text `#A9B3BD`;
+- action/focus `#D8FF63`;
+- information `#7EA9FF`;
+- success/verified `#42D6AE`;
+- attention/pending `#F2B660`;
+- error/denied `#F17E86`;
+- unavailable `#8D9AAD`.
 
-A cor de ação não significa sucesso. Cada estado terá rótulo e/ou ícone/forma além da cor. O texto usará Segoe UI existente, com papéis display 32/40, título 20/28, corpo 14/21, rótulo 11/14 e números/revisão 24/30. Espaçamento base: 8 px; poucos níveis de superfície; sem sombra ornamental.
+The action color does not mean success. Each state has a label and/or icon/shape
+in addition to color. Text uses the existing Segoe UI, with display roles
+32/40, title 20/28, body 14/21, label 11/14, and number/revision 24/30. Base
+spacing: 8 px; few surface levels; no ornamental shadow.
 
-## Comportamento compacto
+## Compact behavior
 
-- Na largura mínima suportada, cabeçalho do projeto usa colunas explícitas e pode quebrar em duas linhas; nunca sobrepõe título, badge e ação.
-- A navegação de projeto reduz visualmente os grupos e permite rolagem horizontal localizada das guias, sem clipping de texto.
-- Conteúdo principal conserva ordem de leitura; listas não forçam rolagem horizontal da janela.
-- Textos longos e escala de 125–200% devem manter identificação do estado e ação.
-- Listas futuras de eventos devem agrupar atualizações (“N novas atualizações”), preservar foco e permitir pausa/inspeção.
-- No workspace, a árvore, o stream e o detalhe podem empilhar em largura compacta; a rolagem horizontal fica contida somente no painel de código/manifesto quando o conteúdo exigir duas dimensões.
-- O botão de avanço é uma ação manual e permanece próximo ao estado do Pulso; ele não inicia timer, loop ou auto-scroll.
+- At the minimum supported width, the project header uses explicit columns and
+  may wrap to two lines; it never overlaps title, badge, and action.
+- Project navigation visually reduces groups and allows localized horizontal tab
+  scrolling without clipping text.
+- Main content preserves reading order; lists do not force window-wide horizontal scrolling.
+- Long text and 125–200% scale must preserve state and action identification.
+- Future event lists should group updates (“N new updates”), preserve focus, and allow pause/inspection.
+- In the workspace, the tree, stream, and detail may stack at compact width;
+  horizontal scrolling is contained only in the code/manifest panel when two
+  dimensions are required.
+- The advance button is a manual action and stays near the Pulse state; it does
+  not start a timer, loop, or auto-scroll.
 
-## Acessibilidade
+## Accessibility
 
-- Moldura e controles de janela terão nomes acessíveis explícitos ou moldura nativa preservada.
-- Todo campo tem rótulo visível ou `AutomationProperties.Name`; tooltip não é o único nome.
-- Navegação atual expõe estado semântico, não apenas cor.
-- Foco visível em botões, abas, campos e controles desabilitados com explicação.
-- Ações de alto risco pedem confirmação e motivo quando suportadas pelo domínio.
-- Mensagens importantes não desaparecem apenas por timeout e podem ser lidas por tecnologia assistiva.
-- Teclado completo: Tab/Shift+Tab, Enter/Space, setas de guias, Escape em overlays; foco retorna ao acionador.
-- Contraste visível, estados não dependentes de cor e modo de movimento reduzido.
+- The window frame and controls have explicit accessible names or preserve the native frame.
+- Every field has a visible label or `AutomationProperties.Name`; a tooltip is not the only name.
+- Current navigation exposes semantic state, not only color.
+- Visible focus on buttons, tabs, fields, and disabled controls with an explanation.
+- High-risk actions ask for confirmation and a reason when supported by the domain.
+- Important messages do not disappear only on timeout and can be read by assistive technology.
+- Full keyboard support: Tab/Shift+Tab, Enter/Space, tab arrows, Escape in overlays; focus returns to the trigger.
+- Visible contrast, color-independent states, and reduced-motion mode.
 
 ## Motion
 
-Sem loops, pulsos ou ticker. Permitidas somente transições curtas (aprox. 150–180 ms) de opacidade/transform para seleção, orientação e abertura de contexto. Movimento reduzido remove a transição sem remover o estado. Atualização de atividade não reordena nem faz auto-rolagem da lista.
+No loops, pulses, or tickers. Only short transitions (approximately 150–180 ms)
+of opacity/transform are allowed for selection, orientation, and opening context.
+Reduced motion removes the transition without removing the state. Activity
+updates do not reorder or auto-scroll the list.
 
-## Decisões abertas
+## Open decisions
 
-- fonte real de dados, autenticação, ACL, cadência/frescor e reconexão;
-- contratos de evento, releases, deployments, auditoria persistente e integrações;
-- alias oficial e resolução de ambiguidades;
-- desenho final da visão global Trabalho/Governança;
-- auditoria automatizada com Accessibility Insights/Inspect e teste de carga com nove sessões.
+- real data source, authentication, ACL, cadence/freshness, and reconnection;
+- event, release, deployment, persistent-audit, and integration contracts;
+- official alias and ambiguity resolution;
+- final design of the global Work/Governance view;
+- automated audit with Accessibility Insights/Inspect and load testing with nine sessions.
 
-Enquanto abertas, essas áreas permanecem rotuladas como futuras/desconectadas e não autorizam novos comportamentos.
+While open, these areas remain labeled future/disconnected and do not authorize
+new behavior.
 
-## Plano de validação e checks falsificáveis
+## Validation plan and falsifiable checks
 
-1. `dotnet build` Release sem warnings/erros.
-2. Testes xUnit existentes e novos checks de identidade/ordenação do Pulso, seleção de arquivos, criação local de tags/releases e bloqueio por ciclo de vida.
-3. Inspeção visual da instalação em dashboard, catálogo, detalhe, planejamento, workspace, discussões, entregas, qualidade, publicações, histórico, equipe e configurações.
-4. Cenário sem resultado de busca: contagem e estado vazio corretos.
-5. Cenário fechado: leitura continua; reservar, patch, aprovação, integração e publicação ficam bloqueados/explicados.
-6. Cenário pendente/offline/stale: sem pontos verdes falsos, sem resposta inventada e sem garantia externa.
-7. Teste de tecla, foco, nomes acessíveis e largura compacta/escala ampliada.
-8. Teste de reação: avançar o Pulso, selecionar agente/evento/tarefa/arquivo, abrir uma referência, ver o título do commit e distinguir tag/release local de publicação. Em até cinco segundos, identificar projeto, bloqueio, ação permitida e gate seguinte. Se a pessoa repetir a sequência visual mas errar a exceção, o Pulso local falhou.
-9. Não alegar auditoria de leitor de tela/performance de produção sem ferramenta e fonte correspondentes.
+1. `dotnet build` Release with no warnings/errors.
+2. Existing xUnit tests and new checks for Pulse identity/order, file selection,
+   local tag/release creation, and lifecycle blocking.
+3. Visual inspection of the installation in dashboard, catalog, detail, planning,
+   workspace, discussions, deliveries, quality, publications, history, team,
+   and settings.
+4. No-search-result scenario: correct count and empty state.
+5. Closed scenario: reading continues; reserve, patch, approval, integration, and
+   publication are blocked/explained.
+6. Pending/offline/stale scenario: no false green points, invented response, or
+   external guarantee.
+7. Keyboard, focus, accessible names, compact width, and enlarged-scale testing.
+8. Reaction test: advance Pulse, select agent/event/task/file, open a reference,
+   view the commit title, and distinguish a local tag/release from publication.
+   Within five seconds, identify the project, blocker, permitted action, and
+   next gate. If someone repeats the visual sequence but misses the exception,
+   local Pulse has failed.
+9. Do not claim screen-reader or production-performance auditing without the
+   corresponding tool and source.
 
-## Critérios de conclusão
+## Completion criteria
 
-O redesign só é considerado melhor quando reduz os sinais enganosos encontrados na inspeção: `LOCAL · SEGURO`, estados todos verdes, binding literal de risco, ações incompatíveis habilitadas, busca sem estado vazio, títulos sem contraste, cabeçalho/abas quebrando e campos sem nome. O instalador final deve conter a mesma honestidade da fonte e continuar compilado/navegável.
+The redesign is considered better only when it reduces misleading signals found
+in inspection: `LOCAL · SEGURO`, all-green states, literal risk binding, enabled
+incompatible actions, search without an empty state, low-contrast titles,
+wrapping headers/tabs, and unnamed fields. The final installer must have the same
+honesty as the source and remain buildable/navigable.
 
 ---
 
-## Contrato vigente de navegação — bancada de coordenação de IA
+## Current navigation contract — AI coordination workbench
 
-Esta seção supersede a hipótese de sete abas equivalentes descrita acima. A alteração foi autorizada pelo responsável do produto após a avaliação humana de 04/11/2026 e está registrada integralmente em `docs/DESIGN-DECISIONS-2026-11-04.md`.
+This section supersedes the seven-equivalent-tab hypothesis described above. The
+change was authorized by the product owner after the 2026-11-04 human review and
+is recorded in full in `docs/DESIGN-DECISIONS-2026-11-04.md`.
 
-### Job central
+### Central job
 
-Uma pessoa deve conseguir escolher o projeto correto, entender a próxima decisão permitida, inspecionar o artefato e o trabalho de humanos/IAs, conversar sobre a decisão e comprovar o resultado sem perder o contexto. A Central é uma bancada de coordenação, não um painel de contagens nem um gerenciador genérico de módulos.
+A person must be able to choose the correct project, understand the next allowed
+decision, inspect the artifact and human/AI work, discuss the decision, and prove
+the result without losing context. Central is a coordination workbench, not a
+count dashboard or a generic module manager.
 
-### Rotas canônicas
+### Canonical routes
 
-- **Home:** contexto global compacto. Mostra um foco explicitamente selecionado ou uma indicação clara de que nenhum foco foi escolhido, uso técnico de IA e request logs sem inventar fonte ou contagens agregadas sem objeto.
-- **Projetos:** catálogo e resolução inequívoca de identidade. Entrar em um projeto exige seleção explícita.
-- **Projeto / Operar:** próximo passo, bloqueios, revisão atual e ação permitida. Não é o dono da árvore de arquivos.
-- **Projeto / Workspace:** dono canônico de tarefas, critérios, dependências, reservas, árvore de arquivos, README quando existir no manifesto, Pulso local, commits, tags e releases.
-- **Projeto / Coordenação:** chat local com threads, menções e referências a objetos conhecidos. Tipos de pedido, contrato e integração continuam visíveis dentro da conversa.
-- **Projeto / Provar:** entregas, checks, histórico e estados de publicação. `release local`, `integração local`, `aprovação local` e `deploy não conectado` nunca são colapsados em “publicado”.
+- **Home:** compact global context. Shows an explicitly selected focus or a
+  clear indication that no focus was selected, AI technical usage, and request
+  logs without inventing a source or aggregate counts without an object.
+- **Projects:** catalog and unambiguous identity resolution. Entering a project
+  requires explicit selection.
+- **Project / Operate:** next step, blockers, current revision, and permitted
+  action. It is not the owner of the file tree.
+- **Project / Workspace:** canonical owner of tasks, criteria, dependencies,
+  reservations, file tree, README when present in the manifest, local Pulse,
+  commits, tags, and releases.
+- **Project / Coordination:** local chat with threads, mentions, and references
+  to known objects. Request, contract, and integration types remain visible in the conversation.
+- **Project / Prove:** deliveries, checks, history, and publication states.
+  `local release`, `local integration`, `local approval`, and `unconnected
+  deploy` are never collapsed into “published”.
 
-`Planejar`, `Publicar` e `Contexto` não são destinos de primeiro nível nesta revisão. Seus objetos não foram apagados: tarefas/reservas vivem no Workspace; histórico vive no stream/Provar; publicação vive como estado explícito dentro de Provar.
+`Plan`, `Publish`, and `Context` are not first-level destinations in this
+review. Their objects were not deleted: tasks/reservations live in Workspace;
+history lives in the stream/Prove; publication lives as an explicit state within Prove.
 
-### Contrato de destino de referências
+### Reference destination contract
 
-O destino deve ser semântico e independente da ordem visual dos controles:
+The destination must be semantic and independent of visual control order:
 
-| Referência | Destino canônico | Resultado mínimo |
+| Reference | Canonical destination | Minimum result |
 |---|---|---|
-| tarefa, dependência, critério | Workspace | item selecionado e contexto da reserva visível |
-| arquivo, linha, commit, evento, tag, release | Workspace | inspetor selecionado e origem local visível |
-| entrega, check, revisão, estado de publicação | Provar | item selecionado e gate distinguido |
-| pessoa, agente, sessão | Coordenação/Workspace | identidade e disponibilidade explicitamente modeladas ou “sem detalhe nesta fase” |
+| task, dependency, criterion | Workspace | selected item and reservation context visible |
+| file, line, commit, event, tag, release | Workspace | selected inspector and local origin visible |
+| delivery, check, review, publication state | Prove | selected item and distinct gate |
+| person, agent, session | Coordination/Workspace | identity and availability explicitly modeled, or “no detail in this phase” |
 
-### Superfície visual
+### Visual surface
 
-O projeto usa uma única bancada por modo, com divisórias e linhas selecionáveis; não usa um card separado para cada dado. A árvore, o conteúdo e o inspetor permanecem em painéis funcionais. Em largura compacta, a ordem de leitura é preservada, o inspetor empilha e ações de entrega descem para uma faixa própria em vez de sair da viewport.
+The project uses one workbench per mode, with dividers and selectable rows; it
+does not use one separate card for each datum. The tree, content, and inspector
+remain functional panels. At compact width, reading order is preserved, the
+inspector stacks, and delivery actions move into their own band instead of
+leaving the viewport.
 
-### Estados e honestidade
+### States and honesty
 
-O contrato continua proibindo inventar presença, produtividade, tokens, streaming, Git, CI ou publicação. Quando o gateway não existir, usage e request logs mostram `N/D`/vazio com a fonte ausente. `0` só pode aparecer quando zero foi medido por uma fonte real. Um estado local deve dizer `local`, `pendente`, `não conectado` ou equivalente.
+The contract continues to prohibit inventing presence, productivity, tokens,
+streaming, Git, CI, or publication. When the gateway does not exist, usage and
+request logs show `N/D`/empty with the missing source. `0` may appear only when
+zero was measured by a real source. A local state must say `local`, `pending`,
+`not connected`, or equivalent.
 
-### Navegação compacta
+### Compact navigation
 
-O shell inicia com rail recolhida por padrão, mas o botão de reabrir e o contexto da página permanecem acessíveis por nome e foco. Ao expandir, marca e perfil reaparecem. A largura mínima suportada segue 820×560; a bancada empilha painéis quando a largura não sustenta colunas legíveis. A Home inicia sem projeto em foco: nenhuma fixture é escolhida silenciosamente; o usuário resolve a identidade no catálogo.
+The shell starts with the rail collapsed by default, but the reopen button and
+page context remain accessible by name and focus. When expanded, the brand and
+profile reappear. The minimum supported width remains 820×560; the workbench
+stacks panels when the width cannot sustain readable columns. Home starts with no
+project in focus: no fixture is selected silently; the user resolves identity in
+the catalog.
 
-## Adendo de precisão — Cursor de Contexto
+## Precision addendum — Context Cursor
 
-O antigo banner de contexto do detalhe foi deliberadamente substituído por um estado inline no cabeçalho (`fixture local · gateway ausente`). A informação não foi removida; sua superfície foi reduzida para que o projeto e a próxima decisão tenham precedência visual.
+The former detail-context banner was deliberately replaced by an inline header
+state (`local fixture · gateway unavailable`). The information was not removed;
+its surface was reduced so the project and next decision receive visual precedence.
 
-O contraexemplo rejeitado é uma sala de controle com cartões repetidos, estados verdes e movimento contínuo. Isso seria chamativo, mas não seria a Central: confundiria ausência de fonte com produtividade e obrigaria a pessoa a memorizar módulos. A gramática vigente é um **C aberto voltado para o próximo passo** — contexto delimitado, passagem clara e nenhum significado de sucesso/presença embutido no logo.
+The rejected counterexample is a control room with repeated cards, green states,
+and continuous motion. It would be eye-catching but would not be Central: it
+would confuse a missing source with productivity and force the person to memorize
+modules. The current grammar is an **open C facing the next step** — bounded
+context, a clear passage, and no success/presence meaning embedded in the logo.
 
-No Workspace, a ordem compacta é arquivos → inspetor → metadados/colaboradores → tarefas → commits → Pulso. O catálogo usa linhas com logos locais normalizadas e destinos explícitos. Referências devem selecionar o objeto canônico; um toast sem seleção é falha de comportamento.
+In Workspace, compact order is files → inspector → metadata/collaborators →
+tasks → commits → Pulse. The catalog uses rows with normalized local logos and
+explicit destinations. References must select the canonical object; a toast
+without selection is a behavior failure.
 
-A métrica `N/D` permanece distinta de zero medido. Em estado sem gateway, o gráfico não mostra escala numérica que possa ser lida como medição, eixos ou legenda; request logs removem cabeçalho/viewport de tabela e mantêm apenas o vazio compacto.
+`N/D` remains distinct from measured zero. In a no-gateway state, the chart does
+not show a numeric scale that could be read as measurement, axes, or legend;
+request logs remove the table header/viewport and keep only the compact empty state.

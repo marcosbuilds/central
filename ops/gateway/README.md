@@ -1,14 +1,14 @@
-# Central no PythonAnywhere
+# Central on PythonAnywhere
 
-Este diretório contém o gateway WSGI mínimo para o smoke test da infraestrutura
-da Central. Ele é compatível com o plano gratuito do PythonAnywhere porque não
-depende de Flask, FastAPI ou de um processo residente separado.
+This directory contains the minimal WSGI gateway used for Central's
+infrastructure smoke test. It is compatible with PythonAnywhere's free plan
+because it does not depend on Flask, FastAPI, or a separate resident process.
 
-## Configuração do web app
+## Web app configuration
 
-1. Crie um web app manual com Python 3.12 para `MarcosBuilds.pythonanywhere.com`.
-2. Faça upload de `central_gateway.py` para `/home/MarcosBuilds/central_gateway.py`.
-3. No arquivo WSGI do web app, use:
+1. Create a manual web app with Python 3.12 for `MarcosBuilds.pythonanywhere.com`.
+2. Upload `central_gateway.py` to `/home/MarcosBuilds/central_gateway.py`.
+3. In the web app's WSGI file, use:
 
    ```python
    import sys
@@ -20,17 +20,17 @@ depende de Flask, FastAPI ou de um processo residente separado.
    from central_gateway import application
    ```
 
-4. Recarregue o web app e valide `/healthz` e `/v1/capabilities`.
+4. Reload the web app and validate `/healthz` and `/v1/capabilities`.
 
-As variáveis opcionais `CENTRAL_SUPABASE_URL` e
-`CENTRAL_SUPABASE_PUBLISHABLE_KEY` só devem ser definidas no painel de variáveis
-do PythonAnywhere. O gateway informa apenas se elas existem; nunca devolve os
-valores e nunca aceita uma service-role key.
+The optional `CENTRAL_SUPABASE_URL` and
+`CENTRAL_SUPABASE_PUBLISHABLE_KEY` variables should only be defined in
+PythonAnywhere's environment-variable panel. The gateway reports only whether
+they exist; it never returns their values and never accepts a service-role key.
 
-## Limites deliberados
+## Deliberate limits
 
-O gateway publicado é um ponto de saúde e capacidades. Ele não mantém SSE
-contínuo nem transporta bytes da pasta. O desktop usa Supabase Realtime/WebSocket
-para avisos retomáveis e Syncthing para a sincronização P2P; o Supabase é a
-fonte de dados de coordenação e o PythonAnywhere não é armazenamento de código
-nem disco de sincronização.
+The published gateway is a health and capabilities endpoint. It does not keep a
+continuous SSE connection or transport folder bytes. The desktop uses Supabase
+Realtime/WebSocket for resumable notifications and Syncthing for P2P
+synchronization; Supabase is the coordination data source, and PythonAnywhere
+is neither code storage nor a synchronization disk.

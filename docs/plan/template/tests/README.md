@@ -1,3 +1,3 @@
-# Testes
+# Tests
 
-Inserir testes definidos nos requisitos aprovados.
+Add the tests defined in the approved requirements.

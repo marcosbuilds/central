@@ -1,129 +1,127 @@
-# Inventário atualizado da Peace
+# Updated Peace inventory
 
-Este inventário registra o estado do código e a adaptação aplicada no Discord
-Development em 2 de novembro de 2026. Snapshots completos ficam em
-`data/snapshots/` e não são fonte de código.
+This inventory records the code state and the adaptation applied in Discord
+Development on November 2, 2026. Complete snapshots live in
+`data/snapshots/` and are not source code.
 
-## Código e entradas
+## Code and entry points
 
-| Arquivo | Responsabilidade | Estado |
+| File | Responsibility | State |
 | --- | --- | --- |
-| `bot/main.py` | Gateway, views, painéis, tickets, entrevistas, boosters e Iris | ativo |
-| `bot/maintenance.py` | migração estrutural idempotente e limpeza explícita | novo utilitário operacional |
-| `bot/db.py` | SQLite, tickets, eventos, set e pedidos de desenvolvedor | ativo |
-| `bot/cfg.py` | configuração por `.env` | ativo |
-| `bot/ai.py` | cliente e prompts da Iris | disponível no código; atendimento com IA desativado por `IRIS_ENABLED=false` |
-| `bot/context.py` | redaction, limites e sanitização | ativo |
-| `bot/api.py` | REST usado pelos utilitários | ativo |
-| `bot/snap.py` | snapshot somente leitura | ativo |
-| `bot/nick.py` | utilitário de apelidos | usar apenas com revisão |
+| `bot/main.py` | gateway, views, panels, tickets, interviews, boosters, and Iris | active |
+| `bot/maintenance.py` | idempotent structural migration and explicit cleanup | new operational utility |
+| `bot/db.py` | SQLite, tickets, events, set flow, and developer requests | active |
+| `bot/cfg.py` | `.env` configuration | active |
+| `bot/ai.py` | Iris client and prompts | available in code; AI support disabled by `IRIS_ENABLED=false` |
+| `bot/context.py` | redaction, limits, and sanitization | active |
+| `bot/api.py` | REST used by utilities | active |
+| `bot/snap.py` | read-only snapshot | active |
+| `bot/nick.py` | nickname utility | use only after review |
 
-## Estado final aplicado
+## Final applied state
 
-- servidor preservado como `REAL PEACE IS BACK`;
-- `programming-only` deixou de ser um espaço de execução estrutural e foi
-  convertido no canal público `spam-control`;
-- `rules` permaneceu no topo;
-- AFK foi movido para o topo como call pública visível, sem conexão;
-- categoria `[🤝] FLORENZA & PEACE` virou `[💻] DEVELOPERS`;
-- `chat-tie` virou `chat-dev`;
-- `Call` virou `╭💻・programming`;
-- `[🎙️] CALL・PEACE` virou `[🎙️] CALLS`, acessível a Peace, desenvolvimento e
+- server preserved as `REAL PEACE IS BACK`;
+- `programming-only` stopped being a structural execution area and became the
+  public `spam-control` channel;
+- `rules` remained at the top;
+- AFK moved to the top as a visible public call without connection permission;
+- category `[🤝] FLORENZA & PEACE` became `[💻] DEVELOPERS`;
+- `chat-tie` became `chat-dev`;
+- `Call` became `╭💻・programming`;
+- `[🎙️] CALL・PEACE` became `[🎙️] CALLS`, accessible to Peace, development, and
   staff;
-- `[🛡️] STAFF` recebeu `scan-only`, `staff-only` e `logs`, nessa ordem;
-- `scan-only` ficou exclusivo do `Recrutador`; `staff-only` e `logs` ficaram
-  exclusivos de `Staff Peace`;
-- ticket panel permaneceu em `[☎️] ATENDIMENTO`;
-- `[🎟️] TICKETS-FECHADOS` permanece vazio, reservado para arquivo e invisível;
-- tickets abertos ficam acessíveis à `Staff Peace`, sem triagem automática da
-  Íris;
-- `[🔫] AÇÃO` e suas calls foram removidas;
-- tickets `sup-*` antigos foram limpos do Discord e do SQLite;
-- o cargo `Florenza Founds` foi removido pela interface de proprietário do
-  Discord após a migração de acesso.
-- os cargos `Advertência I`, `Advertência II`, `Advertência III` e `Sublider`
-  foram removidos por manutenção autorizada.
+- `[🛡️] STAFF` received `scan-only`, `staff-only`, and `logs`, in that order;
+- `scan-only` became exclusive to `Recrutador`; `staff-only` and `logs` became
+  exclusive to `Staff Peace`;
+- the ticket panel remained in `[☎️] ATENDIMENTO`;
+- `[🎟️] TICKETS-FECHADOS` remains empty, reserved for the archive and invisible;
+- open tickets are accessible to `Staff Peace`, without automatic triage by Íris;
+- `[🔫] AÇÃO` and its calls were removed;
+- old `sup-*` tickets were cleaned from Discord and SQLite;
+- the `Florenza Founds` role was removed through the Discord owner interface
+  after the access migration;
+- the `Advertência I`, `Advertência II`, `Advertência III`, and `Sublider` roles
+  were removed through authorized maintenance.
 
-## Cargos
+## Roles
 
-| Cargo | Tipo | Regra |
+| Role | Type | Rule |
 | --- | --- | --- |
-| `Dev` | acesso técnico | acesso à categoria Developers; permissões globais zeradas |
-| `Developer` | visual | identificação, sem acesso |
-| `Frontend` | visual | identificação, sem acesso |
-| `Backend` | visual | identificação, sem acesso |
-| `Documentation` | visual | identificação, sem acesso |
-| `AI & Bots` | visual | somente bots com IA; sem acesso por si só |
-| `Peace` | pertencimento/acesso existente | preservado |
-| `Novato Peace` | progressão | preservado |
-| `Staff Peace` | acesso operacional | preservado |
-| `Gerência` | organização/hierarquia | preservado, com permissões globais zeradas; acesso somente por canais explícitos |
-| `Recrutador` | aprovação | preservado |
-| `Elite Peace` | acesso específico | preservado |
-| `Visitante` | acesso de entrada | preservado |
-| `Streamer` | identidade/benefício | preservado |
-| booster e cargos gerenciados | integração | preservados |
+| `Dev` | technical access | access to the Developers category; global permissions cleared |
+| `Developer` | visual | identification, no access |
+| `Frontend` | visual | identification, no access |
+| `Backend` | visual | identification, no access |
+| `Documentation` | visual | identification, no access |
+| `AI & Bots` | visual | AI bots only; no access by itself |
+| `Peace` | existing membership/access | preserved |
+| `Novato Peace` | progression | preserved |
+| `Staff Peace` | operational access | preserved |
+| `Gerência` | organization/hierarchy | preserved, global permissions cleared; access only through explicit channels |
+| `Recrutador` | approval | preserved |
+| `Elite Peace` | specific access | preserved |
+| `Visitante` | entry access | preserved |
+| `Streamer` | identity/benefit | preserved |
+| booster and managed roles | integration | preserved |
 
-O cargo antigo `Developer` não foi mantido com permissões perigosas: ele foi
-reaproveitado pelo ID como `Dev` e teve as
-permissões globais removidas. A identidade visual fica nos cargos separados.
+The old `Developer` role was not kept with dangerous permissions: it was reused
+by ID as `Dev`, and its global permissions were removed. Visual identity lives in
+separate roles.
 
-## Banco local
+## Local database
 
-O SQLite continua em `data/peace.sqlite3` por compatibilidade. A tabela
-`developer_requests` registra o novo fluxo em etapas; RG e telefone pertencem ao
-fluxo in-game de player e não devem ser reutilizados no processo de dev.
+SQLite remains at `data/peace.sqlite3` for compatibility. The
+`developer_requests` table records the new staged flow; national ID and phone
+belong to the in-game player flow and must not be reused for the developer process.
 
-As tabelas antigas de `builder_objects` permanecem apenas para compatibilidade
-de schema. O builder não está exposto em canal nem em `on_message`; uma limpeza
-de schema só deve ocorrer em migração própria, com backup e rollback.
+The old `builder_objects` tables remain only for schema compatibility. The
+builder is not exposed in a channel or in `on_message`; schema cleanup may occur
+only in its own migration with backup and rollback.
 
-`peace_id_pool` agora distingue IDs disponíveis de IDs reservados. Quando uma
-conta sai com `Peace`, o ID fica reservado; ao retornar, o pedido aparece no
-`scan-only` com o botão `Liberar ID`. A aprovação libera o ID antigo e cria um
-novo para a conta, evitando reutilização silenciosa.
+`peace_id_pool` now distinguishes available IDs from reserved IDs. When an
+account leaves with `Peace`, the ID stays reserved; when the account returns,
+the request appears in `scan-only` with the `Liberar ID` button. Approval
+releases the old ID and creates a new one for the account, avoiding silent reuse.
 
-## Auditoria e segurança
+## Audit and security
 
-- `developer_requests` só é publicado em `scan-only`;
-- aprovação de dev é limitada ao `Recrutador` com acesso ao `scan-only`;
-- aprovação não concede cargo automaticamente;
-- `spam-control` remove a mensagem, aplica timeout de sete dias e grava
-  apenas o necessário no log;
-- cargos visuais não entram em guardas de autorização;
-- `scan-only` é acessível somente a recrutadores; `staff-only` e `logs` somente
-  a `Staff Peace`;
-- canais Developers aceitam `Dev` e `Staff Peace`; Gerência não tem override;
-- `assets/automod.png` e o conteúdo do `spam-control` não participam da rotação
-  visual Halloween;
-- tickets fechados ficam ocultos para membros comuns;
-- qualquer alteração estrutural futura deve ter alvo, hierarquia, snapshot e
-  registro.
+- `developer_requests` is published only in `scan-only`;
+- developer approval is limited to `Recrutador` with access to `scan-only`;
+- approval does not grant a role automatically;
+- `spam-control` removes the message, applies a seven-day timeout, and records
+  only what is necessary in the log;
+- visual roles do not appear in authorization guards;
+- `scan-only` is accessible only to recruiters; `staff-only` and `logs` only to
+  `Staff Peace`;
+- Developers channels accept `Dev` and `Staff Peace`; Gerência has no override;
+- `assets/automod.png` and `spam-control` content do not participate in the
+  Halloween visual rotation;
+- closed tickets remain hidden from ordinary members;
+- any future structural change must have a target, hierarchy, snapshot, and record.
 
-## Produção no ACLClouds
+## Production on ACLClouds
 
-A raiz do serviço mantém somente os itens necessários para iniciar a aplicação:
+The service root keeps only the items required to start the application:
 
-- `bot.py`: inicializador compatível da hospedagem;
-- `requirements.txt`: dependências instaladas pelo provedor;
-- `peace-deploy-20261102-0606/`: versão publicada, com `bot/`, `assets/` e
-  `docs/`;
-- `releases/`: pacotes de distribuição e rollback, fora do caminho de execução.
+- `bot.py`: hosting-compatible launcher;
+- `requirements.txt`: dependencies installed by the provider;
+- `peace-deploy-20261102-0606/`: published version containing `bot/`, `assets/`,
+  and `docs/`;
+- `releases/`: distribution and rollback packages, outside the execution path.
 
-`__pycache__/` e `.deps/` são diretórios gerados pelo próprio ACLClouds e não
-fazem parte da fonte de verdade. O token fica somente no campo protegido do
-provedor; nunca deve ser colocado dentro da árvore publicada.
+`__pycache__/` and `.deps/` are directories generated by ACLClouds and are not
+part of the source of truth. The token remains only in the provider's protected
+field; it must never be placed inside the published tree.
 
-Na auditoria de 2 de novembro de 2026, todos os membros humanos já possuíam
-algum cargo customizado. O bot também mantém a reconciliação de `Visitante` no
-`on_member_join` e no `on_ready`: membro humano sem `Peace` recebe `Visitante`,
-e membro aprovado como `Peace` deixa de ser visitante.
+During the November 2, 2026 audit, every human member already had at least one
+custom role. The bot also keeps `Visitante` reconciliation in `on_member_join`
+and `on_ready`: a human member without `Peace` receives `Visitante`, and a member
+approved as `Peace` stops being a visitor.
 
-## Próximas verificações
+## Next checks
 
-1. conferir no servidor real uma entrevista de player e uma simulação de dev;
-2. testar o honeypot com uma conta de teste que possa receber timeout;
-3. validar que o bot mantém somente um painel em `boas-vindas` e um em
+1. verify a player interview and a developer simulation on the real server;
+2. test the honeypot with a test account that can receive a timeout;
+3. validate that the bot keeps only one panel in `boas-vindas` and one in
    `spam-control`;
-4. revisar as permissões efetivas de `Gerência`, `Staff Peace` e `Recrutador`;
-5. adicionar testes automatizados para permissões, migrações e persistência.
+4. review effective permissions for `Gerência`, `Staff Peace`, and `Recrutador`;
+5. add automated tests for permissions, migrations, and persistence.

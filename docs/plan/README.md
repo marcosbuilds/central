@@ -1,78 +1,121 @@
-# Startup de software + Central Colaborativa de Desenvolvimento
+# Software startup + Central Colaborativa for development
 
-**Versão do planejamento:** 1.1 · **Data:** 03/11/2026 · **Time inicial:** 9 pessoas  
-**Estado da fonte:** planejamento original preservado; a implementação da Fase 1 desktop está em `D:\projetos\Central` e não reescreve os contratos de domínio deste pacote.
+**Planning version:** 1.1 · **Date:** 2026-11-03 · **Initial team:** 9 people
+**Source state:** original planning preserved; the Phase 1 desktop implementation
+is in `D:\projetos\Central` and does not rewrite this package's domain contracts.
 
-## O que vamos construir
-A empresa entrega **sistemas, aplicações web, mobile, desktop, automações, plataformas e serviços**, não apenas sites. A Central é seu aplicativo interno para planejar, documentar e acompanhar projetos; integrar as IAs próprias dos integrantes; coordenar a **mesma versão viva** do código; promover cooperação entre IAs; revisar entregas e controlar versões oficiais e publicação.
+## What we will build
 
-## Regras acordadas
-1. **Nove especialidades**, mas equipe multidisciplinar; o documentador entrevista o cliente, detalha escopo/arquitetura junto ao líder técnico e entrega um ZIP organizado.
-2. **Múltiplos projetos** na Central. A IA escolhe pelo nome/alias natural (`trabalhe na Seloryn`), consultando apenas os projetos autorizados.
-3. **Mesmo workspace vivo para todos**, com revisões sequenciais, patches atômicos, reserva por tarefa, módulo, lógica e arquivo. Não usar branches isoladas por IA como experiência principal.
-4. **Projetos podem ser fechados** para tornar seu código/estado imutável até a reabertura, inclusive frente a agentes e tokens antigos; leitura conforme permissão.
-5. **Alterações cotidianas ≠ entrega oficial ≠ deploy.** Código ao vivo tem histórico recuperável; a `master` é protegida e só recebe entregas aprovadas; publicar é uma decisão independente.
-6. **Revisão humana ou por IA especializada com delegação explícita e provas reproduzíveis.** Uma IA não aprova a própria alteração. Mudanças críticas pedem aprovação humana.
-7. **IAs conversam no projeto**, discutem tarefas, pedem rotas de API, registram contratos e resolvem bloqueios; o time acompanha tudo em threads pesquisáveis.
-8. Segurança por projeto, cliente, membro e token; Discord apoia convites/comunidade e não substitui autenticação/autorização.
-9. Telemetria mostra fatos observáveis, não captura raciocínio privado da IA nem inventa streaming. Dashboard mede resultado e qualidade, não vigia horas online.
+The company delivers **systems, web, mobile, and desktop applications,
+automations, platforms, and services**, not just websites. Central is its
+internal application for planning, documenting, and tracking projects;
+integrating members' own AIs; coordinating the **same live version** of the
+code; enabling cooperation between AIs; reviewing deliveries; and controlling
+official versions and publication.
 
-## Documentos (leitura recomendada)
+## Agreed rules
 
-| Caminho | Conteúdo |
+1. **Nine specialties**, but a multidisciplinary team; the documenter interviews
+   the client, details scope/architecture with the technical lead, and delivers
+   an organized ZIP.
+2. **Multiple projects** in Central. The AI selects by natural name/alias
+   (`work on Seloryn`), querying only authorized projects.
+3. **One live workspace for everyone**, with sequential revisions, atomic
+   patches, reservations by task/module/logic/file. AI-isolated branches are not
+   the primary experience.
+4. **Projects can be closed** to make their code/state immutable until reopened,
+   including against agents and old tokens; reading follows permission.
+5. **Everyday changes ≠ official delivery ≠ deployment.** Live code has
+   recoverable history; `master` is protected and receives only approved
+   deliveries; publication is an independent decision.
+6. **Human or specialized-AI review with explicit delegation and reproducible
+   evidence.** An AI cannot approve its own change. Critical changes require
+   human approval.
+7. **AIs talk in the project**, discuss tasks, request API routes, record
+   contracts, and resolve blockers; the team follows everything in searchable threads.
+8. Security by project, client, member, and token; Discord supports invitations/
+   community and does not replace authentication/authorization.
+9. Telemetry shows observable facts, does not capture private AI reasoning or
+   invent streaming. The dashboard measures outcome and quality, not online hours.
+
+## Documents (recommended reading)
+
+| Path | Content |
 |---|---|
-| `01-team.md` | Equipe atual e futuras vagas |
-| `02-cases.md` | Frontend, backend e sistemas com exemplos |
-| `03-delivery.md` | Cliente, documentador, arquitetura e ZIP inicial |
-| `04-central.md` | Telas, módulos e regras da plataforma |
-| `05-architecture.md` | Componentes, servidores, integração e limites |
-| `06-data.md` | Entidades, contratos e eventos |
-| `07-collaboration.md` | Workspace vivo, reserva por lógica, conectores e streaming |
-| `08-security.md` | Discord, identidade, tokens, projetos, delegações |
-| `09-operations.md` | Métricas, revisões, deploys e operação |
-| `10-roadmap.md` | Ordem recomendada de construção |
-| `11-acceptance.md` | Cenários verificáveis para testar a Central |
-| `12-references.md` | Documentação oficial consultada e limites |
-| `13-catalog.md` | IA escolhe projeto, pausa e fechamento |
-| `14-approval.md` | **Política de commits/entregas, aprovação e conversas entre IAs** |
-| `15-protocol.md` | API sugerida, entidades, eventos e regras de integração |
-| `template/` | Modelo curto de um projeto entregue ao time |
+| `01-team.md` | current team and future openings |
+| `02-cases.md` | frontend, backend, and systems with examples |
+| `03-delivery.md` | client, documenter, architecture, and initial ZIP |
+| `04-central.md` | platform screens, modules, and rules |
+| `05-architecture.md` | components, servers, integration, and boundaries |
+| `06-data.md` | entities, contracts, and events |
+| `07-collaboration.md` | live workspace, logic reservations, connectors, and streaming |
+| `08-security.md` | Discord, identity, tokens, projects, and delegations |
+| `09-operations.md` | metrics, reviews, deployments, and operations |
+| `10-roadmap.md` | recommended build order |
+| `11-acceptance.md` | verifiable scenarios for testing Central |
+| `12-references.md` | official documentation consulted and limits |
+| `13-catalog.md` | AI project selection, pausing, and closing |
+| `14-approval.md` | **commit/delivery policy, approval, and AI conversations** |
+| `15-protocol.md` | suggested API, entities, events, and integration rules |
+| `template/` | short template for a project delivered to the team |
 
-## Glossário simples
+## Simple glossary
 
-- **Frontend:** telas e interações que a pessoa vê.
-- **Backend:** regras, processamento e dados por trás das telas.
-- **Sistema:** conjunto completo funcionando (interface, lógica, banco de dados, integrações e operação).
-- **API:** forma combinada para programas trocarem informações.
-- **Workspace vivo:** versão compartilhada em que o time acompanha alterações autorizadas quase em tempo real.
-- **Revisão `r123`:** registro recuperável de uma etapa do trabalho vivo.
-- **Commit Git:** registro de alterações; pode ser pequeno ou grande.
-- **Entrega para aprovação:** grupo coerente de mudanças que busca entrada na `master`.
-- **`master`:** histórico protegido e estável, separado do trabalho em andamento.
-- **Deploy:** colocar uma versão aprovada no ambiente de teste ou produção.
-- **Contrato de API:** acordo documentado sobre rotas, dados e erros entre frontend e backend.
+- **Frontend:** screens and interactions a person sees.
+- **Backend:** rules, processing, and data behind the screens.
+- **System:** the complete working set (interface, logic, database,
+  integrations, and operations) that solves a need.
+- **API:** an agreed way for programs to exchange information.
+- **Live workspace:** a shared version where the team follows authorized changes
+  almost in real time.
+- **Revision `r123`:** recoverable record of one stage of live work.
+- **Git commit:** record of changes; it may be small or large.
+- **Delivery for approval:** coherent group of changes seeking entry into `master`.
+- **`master`:** protected, stable history separated from work in progress.
+- **Deployment:** putting an approved version into a test or production environment.
+- **API contract:** documented agreement about routes, data, and errors between frontend and backend.
 
-## Próxima ação real
-Antes de criar dashboards, testar o **núcleo de coordenação** com duas IAs simuladas e depois nove sessões: selecionar projeto; travar lógica; enviar patch; mostrar atividade; abrir discussão de API; congelar projeto; preparar entrega; revisar com evidência; integrar à master sem deploy automático. Exigir provas de teste e recuperação de falhas antes de ampliar.
+## Next real action
 
-**Atenção:** os fluxos e endpoints são **propostas**, não recursos já disponíveis. Integrações Codex/Claude precisam de testes com SDKs e versões reais; não presumir que um token sozinho impede edições locais fora do gateway.
+Before creating dashboards, test the **coordination core** with two simulated AIs
+and then nine sessions: select a project; lock logic; submit a patch; show
+activity; open an API discussion; freeze the project; prepare a delivery; review
+with evidence; integrate into master without automatic deployment. Require test
+and failure-recovery evidence before expanding.
 
-## Adendo de contraexemplo — interface da Fase 1
+**Attention:** flows and endpoints are **proposals**, not currently available
+features. Codex/Claude integrations need tests with real SDKs and versions; do
+not assume that a token alone prevents local edits outside the gateway.
 
-Este adendo altera a hipótese de navegação visual do documento original somente onde a implementação e a revisão adversarial demonstraram um contraexemplo melhor fundamentado. O domínio continua normativo: workspace vivo, reservas, revisão, evidências, segurança e publicação permanecem separados.
+## Counterexample addendum — Phase 1 interface
 
-O contraexemplo rejeitado é expor no shell uma sala de controle com `Visão geral`, `Pessoas`, `Configurações`, `Planejar`, `Publicar` e outros módulos como destinos equivalentes, além de cards para cada métrica. Essa forma parece completa, mas obriga a pessoa a memorizar a taxonomia antes de resolver o trabalho central: identificar o projeto, entender a próxima decisão, inspecionar o artefato, conversar com a equipe e provar o resultado.
+This addendum changes the original visual-navigation hypothesis only where
+implementation and adversarial review demonstrated a better-grounded
+counterexample. The domain remains normative: live workspace, reservations,
+review, evidence, security, and publication remain separate.
 
-A hipótese exclusiva que substitui essa forma na Fase 1 é:
+The rejected counterexample is a shell exposing `Overview`, `People`, `Settings`,
+`Plan`, `Publish`, and other modules as equivalent destinations, plus a card for
+each metric. It looks complete but forces a person to memorize the taxonomy before
+solving Central's core work: identify the project, understand the next decision,
+inspect the artifact, discuss it with the team, and prove the result.
+
+The exclusive hypothesis replacing it in Phase 1 is:
 
 ```text
-Home → Projetos → Projeto selecionado
-                         ├── Operar
+Home → Projects → Selected project
+                         ├── Operate
                          ├── Workspace
-                         ├── Coordenação
-                         └── Provar
+                         ├── Coordination
+                         └── Prove
 ```
 
-O projeto é o limite de contexto. Tarefas, arquivos, commits, tags, releases e Pulso pertencem ao Workspace; referências de pessoas/IAs pertencem à Coordenação; evidências, checks e estados de publicação pertencem a Provar. A Home começa sem projeto em foco e não escolhe a primeira fixture silenciosamente.
+The project is the context boundary. Tasks, files, commits, tags, releases, and
+Pulse belong to Workspace; people/AI references belong to Coordination; evidence,
+checks, and publication states belong to Prove. Home starts with no project in
+focus and does not silently choose the first fixture.
 
-Também fica registrado que a interface não pode inventar streaming, produtividade, tokens, presença, Git, CI ou gateway. Sem fonte, usage e Request Logs são `N/D`/vazios; os estados locais são declarados como locais. A implementação desktop e suas decisões auditáveis estão em `docs\DESIGN-CONTRACT.md` e `docs\DESIGN-DECISIONS-2026-11-04.md`.
+The interface also must not invent streaming, productivity, tokens, presence,
+Git, CI, or a gateway. Without a source, usage and Request Logs are `N/D`/empty;
+local states are declared as local. The desktop implementation and its auditable
+decisions are in `docs\DESIGN-CONTRACT.md` and `docs\DESIGN-DECISIONS-2026-11-04.md`.

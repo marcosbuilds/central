@@ -1,26 +1,29 @@
-# 11 — Critérios e testes de aceitação
+# 11 — Acceptance criteria and tests
 
-| ID | Cenário | Resultado exigido |
+| ID | Scenario | Required result |
 |---|---|---|
-| CA-01 | Membro sem convite tenta entrar | Negado e registrado |
-| CA-02 | Discord desconectado após criação | Política local segura; nenhuma concessão implícita |
-| CA-03 | IA pede `trabalhe na Seloryn` | Resolve somente projeto autorizado, mostra estado e tarefa válida |
-| CA-04 | IA pede nome ambíguo | Pergunta antes de alterar qualquer projeto |
-| CA-05 | Uma IA ocupa `auth.register` | Outra IA não consegue reservar lógica incompatível |
-| CA-06 | Backend implementa rota usada pelo frontend | Conversa, contrato versionado e testes de integração disponíveis |
-| CA-07 | Sessão backend está offline | Pedido fica pendente; nenhuma falsa resposta automática |
-| CA-08 | Dois patches chegaram com mesma base | Um aplicado; outro revalidado ou rejeitado com conflito |
-| CA-09 | Projeto fecha durante patch | Sem escrita aceita após fechamento; sessão recebe sinal e pode recuperar estado |
-| CA-10 | Projeto está fechado | Sem patches, claims, merge ou deploy; leitura com permissão mantida |
-| CA-11 | Pequena edição sem necessidade de versão oficial | Revisionada e recuperável sem PR nem deploy |
-| CA-12 | Candidato à master foi modificado depois da aprovação | Aprovação invalidada; nova revisão exigida |
-| CA-13 | IA revisa mudança criada por ela própria | Negado por falta de independência |
-| CA-14 | IA autorizada revisa mudança de baixo risco | Somente aprova com evidências verificadas e política permitindo |
-| CA-15 | Mudança de autenticação tem somente parecer de IA | Bloqueada até aprovação humana definida |
-| CA-16 | Testes falharam mas IA escreveu 'aprovado' | Não integrar master |
-| CA-17 | Regra GitHub bloqueia merge | Mostrar bloqueio real, não 'aprovado e publicado' |
-| CA-18 | Versão master foi aprovada | Não fazer deploy sem etapa própria de autorização |
-| CA-19 | Contrato de API mudou de forma incompatível | Consumidores alertados, integração bloqueada até reconciliação |
-| CA-20 | Cliente sem autorização pede ver outro projeto | Nenhum dado cruzado por API, busca, logs, eventos ou cache |
+| CA-01 | Member without invitation tries to enter | Denied and recorded |
+| CA-02 | Discord disconnects after creation | Safe local policy; no implicit grant |
+| CA-03 | AI requests `work on Seloryn` | Resolves only an authorized project and shows valid state/task |
+| CA-04 | AI requests an ambiguous name | Asks before changing any project |
+| CA-05 | One AI occupies `auth.register` | Another AI cannot reserve incompatible logic |
+| CA-06 | Backend implements a route used by frontend | Conversation, versioned contract, and integration tests available |
+| CA-07 | Backend session is offline | Request remains pending; no false automatic response |
+| CA-08 | Two patches arrive with the same base | One applied; the other revalidated or rejected with conflict |
+| CA-09 | Project closes during patch | No write accepted after closing; session receives signal and can recover state |
+| CA-10 | Project is closed | No patches, claims, merge, or deployment; permitted reading remains |
+| CA-11 | Small edit does not need official version | Versioned and recoverable without PR or deployment |
+| CA-12 | Master candidate changes after approval | Approval invalidated; new review required |
+| CA-13 | AI reviews a change it created | Denied for lack of independence |
+| CA-14 | Authorized AI reviews a low-risk change | Approves only with verified evidence and allowed policy |
+| CA-15 | Authentication change has only AI opinion | Blocked until defined human approval |
+| CA-16 | Tests failed but AI wrote “approved” | Do not integrate into master |
+| CA-17 | GitHub rule blocks merge | Show the real block, not “approved and published” |
+| CA-18 | Master version was approved | Do not deploy without its own authorization stage |
+| CA-19 | API contract changed incompatibly | Alert consumers; block integration until reconciliation |
+| CA-20 | Unauthorized client asks to see another project | No cross-data through API, search, logs, events, or cache |
 
-Executar testes de simultaneidade com 9 sessões, latências variadas, retries, conexões caindo e concorrência em recursos lógicos distintos e sobrepostos. Verificar também que o conector local sem controle de escrita **não** consegue enganar a Central publicando alterações fora do gateway.
+Run concurrency tests with 9 sessions, varied latency, retries, dropped
+connections, and concurrency in distinct and overlapping logical resources. Also
+verify that a local connector without write control **cannot** fool Central into
+publishing changes outside the gateway.

@@ -1,3 +1,3 @@
-# Infraestrutura
+# Infrastructure
 
-Configurações de exemplo, sem tokens e senhas.
+Example configurations without tokens or passwords.

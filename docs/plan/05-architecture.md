@@ -1,76 +1,109 @@
-# 07 — Arquitetura técnica sugerida
+# 05 — Suggested technical architecture
 
-## Diretriz
+## Guideline
 
-Começar como **monólito modular**, não vários microsserviços por moda. Separar claramente os domínios em módulos com interfaces documentadas. Só extrair serviços quando medições ou requisitos mostrarem necessidade. O workspace compartilhado e execução de agentes merecem isolamento operacional desde cedo.
+Start as a **modular monolith**, not several microservices for fashion. Clearly
+separate domains into modules with documented interfaces. Extract services only
+when measurements or requirements show a need. The shared workspace and agent
+execution deserve operational isolation early.
 
-## Componentes
+## Components
 
 ```mermaid
 flowchart TB
-    U[App web/PWA dos integrantes] --> G[API central e autenticação]
-    L[Adaptadores locais: Codex/Claude] --> G
+    U[Members' web/PWA app] --> G[Central API and authentication]
+    L[Local adapters: Codex/Claude] --> G
     D[Discord OAuth2 + bot] <--> G
-    G --> P[Projetos, tarefas e documentação]
-    G --> C[Motor de reservas e conflitos]
-    G --> E[Hub de eventos WebSocket]
-    C --> W[Gateway de patches + workspace canônico]
-    W --> V[Histórico de revisões e snapshots]
-    W --> Q[Workers de testes em sandbox]
-    Q --> R[Revisão e promoção]
-    R --> X[Deploy autorizado de snapshot estável]
+    G --> P[Projects, tasks, and documentation]
+    G --> C[Reservation and conflict engine]
+    G --> E[WebSocket event hub]
+    C --> W[Patch gateway + canonical workspace]
+    W --> V[Revision and snapshot history]
+    W --> Q[Sandbox test workers]
+    Q --> R[Review and promotion]
+    R --> X[Authorized deployment of stable snapshot]
     G --> DB[(PostgreSQL)]
-    G --> B[(Redis para presença/cache/filas)]
-    W --> O[(Objetos: ZIPs, diffs e artefatos)]
+    G --> B[(Redis for presence/cache/queues)]
+    W --> O[(Objects: ZIPs, diffs, and artifacts)]
 ```
 
-**Banco PostgreSQL:** pessoas, permissões, projeto, requisitos, tarefas, reservas, revisões, eventos de auditoria, decisões.  
-**Redis:** sessões transitórias, presença e eventos de baixa duração, com armazenamento durável dos eventos importantes no banco.  
-**Armazenamento de objetos:** anexos, ZIPs, backups e artefatos de build, com controle de projeto.  
-**Workspace canônico:** repositório ou armazenamento de conteúdo versionado, mutável somente pelo gateway. Se usar Git internamente para snapshots, **uma única fila de escrita por repositório** evita concorrência no índice do Git.
+**PostgreSQL database:** people, permissions, project, requirements, tasks,
+reservations, revisions, audit events, and decisions.
+**Redis:** transient sessions, presence, and short-lived events, with important
+events durably stored in the database.
+**Object storage:** attachments, ZIPs, backups, and build artifacts, scoped by
+project.
+**Canonical workspace:** repository or versioned-content storage mutable only by
+the gateway. If Git is used internally for snapshots, **one write queue per
+repository** avoids concurrency in the Git index.
 
-## Pilha sugerida — opção pragmática, não única
+## Suggested stack — pragmatic option, not the only one
 
-- Web: TypeScript com React/Next.js ou equivalente, mobile-first; PWA primeiro.
-- Backend: TypeScript/Node (framework modular) **ou** Python/FastAPI, conforme domínio comprovado da equipe. Não misturar stacks sem vantagem clara.
-- Persistência: PostgreSQL com migrações e transações.
-- Eventos: WebSocket autenticado + canal durável/filas para notificações importantes; SSE pode servir a consumidores somente leitura.
-- Jobs e sandbox: workers/containers efêmeros isolados para testes, build e prévia.
-- Fonte/versionamento: Git como trilha de snapshots e releases, sem exigir branches individuais na interface de trabalho colaborativo.
-- Infra: Docker/contêineres, CI/CD, gestão de segredos, backup diário e restore testado. Hospedagem dependerá de custo, compliance, desempenho de disco e rede.
-- Métricas e logs: OpenTelemetry e ferramentas de coleta/visualização compatíveis; reduzir dados sensíveis.
+- Web: TypeScript with React/Next.js or equivalent, mobile-first; PWA first.
+- Backend: TypeScript/Node (modular framework) **or** Python/FastAPI, according
+  to proven team expertise. Do not mix stacks without a clear advantage.
+- Persistence: PostgreSQL with migrations and transactions.
+- Events: authenticated WebSocket + durable channel/queues for important
+  notifications; SSE may serve read-only consumers.
+- Jobs and sandbox: isolated ephemeral workers/containers for tests, builds, and previews.
+- Source/versioning: Git as the snapshot/release trail, without requiring
+  individual branches in the collaborative work interface.
+- Infrastructure: Docker/containers, CI/CD, secret management, daily backup,
+  and tested restore. Hosting depends on cost, compliance, disk/network performance.
+- Metrics and logs: OpenTelemetry and compatible collection/visualization tools;
+  reduce sensitive data.
 
-## Limite entre coordenação e integração de agentes
+## Boundary between coordination and agent integration
 
-`task-service` decide atribuição. `claim-service` decide posse de área. `workspace-gateway` é o **único escritor** do workspace canônico e atribui revisões ordenadas. `agent-adapters` não escrevem diretamente no repositório central. `event-hub` informa atividades depois da confirmação do gateway. `review-service` registra decisões; `release-service` só promove revisão com requisitos atendidos.
+`task-service` decides assignment. `claim-service` decides area ownership.
+`workspace-gateway` is the **only writer** to the canonical workspace and assigns
+ordered revisions. `agent-adapters` do not write directly to the central
+repository. `event-hub` reports activity after gateway confirmation.
+`review-service` records decisions; `release-service` promotes a revision only
+when requirements are met.
 
-## Garantias de consistência
+## Consistency guarantees
 
-- Para cada projeto, serializar **aplicação de patches** ou usar protocolo transacional equivalente. Pode aceitar muitos agentes concorrentes, mas o passo de confirmar atualização canônica possui ordem definida.
-- Reserva/validação do patch/snapshot e atribuição de revisão acontecem na mesma região de consistência e com transações ou mecanismo de compare-and-swap.
-- `patch.apply` com idempotency key e revisão-base. Repetir a mesma solicitação após timeout não reaplica mudança.
-- Assinar ou hashear conteúdo e manter cadeia verificável de revisões; backups independentes do servidor vivo.
-- Reconexão obtém eventos a partir de `last_seq`; caso log expirado, reidrata snapshot atual e retoma dali.
-- Eventos podem ser entregues pelo menos uma vez: consumidores deduplicam por `event_id` e ordenam por `project_seq`.
+- For each project, serialize **patch application** or use an equivalent
+  transactional protocol. Many agents may be concurrent, but confirming the
+  canonical update has a defined order.
+- Reservation, patch/snapshot validation, and revision assignment happen in the
+  same consistency region and use transactions or compare-and-swap.
+- `patch.apply` has an idempotency key and base revision. Repeating the same
+  request after a timeout does not reapply the change.
+- Sign or hash content and keep a verifiable revision chain; backups are
+  independent of the live server.
+- Reconnection obtains events from `last_seq`; if the log expired, rehydrate the
+  current snapshot and resume from there.
+- Events may be delivered at least once: consumers deduplicate by `event_id` and
+  order by `project_seq`.
 
-## Infra e ambientes
+## Infrastructure and environments
 
-1. **Local de desenvolvimento:** dados artificiais e teste da equipe.
-2. **Staging/preview:** revisão congelada para testar uma candidata a release; segredos e dados segregados.
-3. **Produção:** snapshot aprovado, monitorado e reversível.
+1. **Development local:** artificial data and team tests.
+2. **Staging/preview:** frozen revision for testing a release candidate; secrets and data segregated.
+3. **Production:** approved, monitored, reversible snapshot.
 
-Não montar a produção do cliente diretamente sobre o volume de arquivos que as IAs editam.
+Do not build the client's production directly on the file volume that AIs edit.
 
-## Isolamento por cliente
+## Client isolation
 
-Projetos têm `organization_id` e `project_id`; exigir filtro em consultas e validação de autorização em todas as APIs. Dados de clientes jamais entram em busca global de outro projeto. Repositórios e buckets segregados logicamente ou fisicamente segundo risco; bancos mais isolados conforme contratos futuros.
+Projects have `organization_id` and `project_id`; require a filter in queries and
+authorization validation in every API. Client data must never enter another
+project's global search. Repositories and buckets are logically or physically
+segregated according to risk; databases become more isolated under future contracts.
 
-## Arquitetura evolutiva
+## Evolutionary architecture
 
-- Etapa inicial: processo API central + banco + websocket + gateway único; fácil inspecionar e depurar.
-- Com volume: separar filas/workers, depois serviço de workspace, se gargalo medido.
-- Com necessidade enterprise: rastreabilidade avançada, retenção contratual, gerenciamento de chaves, políticas por organização e isolamento reforçado.
+- Initial stage: central API process + database + websocket + single gateway;
+  easy to inspect and debug.
+- With volume: separate queues/workers, then workspace service if a measured bottleneck appears.
+- With enterprise needs: advanced traceability, contractual retention, key
+  management, organization policies, and stronger isolation.
 
-## Diagrama das decisões do documentador
+## Documenter's decision diagram
 
-A árvore proposta pelo documentador é **insumo técnico**. Líder técnico revisa limites de serviço e segurança; frontend e backend concordam contratos; QA define testes. A central transforma os módulos e contratos acordados em áreas de posse configuradas, com mapeamento de pastas/símbolos.
+The tree proposed by the documenter is **technical input**. The technical lead
+reviews service and security boundaries; frontend and backend agree on contracts;
+QA defines tests. Central turns the agreed modules and contracts into configured
+ownership areas with folder/symbol mappings.

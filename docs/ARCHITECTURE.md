@@ -1,10 +1,19 @@
-# Arquitetura da entrega local
+# Local delivery architecture
 
-## Escolha
+## Choice
 
-A primeira fase usa um monólito desktop WPF em .NET 8. A decisão é intencional: a documentação recomenda validar primeiro o núcleo de coordenação e não começar por microsserviços ou por um dashboard decorativo. A aplicação mantém separação entre shell, views, view model, modelos de domínio e `CentralStore`.
+The first phase uses a WPF desktop monolith on .NET 8. This is intentional:
+the documentation recommends validating the coordination core first instead of
+starting with microservices or a decorative dashboard. The application keeps a
+separation between the shell, views, view model, domain models, and
+`CentralStore`.
 
-O incremento operacional adiciona `Central.Core` com reservas, leases e adaptadores de conectividade. A colaboração entre computadores usa três planos separados: Syncthing transporta bytes; Supabase Auth/PostgreSQL/Realtime autoriza, registra estado e entrega notificações; PythonAnywhere fornece apenas saúde/capacidades. O coordenador em memória e os fixtures do catálogo não são autoridade compartilhada.
+The operational increment adds `Central.Core` with reservations, leases, and
+connectivity adapters. Collaboration between computers uses three separate
+planes: Syncthing transports bytes; Supabase Auth/PostgreSQL/Realtime authorizes,
+records state, and delivers notifications; PythonAnywhere provides health and
+capabilities only. The in-memory coordinator and catalog fixtures are not shared
+authority.
 
 ```text
 MainWindow
@@ -24,19 +33,25 @@ CentralViewModel
 CentralSyncRuntime
   ├── SyncthingRuntime + SyncthingClient (bytes, peers, pause, status)
   ├── SupabaseRestClient (Auth, RPCs, snapshot/replay, heartbeat)
-  └── SupabaseRealtimeClient (canal privado, presença, reconnect, replay)
+  └── SupabaseRealtimeClient (private channel, presence, reconnect, replay)
 ```
 
-## Regras exercitadas
+## Exercised rules
 
-- Projeto selecionado por registro do catálogo, sem usar nome de pasta como chave.
-- Reserva de tarefa com conflito semântico por área lógica.
-- Patch aceito somente para projeto aberto e, quando informado, para a revisão-base atual.
-- Revisão do workspace monotônica e recuperável.
-- Fechamento incrementa a geração/fencing local e bloqueia escrita, reserva, entrega e integração.
-- Candidato de entrega exige evidências, não é deploy e só integra depois da aprovação.
-- Eventos de atividade exibem fatos observáveis e não raciocínio privado ou telemetria invasiva.
+- The project is selected by a catalog record; a folder name is never used as the key.
+- A task reservation has semantic conflict detection by logical area.
+- A patch is accepted only for an open project and, when provided, the current base revision.
+- Workspace revisions are monotonic and recoverable.
+- Closing increments the local generation/fencing value and blocks writes, reservations, deliveries, and integration.
+- A delivery candidate requires evidence, is not a deployment, and integrates only after approval.
+- Activity events show observable facts, not private reasoning or invasive telemetry.
 
-## Estado atual e limites
+## Current state and limits
 
-`CentralStore` continua como fonte das telas visuais e não foi convertido silenciosamente em um catálogo remoto. A vertical slice de sincronização é explícita e separada: exige sessão Supabase, organização/projeto válidos e uma pasta dedicada. A migração `202611060002_sync_stream.sql` já foi aplicada ao projeto dedicado e adiciona RPCs, RLS, publicação Realtime e filtro de peers por projeto. Ainda faltam a prova física observada em dois PCs, convites/membros na UI e a integração de Git/CI/deploy.
+`CentralStore` remains the source for the visual screens and has not been
+silently turned into a remote catalog. The synchronization vertical slice is
+explicit and separate: it requires a Supabase session, a valid organization and
+project, and a dedicated folder. Migration `202611060002_sync_stream.sql` has
+already been applied to the dedicated project and adds RPCs, RLS, Realtime
+publication, and project-scoped peer filtering. An observed two-PC proof,
+invites/members in the UI, and Git/CI/deploy integration are still pending.

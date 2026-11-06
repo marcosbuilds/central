@@ -1,68 +1,67 @@
-# Contrato de integração — Peace e Central
+# Integration contract — Peace and Central
 
-Status: contrato documentado; implementação da troca de código ainda pendente
+Status: contract documented; code-exchange implementation is still pending
 
-## Objetivo
+## Objective
 
-O bot Discord da Peace será a porta de entrada da Central. Somente um membro
-que possua o cargo técnico de acesso `Dev` poderá iniciar a liberação. O
-usuário informa seu ID Peace, recebe um código de autenticação em DM e usa o
-código para abrir uma sessão curta na Central.
+The Peace Discord bot will be Central's entry point. Only a member with the
+technical access role `Dev` may initiate release. The user provides their Peace
+ID, receives an authentication code by DM, and uses the code to open a short
+Central session.
 
-Este fluxo não deve reutilizar o token do bot, a senha do Discord ou o banco
-SQLite como credencial para o desktop.
+This flow must not reuse the bot token, Discord password, or SQLite database as
+a desktop credential.
 
-## Fluxo normativo
+## Normative flow
 
-1. O membro solicita acesso pelo comando/painel oficial do bot. O nome exato do
-   comando continua uma decisão de UX e não deve ser inventado em código ainda.
-2. O bot resolve o ID imutável do membro no Discord e verifica o ID do cargo
-   `Dev` configurado em ambiente. Nome visual de cargo não é autorização.
-3. O bot solicita o ID Peace e valida o vínculo no banco local conforme as
-   regras de reserva/retorno já documentadas pela Peace.
-4. Um serviço de autenticação cria um desafio aleatório, armazena somente o
-   hash, associa-o ao Discord user ID, ao ID Peace, ao cliente e à finalidade
-   `central-login`, define expiração curta e limita tentativas.
-5. O bot envia o código em DM. O valor não aparece em logs, snapshots, tickets,
-   respostas públicas ou prompts da Iris.
-6. A Central envia o código por HTTPS ao serviço de autenticação. O serviço
-   verifica uso único, expiração, tentativas, finalidade e associação. Em caso
-   válido, emite uma sessão curta com escopo de projeto; em caso inválido,
-   nega sem revelar se o ID ou o código foi o problema.
-7. A Central usa a sessão curta para autenticar Supabase e registrar o Device ID
-   do Syncthing. Revogação de cargo ou sessão invalida novas conexões.
+1. The member requests access through the bot's official command/panel. The exact
+   command name remains a UX decision and must not be invented in code yet.
+2. The bot resolves the member's immutable Discord ID and checks the configured
+   `Dev` role ID. A visual role name is not authorization.
+3. The bot asks for the Peace ID and validates the database relationship under
+   the Peace reservation/return rules already documented.
+4. An authentication service creates a random challenge, stores only its hash,
+   associates it with the Discord user ID, Peace ID, client, and
+   `central-login` purpose, sets a short expiration, and limits attempts.
+5. The bot sends the code by DM. The value does not appear in logs, snapshots,
+   tickets, public replies, or Iris prompts.
+6. Central sends the code over HTTPS to the authentication service. The service
+   checks one-time use, expiration, attempts, purpose, and association. If
+   valid, it issues a short session with project scope; if invalid, it denies
+   without revealing whether the ID or code was the problem.
+7. Central uses the short session to authenticate with Supabase and register the
+   Syncthing Device ID. Role or session revocation invalidates new connections.
 
-## Limites e decisões abertas
+## Limits and open decisions
 
-- A implementação precisa escolher entre Supabase Edge Function e um serviço
-  dedicado para o endpoint de troca; o gateway PythonAnywhere atual é
-  health-only e não é autorizado a assumir essa função.
-- A forma final do comando/painel, o tempo de expiração e o limite de tentativas
-  devem ser aprovados antes do código.
-- O Supabase deve receber uma identidade verificável e não confiar em um
-  `peace_id` digitado pelo cliente sem prova emitida pelo bot.
-- O fluxo deve suportar revogação, auditoria mínima e recuperação de DM
-  bloqueada sem exibir o código em canal público.
+- The implementation must choose between a Supabase Edge Function and a
+  dedicated service for the exchange endpoint; the current PythonAnywhere
+  gateway is health-only and is not authorized to assume this role.
+- The final command/panel form, expiration time, and attempt limit must be
+  approved before coding.
+- Supabase must receive a verifiable identity and must not trust a client-entered
+  `peace_id` without proof issued by the bot.
+- The flow must support revocation, minimal audit, and recovery from blocked DMs
+  without showing the code in a public channel.
 
-## Invariantes de segurança
+## Security invariants
 
-- O cargo `Dev` é verificado no servidor Discord pela identificação estável do
-  cargo e do membro.
-- O desktop nunca recebe o token do bot, a service-role key ou o banco SQLite.
-- O código é uma credencial transitória, de uso único, com hash em repouso,
-  expiração, rate limit e invalidação após sucesso.
-- IP, nome da máquina e nome visual do Discord não são identidade suficiente.
-- Falha parcial não concede acesso: DM enviada sem desafio persistido, desafio
-  expirado, sessão revogada ou erro de Supabase resultam em acesso negado.
+- The `Dev` role is checked on the Discord server using the stable role and member IDs.
+- The desktop never receives the bot token, service-role key, or SQLite database.
+- The code is a transient, one-time credential with an at-rest hash, expiration,
+  rate limit, and invalidation after success.
+- IP address, machine name, and Discord display name are not sufficient identity.
+- Partial failure never grants access: a DM sent without a persisted challenge,
+  expired challenge, revoked session, or Supabase error results in denial.
 
-## Verificação prevista
+## Planned verification
 
-- membro sem `Dev` é negado;
-- ID Peace não pertencente ao membro é negado;
-- código expirado, repetido ou tentado acima do limite é negado;
-- código válido gera uma única sessão curta e não pode ser reutilizado;
-- revogar o cargo impede novo login;
-- nenhum segredo aparece em logs, banco local, snapshot ou artefato do desktop.
+- a member without `Dev` is denied;
+- a Peace ID that does not belong to the member is denied;
+- an expired or repeated code, or one attempted above the limit, is denied;
+- a valid code creates one short session and cannot be reused;
+- revoking the role prevents a new login;
+- no secret appears in logs, the local database, a snapshot, or a desktop artifact.
 
-Até esses testes existirem, a integração deve ser tratada como planejamento e
-não como capacidade disponível na Central.
+Until these tests exist, the integration must be treated as planning, not as an
+available Central capability.

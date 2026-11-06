@@ -1,56 +1,93 @@
-# Decisão de implementação — sincronização real e streaming 2026-11-06
+# Implementation decision — real synchronization and streaming 2026-11-06
 
-Status: aceita para a primeira vertical slice operacional  
-Responsável: usuário da Central / Central Colaborativa  
-Escopo: pasta de teste dedicada, coordenação Supabase, eventos Realtime, integração local Syncthing e reconexão
+Status: accepted for the first operational vertical slice
+Owner: Central user / Central Colaborativa
+Scope: dedicated test folder, Supabase coordination, Realtime events, local
+Syncthing integration, and reconnection
 
-## Resultado observável desejado
+## Desired observable result
 
-Dois computadores podem participar do mesmo projeto autenticado. Cada instalação registra um dispositivo, mantém uma pasta local dedicada e observa o estado resumido da sincronização. O conteúdo dos arquivos viaja por Syncthing; o Supabase guarda identidade, autorização, estado, locks e eventos. A Central recebe avisos em tempo real, mas relê eventos persistentes depois de uma queda.
+Two computers can participate in the same authenticated project. Each
+installation registers a device, keeps a dedicated local folder, and observes
+the summarized synchronization state. File contents travel through Syncthing;
+Supabase stores identity, authorization, state, locks, and events. Central
+receives real-time notices but rereads persistent events after a disconnect.
 
-## Invariantes
+## Invariants
 
-- `project_id`, usuário, dispositivo e sessão são identidades explícitas; não há pareamento por IP ou por nome de máquina.
-- A pasta compartilhada é uma raiz dedicada fora do código-fonte e recebe regras de ignore para segredos e artefatos.
-- O PostgreSQL é a fonte autoritativa de eventos e estado; Realtime é entrega de baixa latência e pode perder mensagens.
-- O cursor de eventos é monotônico. Duplicatas e sequências antigas não alteram a UI; lacunas provocam recuperação por consulta persistente.
-- A Central não guarda service-role key, senha do banco ou credenciais de provedor.
-- Conflito de arquivo não é sucesso: arquivos `sync-conflict` e estados de erro continuam visíveis.
-- Pausar a integração não apaga arquivos, não despareia dispositivos e não propaga uma exclusão de rollback.
+- `project_id`, user, device, and session are explicit identities; there is no
+  pairing by IP address or machine name.
+- The shared folder is a dedicated root outside the source code and receives
+  ignore rules for secrets and artifacts.
+- PostgreSQL is the authoritative source for events and state; Realtime is a
+  low-latency delivery mechanism and may lose messages.
+- The event cursor is monotonic. Duplicates and old sequences do not change the
+  UI; gaps trigger recovery through a persistent query.
+- Central does not store a service-role key, database password, or provider credentials.
+- A file conflict is not success: `sync-conflict` files and error states remain visible.
+- Pausing integration does not delete files, unpair devices, or propagate a rollback deletion.
 
-## Evidência e revisões
+## Evidence and reviews
 
-- E-001: `CentralStore` e a UI atual são locais; `app/desktop/Central.Desktop/Services/CentralStore.cs` e `docs/ARCHITECTURE.md`.
-- E-002: o gateway publicado oferece somente `/healthz` e capacidades; `ops/gateway/central_gateway.py`.
-- E-003: a migração inicial já contém `devices`, `sync_states` e `project_events`; `db/migrations/202611050001_coordination.sql`.
-- E-004: Lorentz (`01a1ae5c-a9a1-7742-815e-406db1c711e3`) e Newton (`01a1ae5c-aae1-7a42-8a8d-6b61431069bd`) fizeram passagens adversariais somente leitura sobre o worktree atual; os relatórios são revisão separada/role simulation e não substituem teste de integração entre dois PCs.
-- E-005: a documentação oficial do Syncthing confirma a REST API de configuração, status, eventos e consulta de reinício; `https://docs.syncthing.net/rest/config` e `https://docs.syncthing.net/dev/rest.html`.
-- E-006: a documentação do Supabase Realtime exige que o banco continue sendo relido após reconexão; o canal não é fonte autoritativa.
-- E-007: a migração 202611060002 foi executada no SQL Editor do projeto `ydouynbssldpjhlnawtm` e a consulta posterior confirmou RPCs, policy privada e publicação de `sync_states`.
+- E-001: `CentralStore` and the current UI are local;
+  `app/desktop/Central.Desktop/Services/CentralStore.cs` and `docs/ARCHITECTURE.md`.
+- E-002: the published gateway exposes only `/healthz` and capabilities;
+  `ops/gateway/central_gateway.py`.
+- E-003: the initial migration already contains `devices`, `sync_states`, and
+  `project_events`; `db/migrations/202611050001_coordination.sql`.
+- E-004: Lorentz (`01a1ae5c-a9a1-7742-815e-406db1c711e3`) and Newton
+  (`01a1ae5c-aae1-7a42-8a8d-6b61431069bd`) performed read-only adversarial passes
+  over the current worktree; their reports are separate review/role simulation
+  and do not replace two-PC integration testing.
+- E-005: official Syncthing documentation confirms the configuration REST API,
+  status, events, and restart query; `https://docs.syncthing.net/rest/config` and
+  `https://docs.syncthing.net/dev/rest.html`.
+- E-006: Supabase Realtime documentation requires rereading the database after
+  reconnection; the channel is not authoritative.
+- E-007: migration 202611060002 was executed in the SQL Editor of project
+  `ydouynbssldpjhlnawtm`, and the follow-up query confirmed RPCs, the private
+  policy, and the `sync_states` publication.
 
-## Decisão
+## Decision
 
-1. Syncthing é o plano de dados. A Central inicializa/observa uma instância local somente quando o executável empacotado estiver disponível e nunca compartilha o repositório inteiro.
-2. Supabase é o plano de controle. A migração aditiva já aplicada adiciona registro idempotente de dispositivo, heartbeat, atualização autenticada de `sync_states`, eventos idempotentes, uma pasta de projeto, filtro de dispositivos por projeto e autorização do canal privado.
-3. O desktop usa REST para snapshot/replay e WebSocket Realtime para notificação. A reconexão sempre busca `project_events` depois de `last_seq`.
-4. O gateway PythonAnywhere permanece health-only nesta fase. Não há SSE contínuo no plano gratuito.
-5. O modo de sincronização fica explícito na configuração. A primeira pasta de teste pode ser `send-only`/`receive-only`; `send-receive` só deve ser usado depois de a cópia e o hash do arquivo de teste estarem comprovados.
+1. Syncthing is the data plane. Central initializes/observes a local instance
+   only when the bundled executable is available and never shares the entire repository.
+2. Supabase is the control plane. The additive migration already applied adds
+   idempotent device registration, heartbeat, authenticated `sync_states`
+   updates, idempotent events, a project folder, project-scoped device filtering,
+   and private-channel authorization.
+3. The desktop uses REST for snapshot/replay and Realtime WebSocket for
+   notification. Reconnection always fetches `project_events` after `last_seq`.
+4. The PythonAnywhere gateway remains health-only in this phase. There is no
+   continuous SSE on the free plan.
+5. Synchronization mode is explicit in configuration. The first test folder may
+   be `send-only`/`receive-only`; `send-receive` should be used only after the
+   test file's copy and hash have been proven.
 
-## Alternativas rejeitadas ou adiadas
+## Rejected or deferred alternatives
 
-- Supabase Storage como pasta local: não fornece semântica P2P, edição offline e resolução de conflitos adequada.
-- SSE contínuo no PythonAnywhere gratuito: um worker e timeout de web request não são compatíveis com uma conexão durável.
-- Copiar arquivos pelo gateway: aumentaria o risco de perda, transformaria o gateway em armazenamento e não resolveria edição offline.
-- Declarar a presença do segundo PC por `/healthz`: saúde do servidor não prova identidade, pareamento ou igualdade de hashes.
+- Supabase Storage as a local folder: it does not provide appropriate P2P,
+  offline editing, or conflict-resolution semantics.
+- Continuous SSE on free PythonAnywhere: a worker and web-request timeout are
+  incompatible with a durable connection.
+- Copying files through the gateway: this would increase loss risk, turn the
+  gateway into storage, and not solve offline editing.
+- Declaring the second PC present through `/healthz`: server health does not
+  prove identity, pairing, or equal hashes.
 
-## Verificação mínima
+## Minimum verification
 
-- Testes determinísticos de cursor, deduplicação, contrato JSON, RPC e parser de status.
-- Build e suíte .NET completos.
-- Migração aplicada no projeto dedicado e validada com RLS, RPCs e Realtime.
-- Syncthing local em pasta descartável: arquivo A→B, hash igual, alteração B→A, pausa/reconexão e conflito controlado.
-- Prova física: dois Device IDs, dois heartbeats, arquivo/nonce e SHA-256 idêntico nos dois PCs, estado `insync` nos dois lados.
+- deterministic tests for cursor, deduplication, JSON contract, RPC, and status parser;
+- complete .NET build and suite;
+- migration applied in the dedicated project and validated with RLS, RPCs, and Realtime;
+- local Syncthing in a disposable folder: file A→B, equal hash, change B→A,
+  pause/reconnect, and controlled conflict;
+- physical proof: two Device IDs, two heartbeats, identical file/nonce and
+  SHA-256 on both PCs, and `insync` state on both sides.
 
-## Risco residual
+## Residual risk
 
-O plano Supabase gratuito não é backup; Syncthing não substitui backup. Exclusões propagadas e conflitos permanecem operações que exigem teste em pasta descartável. A prova de dois PCs só será declarada quando as evidências acima forem observadas nos dois equipamentos.
+The free Supabase plan is not a backup; Syncthing does not replace a backup.
+Propagated deletions and conflicts remain operations that require testing in a
+disposable folder. The two-PC proof will be declared only after the evidence
+above is observed on both devices.

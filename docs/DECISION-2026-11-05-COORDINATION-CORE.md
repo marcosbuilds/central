@@ -1,75 +1,91 @@
-# Decisão de implementação — núcleo de coordenação 2026-11-05
+# Implementation decision — coordination core 2026-11-05
 
-Status: implementada localmente; integração Supabase pendente de projeto dedicado
-Responsável: Central Colaborativa
-Escopo: reservas de recursos, leases, fencing e primeira migração de coordenação
+Status: implemented locally; Supabase integration pending a dedicated project
+Owner: Central Colaborativa
+Scope: resource reservations, leases, fencing, and the first coordination migration
 
-## Contrato da primeira vertical slice
+## First vertical-slice contract
 
-O primeiro incremento verificável da missão é proteger o recurso antes da escrita:
+The first verifiable increment of the mission is to protect the resource before
+writing:
 
-- caminhos lógicos são relativos ao projeto, normalizados para o comportamento case-insensitive do Windows;
-- uma reserva de projeto conflita com qualquer descendente; uma reserva de diretório conflita com arquivos descendentes e vice-versa;
-- a reserva identifica usuário, dispositivo, agente, sessão, tarefa e projeto;
-- leases têm heartbeat, expiração e fencing token monotônico;
-- uma sessão pode repetir a aquisição do mesmo recurso sem criar duas reservas;
-- somente o proprietário pode renovar ou liberar;
-- conflito, expiração e liberação preservam o registro para auditoria;
-- o coordenador em memória só é um adaptador determinístico para testes/offline e não é autoridade entre computadores.
+- logical paths are project-relative and normalized for Windows case-insensitive behavior;
+- a project reservation conflicts with any descendant; a directory reservation
+  conflicts with descendant files and vice versa;
+- a reservation identifies the user, device, agent, session, task, and project;
+- leases have heartbeat, expiration, and a monotonic fencing token;
+- a session may repeat acquisition of the same resource without creating two reservations;
+- only the owner may renew or release;
+- conflict, expiration, and release preserve the record for audit;
+- the in-memory coordinator is only a deterministic adapter for tests/offline and
+  is not authority across computers.
 
-## Evidências
+## Evidence
 
-| ID | Claim | Fonte | Classe | Resultado |
+| ID | Claim | Source | Class | Result |
 | --- | --- | --- | --- | --- |
-| E-001 | A base atual é WPF/.NET 8 e `CentralStore` está em memória | `README.md`, `docs/ARCHITECTURE.md`, `app/desktop/Central.Desktop/Services/CentralStore.cs` | documentação + código | verificado |
-| E-002 | A arquitetura existente já exige claims com TTL, revisão-base, auditoria e substituição por gateway | `docs/ARCHITECTURE.md`, `docs/SERVER-PLAN.md`, `docs/plan/07-collaboration.md` | contrato do projeto | verificado |
-| E-003 | Reservas devem impedir sobreposição semântica e não podem depender de variável local | briefing da missão, seção 6 | requisito do usuário | adotado |
-| E-004 | A primeira implementação precisa funcionar sem alegar integração externa inexistente | `README.md`, `docs/DESIGN-CONTRACT.md` | contrato do projeto | verificado |
-| E-005 | Build Release atual passa sem avisos/erros | comando `dotnet build Central.sln -c Release --no-restore` em 2026-11-05 | observação executável | pass |
-| E-006 | Suíte existente tinha 12 testes aprovados antes do incremento | comando `dotnet test Central.sln -c Release --no-restore` em 2026-11-05 | observação executável | pass |
-| E-007 | PostgreSQL aceita a migração completa, incluindo DDL, funções, RLS, grants e Realtime | PostgreSQL 16 descartável no Docker; `Get-Content db/migrations/202611050001_coordination.sql | docker exec -i ... psql -v ON_ERROR_STOP=1` em 2026-11-05 | observação de integração local | pass |
-| E-008 | Dois membros veem o projeto, uma reserva pai bloqueia a filha, renewal/release funcionam e usuário externo recebe `42501` | fixtures efêmeras + RPCs `create_organization`, `create_project`, `acquire_resource_lock`, `renew_resource_lock`, `release_resource_lock` em PostgreSQL 16 | observação de segurança/concor­rência local | pass |
+| E-001 | The current base is WPF/.NET 8 and `CentralStore` is in memory | `README.md`, `docs/ARCHITECTURE.md`, `app/desktop/Central.Desktop/Services/CentralStore.cs` | documentation + code | verified |
+| E-002 | The existing architecture already requires TTL claims, base revision, audit, and replacement by a gateway | `docs/ARCHITECTURE.md`, `docs/SERVER-PLAN.md`, `docs/plan/07-collaboration.md` | project contract | verified |
+| E-003 | Reservations must prevent semantic overlap and cannot depend on a local variable | mission brief, section 6 | user requirement | adopted |
+| E-004 | The first implementation must work without claiming nonexistent external integration | `README.md`, `docs/DESIGN-CONTRACT.md` | project contract | verified |
+| E-005 | The current Release build passes without warnings/errors | `dotnet build Central.sln -c Release --no-restore` on 2026-11-05 | executable observation | pass |
+| E-006 | The existing suite had 12 passing tests before the increment | `dotnet test Central.sln -c Release --no-restore` on 2026-11-05 | executable observation | pass |
+| E-007 | PostgreSQL accepts the complete migration, including DDL, functions, RLS, grants, and Realtime | disposable PostgreSQL 16 Docker instance; `Get-Content db/migrations/202611050001_coordination.sql | docker exec -i ... psql -v ON_ERROR_STOP=1` on 2026-11-05 | local integration observation | pass |
+| E-008 | Two members see the project, a parent reservation blocks its child, renewal/release work, and an external user receives `42501` | ephemeral fixtures + `create_organization`, `create_project`, `acquire_resource_lock`, `renew_resource_lock`, and `release_resource_lock` RPCs in PostgreSQL 16 | local security/concurrency observation | pass |
 
-## Decisão
+## Decision
 
-Manter .NET 8 como stack da primeira integração porque a base WPF, o SDK empacotado e o instalador já existem neste ambiente. Adicionar um `Central.Core` sem dependências externas para expressar as invariantes do domínio e uma migração Supabase que será a fonte autoritativa multiusuário.
+Keep .NET 8 as the first integration stack because the WPF base, packaged SDK,
+and installer already exist in this environment. Add a dependency-free
+`Central.Core` to express domain invariants and a Supabase migration that will
+become multi-user authoritative source.
 
-O caminho compartilhado usa RPCs PostgreSQL com `pg_advisory_xact_lock` por projeto. A checagem de sobreposição e a inserção acontecem na mesma transação. RLS restringe leitura ao projeto, e as RPCs validam `auth.uid()`, participação, proprietário da reserva, sessão e prazo.
+The shared path uses PostgreSQL RPCs with `pg_advisory_xact_lock` per project.
+Overlap checking and insertion happen in the same transaction. RLS restricts
+reads to the project, and RPCs validate `auth.uid()`, membership, reservation
+owner, session, and deadline.
 
-## Autoridade externa adotada
+## Adopted external authority
 
-- [Supabase Database Functions](https://supabase.com/docs/guides/database/functions): RPCs são a fronteira para operações transacionais; funções `security definer` têm `search_path` vazio, referências qualificadas e execução restrita.
-- [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security): grants e policies são necessários em conjunto; a migração habilita RLS em todas as tabelas expostas e revoga o papel `anon`.
-- [Supabase Realtime](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes): o estado persistente não depende de uma notificação; a próxima etapa usará Broadcast/Presence para sinais rápidos e manterá PostgreSQL como fonte autoritativa.
-- [Syncthing Config REST API](https://docs.syncthing.net/rest/config): a futura automação deve ler e atualizar dispositivos/pastas pelas APIs oficiais e acompanhar `restart-required`, sem editar configuração de outro computador às cegas.
+- [Supabase Database Functions](https://supabase.com/docs/guides/database/functions): RPCs are the boundary for transactional operations; `security definer` functions use an empty `search_path`, qualified references, and restricted execution.
+- [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security): grants and policies are required together; the migration enables RLS on all exposed tables and revokes the `anon` role.
+- [Supabase Realtime](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes): persistent state does not depend on a notification; the next step will use Broadcast/Presence for fast signals while PostgreSQL remains authoritative.
+- [Syncthing Config REST API](https://docs.syncthing.net/rest/config): future automation must read and update devices/folders through official APIs and track `restart-required`, without blindly editing another computer's configuration.
 
-## Riscos selecionados
+## Selected risks
 
-- concorrência/idempotência: teste paralelo e aquisição repetida;
-- dados/esquema: migração nova, sem alteração no banco existente;
-- autorização: RLS e validações negativas ainda precisam de execução em projeto dedicado;
-- integração externa: Supabase/Realtimes ainda não foram executados;
-- compatibilidade: desktop atual continua com `CentralStore` local até existir cliente autenticado.
+- concurrency/idempotency: parallel test and repeated acquisition;
+- data/schema: new migration with no change to the existing database;
+- authorization: RLS and negative validations still need execution in a dedicated project;
+- external integration: Supabase/Realtime have not yet been executed;
+- compatibility: the current desktop continues to use local `CentralStore` until an authenticated client exists.
 
-## Superfícies autorizadas nesta rodada
+## Surfaces authorized in this round
 
 - `app/core/**`;
-- `tests/app/**` apenas para referência e testes do novo núcleo;
+- `tests/app/**` only for reference and tests of the new core;
 - `Central.sln`;
 - `db/migrations/202611050001_coordination.sql`;
-- este registro e a documentação de arquitetura/README.
+- this record and architecture/README documentation.
 
-Não foram alterados projetos Supabase, dados existentes, credenciais, PythonAnywhere ou o instalador publicado.
+Supabase projects, existing data, credentials, PythonAnywhere, and the published
+installer were not changed.
 
-## Verificação prevista
+## Planned verification
 
-1. Build Release da solução.
-2. Testes unitários e concorrentes do núcleo.
-3. Validação SQL em um projeto Supabase dedicado, incluindo RLS entre dois usuários e RPCs em corrida; a sintaxe e o fluxo equivalente já foram validados em PostgreSQL 16 descartável.
-4. Só depois: cliente autenticado do desktop, sincronização Syncthing e integração MCP.
+1. Release solution build.
+2. Unit and concurrent core tests.
+3. SQL validation in a dedicated Supabase project, including RLS between two
+   users and RPCs under contention; equivalent syntax and flow have already
+   been validated in disposable PostgreSQL 16.
+4. Only afterward: authenticated desktop client, Syncthing synchronization, and
+   MCP integration.
 
-## Limitações ainda abertas
+## Open limitations
 
-- A migração ainda não foi aplicada; o Supabase aberto no navegador contém uma organização existente com um projeto que não será reutilizado.
-- Não há ainda autenticação desktop, cliente REST/RPC, Syncthing configurado, Git worktree ou adapters Codex/Claude.
-- O teste local prova a invariável do algoritmo, não prova concorrência entre dois computadores nem a execução de PostgreSQL.
+- The migration has not yet been applied; Supabase open in the browser contains
+  an existing organization with a project that will not be reused.
+- There is no desktop authentication, REST/RPC client, configured Syncthing, Git
+  worktree, or Codex/Claude adapters yet.
+- The local test proves the algorithm invariant, not two-computer concurrency or
+  PostgreSQL execution.
