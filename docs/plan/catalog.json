@@ -1,0 +1,53 @@
+{
+  "schema": "central.projects.example.v1",
+  "warning": "Exemplo ilustrativo, sem endpoints reais",
+  "projects": [
+    {
+      "id": "proj-seloryn-exemplo",
+      "name": "Seloryn",
+      "aliases": [
+        "seloryn",
+        "linguagem Seloryn"
+      ],
+      "status": "ABERTO",
+      "shared_revision": "rev-127",
+      "generation": 1,
+      "modules": [
+        "compiler",
+        "runtime",
+        "cli"
+      ]
+    },
+    {
+      "id": "proj-vendas-exemplo",
+      "name": "Sistema de Vendas",
+      "aliases": [
+        "vendas",
+        "loja"
+      ],
+      "status": "ABERTO",
+      "shared_revision": "rev-24",
+      "generation": 2,
+      "modules": [
+        "frontend",
+        "api",
+        "payments"
+      ]
+    },
+    {
+      "id": "proj-interno-exemplo",
+      "name": "Projeto Interno",
+      "aliases": [
+        "central",
+        "plataforma interna"
+      ],
+      "status": "FECHADO",
+      "shared_revision": "rev-5",
+      "generation": 4,
+      "modules": [
+        "dashboard",
+        "auth"
+      ]
+    }
+  ]
+}

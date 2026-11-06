@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Atendimento Peace">
+  <rect width="1200" height="360" rx="32" fill="#101827"/>
+  <path d="M100 120c0-30 28-54 62-54h36c34 0 62 24 62 54v75c0 30-28 54-62 54h-22l-40 32 8-32h-18c-34 0-62-24-62-54z" fill="#5865f2"/>
+  <circle cx="145" cy="158" r="10" fill="#fff"/><circle cx="182" cy="158" r="10" fill="#fff"/>
+  <text x="330" y="205" fill="#fff" font-family="Arial,sans-serif" font-size="76" font-weight="700">ATENDIMENTO</text>
+</svg>

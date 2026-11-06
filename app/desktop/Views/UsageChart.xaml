@@ -1,0 +1,44 @@
+<UserControl x:Class="Central.Desktop.Views.UsageChart"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Central.Desktop"
+             MinHeight="180"
+             AutomationProperties.Name="Gráfico de uso técnico de IA"
+             AutomationProperties.HelpText="Séries de duração técnica, tokens e requests. Sem gateway conectado, cada série permanece N/D; nenhum zero é inferido.">
+    <Grid x:Name="ChartRoot" Background="Transparent" ClipToBounds="True">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <!-- The axes are reserved for the real gateway-backed state. Rendering
+             an empty scale here would make absence look like a measurement. -->
+        <local:AutomationStateGrid x:Name="AxisGrid" Visibility="Collapsed" Margin="48,8,18,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Opacity="0.7" />
+            <Border Grid.Row="1" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Opacity="0.7" />
+            <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Opacity="0.7" />
+            <Border Grid.Row="3" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Opacity="0.7" />
+            <Border Grid.Row="4" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Opacity="0.7" />
+            <TextBlock Text="horas observadas" Style="{StaticResource CaptionText}" FontSize="9" Foreground="{StaticResource SubtleTextBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-44,0,0,0" />
+            <TextBlock Text="N/D" Style="{StaticResource CaptionText}" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="-28,0,0,2" />
+            <TextBlock Text="N/D" Style="{StaticResource CaptionText}" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-28,0,0,0" />
+        </local:AutomationStateGrid>
+        <Border x:Name="EmptyStateBorder" Grid.Row="0" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Margin="0,12,0,12" ToolTip="Sem gateway conectado; pontos e tooltips serão habilitados quando houver dados observados.">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="Sem medição" FontFamily="{StaticResource SelorynFont}" FontSize="17" HorizontalAlignment="Center" />
+                <TextBlock x:Name="RangeMessage" Text="Fonte do gateway ausente · dados N/D" Style="{StaticResource MutedText}" FontSize="11" HorizontalAlignment="Center" Margin="0,5,0,0" />
+            </StackPanel>
+        </Border>
+        <local:AutomationStateGrid x:Name="RangeAxisLabels" Grid.Row="1" Visibility="Collapsed" Margin="48,0,18,0">
+            <TextBlock Text="início" Style="{StaticResource CaptionText}" FontSize="9" />
+            <TextBlock Text="período selecionado" Style="{StaticResource CaptionText}" FontSize="9" HorizontalAlignment="Center" />
+            <TextBlock Text="agora" Style="{StaticResource CaptionText}" FontSize="9" HorizontalAlignment="Right" />
+        </local:AutomationStateGrid>
+    </Grid>
+</UserControl>

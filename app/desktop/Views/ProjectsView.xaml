@@ -1,0 +1,118 @@
+<UserControl x:Class="Central.Desktop.Views.ProjectsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Central.Desktop"
+             MinWidth="0"
+             AutomationProperties.IsOffscreenBehavior="Onscreen">
+    <Grid Margin="30,26,30,34">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Projetos" Style="{StaticResource DisplayText}" />
+            <TextBlock Text="Seleção explícita de contexto · catálogo local" Style="{StaticResource SubtitleText}" Margin="0,7,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,20,0,14">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <TextBlock Text="BUSCAR" Style="{StaticResource CaptionText}" Margin="2,0,0,6" />
+            <Border x:Name="SearchShell" Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="9" Padding="10,2">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Style.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Path Data="M10,3 A7,7 0 1 0 10,17 A7,7 0 0 0 10,3 M15,15 L21,21" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform" Width="17" Height="17" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    <TextBox Grid.Column="1" x:Name="SearchBox" Style="{StaticResource TextBoxStyle}" Background="Transparent" BorderThickness="0" Padding="4,8" TextChanged="SearchBox_TextChanged" AutomationProperties.Name="Buscar por nome, identificador ou módulo" />
+                    <TextBlock Grid.Column="2" x:Name="ProjectCountText" Text="3 projetos no catálogo" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="12,0,4,0" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2">
+            <!-- The catalogue is a list, not a stack of cards. The invisible
+                 frame preserves a bounded scroll surface without adding a large
+                 empty rectangle when the fixture contains only a few projects. -->
+            <Border x:Name="ProjectListFrame" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" CornerRadius="0" Padding="0" VerticalAlignment="Top">
+                <ListView x:Name="ProjectList" ItemsSource="{Binding Store.Projects}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListView.ItemsPanel><ItemsPanelTemplate><StackPanel /></ItemsPanelTemplate></ListView.ItemsPanel>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderThickness" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,13">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="52" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="42" Height="42" CornerRadius="12" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top">
+                                    <Path Data="{Binding LogoPathData}" Stroke="{StaticResource AccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" Margin="9" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="14,0,18,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontFamily="{StaticResource SelorynFont}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Id}" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" FontSize="9" Margin="10,3,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Description}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <TextBlock Text="{Binding WorkspaceRevisionLabel}" Foreground="{StaticResource BlueBrush}" FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Text="  /  " Style="{StaticResource MutedText}" FontSize="11" />
+                                        <TextBlock Text="{Binding OpenTaskCount}" Style="{StaticResource MutedText}" FontSize="11" />
+                                        <TextBlock Text=" tarefas abertas" Style="{StaticResource MutedText}" FontSize="11" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Width="154">
+                                    <TextBlock Text="{Binding PriorityTierLabel}" Style="{StaticResource CaptionText}" Foreground="{StaticResource AmberBrush}" FontSize="9" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                                        <Ellipse Style="{StaticResource StatusDotStyle}" Margin="0,0,7,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding AccessLabel}" Style="{StaticResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                    <Button AutomationProperties.Name="{Binding OpenAccessibleLabel}" ToolTip="Abrir projeto" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Width="34" Height="34" Padding="9" Margin="-9,4,0,0" Click="OpenProject_Click">
+                                        <Path Data="M5,19 L19,5 M10,5 H19 V14" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+
+            <local:AutomationStateBorder x:Name="EmptyStateBorder"
+                    Style="{StaticResource CardBorder}"
+                    Visibility="Collapsed"
+                    AutomationProperties.IsOffscreenBehavior="Offscreen"
+                    Padding="28"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top">
+                <StackPanel>
+                    <TextBlock Text="Nenhum projeto encontrado" FontFamily="{StaticResource AppleDisplayFont}" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="O filtro não corresponde a um nome, identificador ou módulo do catálogo." Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    <Button Content="Limpar busca" AutomationProperties.Name="Limpar busca" Style="{StaticResource AccentButton}" HorizontalAlignment="Left" Margin="0,16,0,0" Click="ClearSearch_Click" />
+                </StackPanel>
+            </local:AutomationStateBorder>
+        </Grid>
+    </Grid>
+</UserControl>

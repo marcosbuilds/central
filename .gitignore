@@ -1,0 +1,50 @@
+# Build outputs and generated test artifacts
+**/bin/
+**/obj/
+artifacts/publish/
+artifacts/installer/*.exe
+artifacts/test-results/
+
+# Local runtime diagnostics
+*.log
+*.user
+*.suo
+.vs/
+
+# Local secrets and provider configuration
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+appsettings.Local.json
+secrets/
+
+# Peace local state, caches and generated Python files
+**/*.sqlite3
+**/data/runtime/*
+!**/data/runtime/.gitkeep
+**/data/snapshots/*
+!**/data/snapshots/.gitkeep
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.venv/
+**/*.egg-info/
+**/build/
+**/dist/
+
+# Local SDKs and generated delivery material
+artifacts/
+tools/
+shared-test/
+_source/
+apps/
+
+# OS/editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Painel de operações">
+  <rect width="1200" height="360" rx="32" fill="#101827"/>
+  <circle cx="180" cy="180" r="92" fill="#5865f2"/>
+  <circle cx="180" cy="180" r="52" fill="none" stroke="#fff" stroke-width="16"/>
+  <path d="M180 145v40l28 20" stroke="#fff" stroke-width="16" stroke-linecap="round"/>
+  <text x="330" y="205" fill="#fff" font-family="Arial,sans-serif" font-size="68" font-weight="700">OPERAÇÕES</text>
+</svg>

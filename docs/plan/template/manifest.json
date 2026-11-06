@@ -1,0 +1,13 @@
+{
+  "schema": "central.project.manifest.v1",
+  "name": "Exemplo de projeto - substituir",
+  "slug": "exemplo-projeto",
+  "type": "a-definir",
+  "status": "PLANEJAMENTO",
+  "modules": [],
+  "dependencies": [],
+  "approvals": {
+    "client_scope": "PENDENTE",
+    "technical_architecture": "PENDENTE"
+  }
+}

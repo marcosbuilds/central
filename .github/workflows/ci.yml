@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'docs/**', 'chore/**']
+
+jobs:
+  central:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore Central.sln
+      - name: Build
+        run: dotnet build Central.sln -c Release --no-restore
+      - name: Test
+        run: dotnet test Central.sln -c Release --no-build --no-restore
+
+  peace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install package and test runner
+        run: python -m pip install --upgrade pip pytest .
+      - name: Test Peace bot
+        run: python -m pytest tests/peace -q
