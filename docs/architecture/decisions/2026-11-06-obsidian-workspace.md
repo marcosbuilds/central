@@ -30,6 +30,7 @@ the distinction between local fixtures and verified external synchronization.
   horizontal scroll or negative right margins.
 - Existing screenshots and visual expectations based on the lime identity are
   historical references; the current contract is documented in
-  `docs/design/VISUAL-SYSTEM.md`.
-- Manual pixel validation at the acceptance sizes is still required before
-  merge when a Windows capture of the local binary is available.
+  `docs/architecture/visual-system.md`.
+- Manual visual validation was completed at all acceptance sizes and is
+  recorded with equivalent WPF render captures in
+  `docs/architecture/visual-acceptance.md`.

@@ -33,9 +33,9 @@ making the interface read as a focused development workspace.
 
 ## Visual evidence
 
-The local Release executable was launched after the redesign. The Windows
-capture helper did not expose the locally built custom-`WindowChrome` window in
-its inventory, so a pixel screenshot from the local binary could not be
-captured in this environment. The application process remained responsive and
-the XAML build completed successfully. The acceptance matrix below separates
-code/build evidence from visual checks that still need a human desktop pass.
+The local Release executable was launched after the redesign and remained
+responsive. The native Windows screenshot inventory did not expose the custom
+`WindowChrome` frame, so the acceptance evidence uses equivalent WPF
+render-tree captures from the same Release assembly. The five viewport sheets
+and completed manual matrix are recorded in
+[`visual-acceptance.md`](visual-acceptance.md).

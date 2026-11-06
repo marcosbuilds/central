@@ -17,7 +17,7 @@ session creation are not connected by this slice.
 The current controls only move between local visual states. They do not call
 Discord, send a DM, persist a challenge, or create a Supabase session. The
 implementation intentionally keeps this boundary visible until the
-`docs/INTEGRATION-PEACE-CENTRAL.md` contract has an approved service, expiration,
+`docs/integration/peace-central.md` contract has an approved service, expiration,
 attempt limit, revocation path, and negative tests.
 
 ## Accessibility and responsive behavior
