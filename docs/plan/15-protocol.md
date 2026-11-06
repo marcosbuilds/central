@@ -1,37 +1,46 @@
-# 15 — Protocolo técnico: mudanças, conversas, contratos e revisão
+# 15 — Technical protocol: changes, conversations, contracts, and review
 
-**Estado:** contratos conceituais para futura implementação. O objetivo não é prometer uma API funcionando; os caminhos e exemplos são uma proposta de engenharia a validar.
+**State:** conceptual contracts for future implementation. The goal is not to
+promise a working API; routes and examples are engineering proposals to validate.
 
-## A. Modelo de recursos
+## A. Resource model
 
-- `projects`: id, slug, aliases, owner, state `OPEN|CLOSING|CLOSED`, `fencing_epoch`, repositories, workspace_revision.
-- `memberships`: membro, projeto, papéis/escopos, validade.
-- `agent_sessions`: agente, dono humano, provider, connection_id, active_project_id, permissions, last_seen, adapter_version.
-- `tasks`: owner, descrição, critérios, prioridade, dependências, recursos lógicos, estado.
-- `resource_claims`: projeto, lógica/arquivo, tarefa, sessão, exclusividade, epoch, expiração, heartbeat.
-- `change_sets`: revisão, base_revision, hash, patch, claimed_resources, resultado, CI, writer, time.
-- `snapshots`: workspace_revision, manifest, checksums, armazenamento recuperável.
-- `threads`: projeto, contexto, recurso associado, visibilidade, estado, participantes.
-- `messages`: thread, autor, membro patrocinador, agente, tipo, payload, timestamp, anexos restritos.
-- `integration_requests`: consumer, provider, task_ids, status, contract_id, prazo desejado, bloqueio.
-- `api_contracts`: id, versão, fonte OpenAPI/JSON Schema, owner, consumers, agreed_hash, status, checks.
-- `delivery_candidates`: base_master, selected_change_sets, hash exato, diff, risco, status, responsável.
-- `evidence_runs`: CI job, runner, commands, env, artifact hashes, logs filtrados, status.
-- `reviews`: reviewer member/agent, delegated scope, candidate hash, decision, reason, evidence_ids, signed event.
-- `releases`, `deployments`, `audit_events`: versões aprovadas, implantação e trilha não regravável.
+- `projects`: id, slug, aliases, owner, state `OPEN|CLOSING|CLOSED`,
+  `fencing_epoch`, repositories, workspace_revision.
+- `memberships`: member, project, roles/scopes, validity.
+- `agent_sessions`: agent, human owner, provider, connection_id, active_project_id,
+  permissions, last_seen, adapter_version.
+- `tasks`: owner, description, criteria, priority, dependencies, logical resources, state.
+- `resource_claims`: project, logic/file, task, session, exclusivity, epoch,
+  expiration, heartbeat.
+- `change_sets`: revision, base_revision, hash, patch, claimed_resources, result, CI, writer, time.
+- `snapshots`: workspace_revision, manifest, checksums, recoverable storage.
+- `threads`: project, context, associated resource, visibility, state, participants.
+- `messages`: thread, author, sponsoring member, agent, type, payload, timestamp, restricted attachments.
+- `integration_requests`: consumer, provider, task_ids, status, contract_id, desired deadline, blocker.
+- `api_contracts`: id, version, OpenAPI/JSON Schema source, owner, consumers,
+  agreed_hash, status, checks.
+- `delivery_candidates`: base_master, selected_change_sets, exact hash, diff, risk, status, owner.
+- `evidence_runs`: CI job, runner, commands, environment, artifact hashes,
+  filtered logs, status.
+- `reviews`: reviewer member/agent, delegated scope, candidate hash, decision,
+  reason, evidence_ids, signed event.
+- `releases`, `deployments`, `audit_events`: approved versions, deployment, and non-rewritable trail.
 
-Banco relacional com integridade referencial (ex.: PostgreSQL), objetos imutáveis para snapshots/diffs e fila de eventos para distribuir alterações. Não armazenar tokens em texto puro.
+Relational database with referential integrity (for example PostgreSQL),
+immutable objects for snapshots/diffs, and an event queue to distribute changes.
+Never store tokens in plaintext.
 
-## B. Comandos e autenticação (pseudorrotas)
+## B. Commands and authentication (pseudo-routes)
 
 ```text
-GET    /v1/projects                         # somente autorizados
-POST   /v1/agents/sessions                   # vincular provedor e membro
-POST   /v1/agents/sessions/{id}/select       # escolher projeto por id, após busca
-GET    /v1/projects/{id}/manifest             # requisitos, contratos, revisão
-POST   /v1/projects/{id}/claims               # reservar recurso lógico
-POST   /v1/projects/{id}/patches/propose      # submeter diff, base + hashes
-POST   /v1/projects/{id}/patches/{id}/apply   # gateway valida e confirma
+GET    /v1/projects                         # authorized users only
+POST   /v1/agents/sessions                  # link provider and member
+POST   /v1/agents/sessions/{id}/select      # select project by ID after search
+GET    /v1/projects/{id}/manifest           # requirements, contracts, revision
+POST   /v1/projects/{id}/claims             # reserve logical resource
+POST   /v1/projects/{id}/patches/propose    # submit diff, base + hashes
+POST   /v1/projects/{id}/patches/{id}/apply # gateway validates and confirms
 GET    /v1/projects/{id}/threads
 POST   /v1/projects/{id}/threads
 POST   /v1/projects/{id}/threads/{id}/messages
@@ -41,14 +50,18 @@ POST   /v1/projects/{id}/deliveries
 POST   /v1/projects/{id}/deliveries/{id}/evidence
 POST   /v1/projects/{id}/deliveries/{id}/reviews
 POST   /v1/projects/{id}/deliveries/{id}/integrate
-POST   /v1/projects/{id}/close                 # cargo próprio
-POST   /v1/projects/{id}/reopen                # cargo próprio
-GET    /v1/projects/{id}/events                # WebSocket/SSE autorizado
+POST   /v1/projects/{id}/close                 # dedicated role
+POST   /v1/projects/{id}/reopen                # dedicated role
+GET    /v1/projects/{id}/events                # authorized WebSocket/SSE
 ```
 
-**Regras transacionais:** cada comando de escrita confere projeto aberto, membership, escopo, epoch, recurso, hash e base_revision; respostas incluem event_id/idempotency_key. A confirmação do patch e aumento da revisão precisam ser atômicos. Eventos são *at-least-once* com sequências; clientes deduplicam. Operações repetidas com mesma chave não criam alterações duplicadas.
+**Transactional rules:** every write command checks project open state,
+membership, scope, epoch, resource, hash, and base_revision; responses include
+event_id/idempotency_key. Patch confirmation and revision increase must be
+atomic. Events are *at-least-once* with sequences; clients deduplicate. Repeated
+operations with the same key do not create duplicate changes.
 
-## C. Envelope de evento
+## C. Event envelope
 
 ```json
 {
@@ -58,15 +71,19 @@ GET    /v1/projects/{id}/events                # WebSocket/SSE autorizado
   "type": "integration.requested",
   "actor": {"member_id": "member_A", "agent_session_id": "session_codex_A"},
   "refs": {"task_id": "T-17", "contract_id": "api.registration.v1", "thread_id": "thread_45"},
-  "payload": {"summary": "Frontend solicita contrato de cadastro"},
+  "payload": {"summary": "Frontend requests registration contract"},
   "visibility": "project_members",
   "occurred_at": "2026-11-03T12:00:00Z"
 }
 ```
 
-Transições importantes: `workspace.patch_applied`, `task.blocked`, `agent.mentioned`, `integration.requested`, `contract.proposed`, `contract.agreed`, `contract.verified`, `delivery.created`, `delivery.evidence_added`, `delivery.reviewed`, `delivery.integrated`, `project.closed`, `project.reopened`.
+Important transitions: `workspace.patch_applied`, `task.blocked`,
+`agent.mentioned`, `integration.requested`, `contract.proposed`,
+`contract.agreed`, `contract.verified`, `delivery.created`,
+`delivery.evidence_added`, `delivery.reviewed`, `delivery.integrated`,
+`project.closed`, `project.reopened`.
 
-## D. Política de avaliação de aprovação
+## D. Approval-evaluation policy
 
 ```text
 can_approve(candidate, reviewer, evidence):
@@ -81,15 +98,17 @@ can_approve(candidate, reviewer, evidence):
     return APPROVABLE
 ```
 
-A execução real deve usar transações e políticas de segurança implementadas pelo backend, não somente essa pseudológica. Para permissões de GitHub, respeitar as regras externas da branch, que podem exigir pessoas e CI específicos.
+Actual execution must use backend transactions and implemented security policies,
+not only this pseudologic. For GitHub permissions, respect external branch rules,
+which may require specific people and CI.
 
-## E. Garantias mínimas
+## E. Minimum guarantees
 
-1. Nunca aplicar alteração em projeto fechado, mesmo com token previamente válido.
-2. Não aceitar mudanças se o epoch do projeto foi alterado (revogação/fechamento).
-3. Não fundir dois patches com conflito semântico conhecido; registrar bloqueio e resolução.
-4. Nunca marcar uma rota como pronta/testada apenas porque a IA a descreveu.
-5. Vincular aprovação ao exato conteúdo revisado, evidências e identidade real/delegada.
-6. Nunca executar produção automaticamente por uma simples edição do workspace.
-7. Não exigir que sessão offline responda a menções; notificação aguarda ou é escalada.
-8. A IA só lê projetos autorizados, não todos os projetos de todos os clientes indistintamente.
+1. Never apply a change to a closed project, even with a previously valid token.
+2. Reject changes when the project epoch has changed (revocation/closing).
+3. Do not merge two patches with a known semantic conflict; record block and resolution.
+4. Never mark a route ready/tested merely because an AI described it.
+5. Bind approval to the exact reviewed content, evidence, and real/delegated identity.
+6. Never automatically run production from a simple workspace edit.
+7. Do not require an offline session to answer mentions; notification waits or escalates.
+8. An AI reads only authorized projects, not all projects from all clients indiscriminately.

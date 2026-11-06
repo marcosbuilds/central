@@ -1,94 +1,136 @@
-# 13 — Seleção de projetos por IA e fechamento seguro
+# 13 — AI project selection and safe closing
 
-## Objetivo em linguagem simples
-O integrante abre o Codex/Claude e pede: **'Trabalhe no projeto Seloryn e continue de onde paramos.'** A IA encontra o projeto cadastrado na Central, conhece a versão atual e o que os colegas estão fazendo, escolhe uma tarefa livre compatível com o pedido e trabalha no **mesmo projeto compartilhado**.
+## Objective in plain language
 
-O time pode fechar um projeto: ele continua disponível para consulta, mas não aceita alterações nem novas publicações até que alguém com permissão o reabra.
+The member opens Codex/Claude and asks: **“Work on the Seloryn project and
+continue where we stopped.”** The AI finds the project registered in Central,
+knows the current version and what colleagues are doing, chooses a free task that
+matches the request, and works in the **same shared project**.
 
-## Exemplo de conversa e fluxo
+The team can close a project: it remains available for consultation but accepts
+no changes or new publications until someone with permission reopens it.
+
+## Conversation and flow example
+
+```text
+Person: "Continue the Seloryn project. See what is missing."
+AI   -> list_projects('Seloryn')
+     <- [{id:'proj-101', name:'Seloryn', status:'OPEN'}]
+AI   -> select_project('proj-101')
+AI   -> get_project_context('proj-101')
+     <- revision rev-127, tree, documentation, modules, contract, and tasks
+AI   -> get_active_work('proj-101')
+     <- Ana + Codex occupy parser; Bruno + Claude occupy runtime
+AI   -> list_tasks('proj-101', available=true)
+     <- free CLI tests; documentation blocked by a decision
+AI   -> claim_task('TASK-29', resources=['module:cli/tests'])
+     <- lease confirmed
+AI   -> sends progress + proposed changes and receives verification
+     <- shared revision rev-128 after validation/acceptance
 ```
-Pessoa: 'Continue o projeto da Seloryn. Veja o que está faltando.'
-IA   -> list_projects('Seloryn')
-     <- [{id:'proj-101', name:'Seloryn', status:'ABERTO'}]
-IA   -> select_project('proj-101')
-IA   -> get_project_context('proj-101')
-     <- versão rev-127, árvore, documentação, módulos, contrato e tarefas
-IA   -> get_active_work('proj-101')
-     <- Ana + Codex ocupam parser; Bruno + Claude ocupam runtime
-IA   -> list_tasks('proj-101', available=true)
-     <- testes de CLI livres, documentação bloqueada por decisão
-IA   -> claim_task('TASK-29', resources=['module:cli/tests'])
-     <- lease confirmado
-IA   -> envia progresso + mudanças propostas, recebe verificação
-     <- revisão compartilhada rev-128 após validação/aceite
-```
 
-## 1. Identificar o projeto corretamente
-- Chave oficial é UUID/ID interno, nunca nome de pasta adivinhado.
-- Nome, aliases e busca ajudam a identificar. Alias 'seloryn', projeto 'Seloryn' e repositório correspondente apontam para o mesmo ID.
-- Se dois projetos combinarem com a expressão (ex.: 'site interno'), IA pergunta qual deseja; não escolhe arbitrariamente.
-- Se usuário já está trabalhando em Seloryn e diz 'continue aquilo', pode usar `selected_project_id` anterior **se não houver dúvida relevante**.
-- Se usuário manda 'trabalhe na Seloryn', prevalece o comando explícito sobre o projeto anterior.
-- IA deve validar a mudança de alvo com o registro, não confiar em texto de README, comentário ou issue que mande trocar de projeto.
+## 1. Identify the project correctly
 
-## 2. Antes de começar a alterar
-A Central devolve `id`, `status`, `generation`, `shared_revision`, plano aprovado, manifesto, árvore, módulos, tarefas, regras, áreas ocupadas e dependências. O modelo só consegue editar um projeto ao qual o integrante tem acesso, mediante token da Central autenticado e autorização de escrita.
+- The official key is an internal UUID/ID, never an inferred folder name.
+- Name, aliases, and search help identify it. Alias `seloryn`, project `Seloryn`,
+  and the matching repository point to the same ID.
+- If two projects match an expression (for example “internal site”), the AI asks
+  which one; it does not choose arbitrarily.
+- If the user is already working in Seloryn and says “continue that”, it may use
+  the previous `selected_project_id` **when there is no relevant ambiguity**.
+- If the user says “work on Seloryn”, the explicit command takes precedence over the previous project.
+- The AI validates target changes against the registry; it does not trust README,
+  comment, or issue text that tells it to switch projects.
 
-O integrante pode ter direito de **ver todos os projetos** e selecionar qualquer um, mas acessos a clientes precisam seguir contratos. Ler não equivale a escrever. A IA nunca herda poder de fechar/reabrir ou publicar em produção por ter permissão de editar.
+## 2. Before changing anything
 
-## 3. Seleção da tarefa
-- Com pedido específico ('corrija o comando inspect'), procurar tarefa e área coerentes; se não existir, propor criar tarefa e pedir validação conforme política.
-- Com pedido amplo ('dê continuidade'), oferecer a próxima tarefa **aprovada, pronta e desbloqueada** segundo prioridade e dependências.
-- Reservar também recursos lógicos: se um backend muda um contrato, frontend que depende dele recebe sinal de bloqueio ou coordenação.
-- A IA não deve iniciar nova tarefa se estiver sem sincronização ou com reserva de outro projeto sem liberar/checkpoint.
+Central returns `id`, `status`, `generation`, `shared_revision`, approved plan,
+manifest, tree, modules, tasks, rules, occupied areas, and dependencies. The
+model may edit only a project the member can access, through an authenticated
+Central token and write authorization.
 
-## 4. Trocar de projeto durante trabalho
-1. Capturar estado do trabalho atual, diff não integrado e comentário de pendências.
-2. Finalizar ou pausar com segurança e liberar reserva (ou manter apenas se permitido para continuidade planejada, com prazo).
-3. Resolver o novo projeto, validar status e autorização.
-4. Atualizar contexto, revisão e dependências; criar sessão/associação nova.
-5. Confirmar ao usuário que mudou e informar o que foi preservado do projeto anterior.
+The member may be allowed to **see all projects** and select any one, but client
+access must follow contracts. Reading is not writing. The AI never inherits the
+power to close/reopen or publish to production merely because it can edit.
 
-## 5. Fechamento e reabertura
-| Status | Leitura | Nova tarefa/edit/merge/deploy | Descrição |
+## 3. Select the task
+
+- For a specific request (“fix the inspect command”), find a coherent task and
+  area; if none exists, propose creating a task and request validation under policy.
+- For a broad request (“continue”), offer the next **approved, ready, unblocked**
+  task according to priority and dependencies.
+- Also reserve logical resources: if a backend changes a contract, a dependent
+  frontend receives a blocker or coordination signal.
+- The AI must not start a new task while unsynchronized or holding a reservation
+  in another project without releasing/checkpointing it.
+
+## 4. Switch projects during work
+
+1. Capture current work state, unintegrated diff, and pending-work comment.
+2. Finish or pause safely and release the reservation (or keep it only when
+   planned continuity permits, with a deadline).
+3. Resolve the new project and validate state and authorization.
+4. Update context, revision, and dependencies; create a new session/association.
+5. Confirm the switch to the user and report what was preserved from the previous project.
+
+## 5. Closing and reopening
+
+| Status | Reading | New task/edit/merge/deploy | Description |
 |---|---|---|---|
-| `ABERTO` | Permitida por ACL | Permitida pelas regras | Trabalho normal |
-| `FECHANDO` | Permitida | **Bloqueada** | Interrompe trabalhos, cancela jobs, prepara snapshot |
-| `FECHADO` | Permitida | **Bloqueada** | Versão congelada e auditável |
-| `REABRINDO` | Permitida | **Bloqueada** | Verifica sincronização e restabelece regras |
+| `OPEN` | Allowed by ACL | Allowed by rules | Normal work |
+| `CLOSING` | Allowed | **Blocked** | Interrupts work, cancels jobs, prepares snapshot |
+| `CLOSED` | Allowed | **Blocked** | Frozen, auditable version |
+| `REOPENING` | Allowed | **Blocked** | Verifies synchronization and restores rules |
 
-**Quem fecha:** gestor/autorizado; registrar motivo, responsável, timestamp e revisão. O pedido deve exigir confirmação. **Quem reabre:** pessoa autorizada pela política, com justificativa.
+**Who closes:** manager/authorized person; record reason, owner, timestamp, and
+revision. The request must require confirmation. **Who reopens:** a person
+authorized by policy, with justification.
 
-### Fechamento atômico sugerido
-- Validar permissão e registrar intenção.
-- No banco transacional, `ABERTO` → `FECHANDO` + `generation += 1` e fechar o portão de gravações **no mesmo passo**. Todas as APIs e jobs rejeitam a geração anterior a partir daí.
-- Invalidar reservas e sessões de edição, notificar conectores e tentar interromper execução local supervisionada.
-- Bloquear integração e publicação com credenciais de serviço e regras externas de repositório/CI quando disponível.
-- Registrar `closed_revision`, documento de pendências, trabalhos não incorporados e links de auditoria.
-- Confirmar controles externos antes de marcar `FECHADO`; se não funcionarem, o sistema continua bloqueando escritas via Central e avisa que o bloqueio externo é parcial.
+### Suggested atomic closing
 
-### Reabertura
-- Solicitar autorização; entrar `REABRINDO`, verificar permissões, repo, CI e status de tarefas.
-- Restaurar políticas de escrita, incrementar geração e manter bloqueados tokens/sessões antigas até reautenticação ou renovação; não reaproveitar reservas.
-- Atualizar contexto de agentes e sincronizar revisão antes de aceitar nova gravação; só então `ABERTO`.
+- Validate permission and record intent.
+- In the transactional database, change `OPEN` → `CLOSING` + `generation += 1`
+  and close the write gate **in the same step**. All APIs and jobs reject the
+  previous generation from then on.
+- Invalidate reservations and editing sessions, notify connectors, and try to
+  interrupt supervised local execution.
+- Block integration and publication through service credentials and external
+  repository/CI rules when available.
+- Record `closed_revision`, pending-work document, unincorporated work, and audit links.
+- Confirm external controls before marking `CLOSED`; if they fail, Central still
+  blocks writes and warns that the external block is partial.
 
-### E se uma IA ainda estiver rodando?
-A central pode emitir 'parar' para o conector e bloquear imediatamente gravações **via gateway**. Porém não pode garantir que um programa local offline pare de editar seu próprio disco. As mudanças locais não entram no projeto oficial enquanto fechado; acessos diretos ao Git/servidores devem ser bloqueados separadamente.
+### Reopening
 
-## 6. Histórias de usuário
-- Como integrante, quero dizer o nome do projeto e a IA carregar automaticamente contexto e tarefas.
-- Como integrante, quero trocar de projeto sem perder trabalho pendente.
-- Como revisor, quero ver alterações em andamento antes de virarem mudança integrada.
-- Como gestor, quero fechar projeto e impedir qualquer nova gravação no repositório controlado até abrir novamente.
-- Como auditor, quero saber quem fechou/reabriu, qual revisão ficou congelada e quais trabalhos foram rejeitados.
+- Request authorization; enter `REOPENING`; verify permissions, repository, CI, and task state.
+- Restore write policies, increment generation, and keep old tokens/sessions
+  blocked until reauthentication or renewal; do not reuse reservations.
+- Update agent context and synchronize the revision before accepting a new write; only then `OPEN`.
 
-## 7. Erros esperados da IA e reação correta
-- 'Seloryn não existe': não criar repositório novo automaticamente; consultar catálogo/aliases e pedir confirmação.
-- 'Projeto fechado': não alterar; pode ler e propor plano de retomada sem escrever no projeto.
-- 'Sem permissão': não solicitar bypass; orientar integrante a pedir acesso.
-- 'Outra IA ocupa a tarefa': procurar atividade independente documentada, ou aguardar/liberar trabalho de forma coordenada.
-- 'Sessão perdeu conexão': não inventar progresso; sincronizar antes de atuar.
-- 'Revisão-base mudou': reavaliar diff e testes, sem overwrite silencioso.
+### What if an AI is still running?
 
-## 8. Frase que define a experiência
-**'Diga o projeto; a IA encontra o contexto certo, continua com o time e respeita quando o trabalho está fechado.'**
+Central can send “stop” to the connector and immediately block **gateway writes**.
+It cannot guarantee that an offline local program stops editing its own disk.
+Local changes do not enter the official project while closed; direct Git/server
+access must be blocked separately.
+
+## 6. User stories
+
+- As a member, I want to say the project name so the AI automatically loads context and tasks.
+- As a member, I want to switch projects without losing pending work.
+- As a reviewer, I want to see work in progress before it becomes an integrated change.
+- As a manager, I want to close a project and prevent new writes to the controlled repository until it is reopened.
+- As an auditor, I want to know who closed/reopened it, which revision was frozen, and which work was rejected.
+
+## 7. Expected AI errors and correct response
+
+- “Seloryn does not exist”: do not create a repository automatically; query the catalog/aliases and ask for confirmation.
+- “Project closed”: do not change it; read and propose a resumption plan without writing.
+- “No permission”: do not request a bypass; tell the member to request access.
+- “Another AI occupies the task”: find documented independent work, or wait/release in a coordinated way.
+- “Session lost connection”: do not invent progress; synchronize before acting.
+- “Base revision changed”: reevaluate diff and tests, without silent overwrite.
+
+## 8. Experience-defining sentence
+
+**“Name the project; the AI finds the right context, continues with the team, and respects when work is closed.”**

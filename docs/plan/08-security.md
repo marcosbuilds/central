@@ -1,66 +1,100 @@
-# 06 — Cadastro, Discord, permissões e segurança
+# 06 — Registration, Discord, permissions, and security
 
-## Requisito de entrada
+## Entry requirement
 
-A central tem cadastro controlado por convite/aprovação, vinculação ao Discord e liberação do servidor. Não é cadastro público que concede acesso só por preencher formulário.
+Central uses invitation/approval-controlled registration, Discord linking, and
+server release. It is not a public registration that grants access merely by
+submitting a form.
 
-## Fluxo proposto (com consentimento)
+## Proposed flow (with consent)
 
-1. Um administrador gera um convite individual limitado por validade, uso e, quando apropriado, e-mail convidado.
-2. Pessoa acessa a central e autentica com **OAuth2 do Discord** (Authorization Code; usar `state` contra falsificação, PKCE se aplicável ao cliente, armazenamento seguro de sessão).
-3. Central lê identidade Discord com escopo `identify` e verifica o convite. Se necessário, consulta associação ao servidor, com consentimento `guilds.members.read` ou bot autorizado.
-4. Registro fica `pending_approval`, sem acesso a projetos.
-5. Um administrador revisa, escolhe cargo e projetos permitidos, e aprova.
-6. Bot aplica cargo no servidor. Se a pessoa não estiver no servidor, oferece convite; opcionalmente, adesão via `guilds.join` **somente com autorização expressa** e pré-requisitos da API.
-7. Confirmação e auditoria. Se Discord falhar, estado fica `pending_discord_sync` para nova tentativa, nunca assume sucesso.
-8. Ao suspender ou desligar, central revoga tokens/sessões; bot tenta retirar cargos/acesso Discord, registrando eventuais falhas para correção.
+1. An administrator creates an individual invitation limited by validity, use,
+   and, when appropriate, invited email.
+2. The person accesses Central and authenticates with **Discord OAuth2**
+   (Authorization Code; use `state` against forgery, PKCE when applicable to the
+   client, and secure session storage).
+3. Central reads Discord identity with `identify` scope and verifies the
+   invitation. If needed, it checks server association with `guilds.members.read`
+   consent or an authorized bot.
+4. The record is `pending_approval`, with no project access.
+5. An administrator reviews, selects role and allowed projects, and approves.
+6. The bot applies the server role. If the person is not in the server, offer an
+   invitation; optionally use `guilds.join` **only with explicit authorization**
+   and API prerequisites.
+7. Confirm and audit. If Discord fails, state becomes `pending_discord_sync` for
+   retry; never assume success.
+8. On suspension or deactivation, Central revokes tokens/sessions; the bot tries
+   to remove Discord roles/access and records failures for correction.
 
-**Discord não é o banco principal de permissões.** Pode sincronizar cargos, mas acessos reais são validados na central a cada requisição. Não mostrar documentos de outros clientes só porque usuário entrou num canal.
+**Discord is not the primary permission database.** It may synchronize roles, but
+real access is validated in Central on every request. Do not show another
+client's documents merely because a user entered a channel.
 
-## Papéis e controle por projeto
+## Roles and project control
 
-| Papel | Ler projeto | Alterar código em área reservada | Aprovar código | Produção | Gerir usuários |
+| Role | Read project | Change code in reserved area | Approve code | Production | Manage users |
 |---|---|---|---|---|---|
-| Membro desenvolvedor | conforme projeto | sim, por reserva validada | revisão de pares quando autorizado | não | não |
-| Documentador/produto | conforme projeto | documentos/arquitetura por reserva | escopo/requisitos | não | não |
-| QA | conforme projeto | testes por reserva | valida testes e critérios | não | não |
-| Líder técnico | conforme projeto | sim | sim, com independência | com segundo controle | não necessariamente |
-| Infra/operador | conforme projeto | infra por reserva | aprovação de infra | execução autorizada | não necessariamente |
-| Administrador | projetos autorizados | não automaticamente | não automaticamente | não automaticamente | sim |
-| Agente de IA | restrito por token | só operações escopadas | **não como aprovação final única** | **nunca via token padrão** | não |
-| Cliente externo futuro | somente entregáveis liberados | não | aceite de negócio | não | não |
+| Developer member | per project | yes, with validated reservation | peer review when authorized | no | no |
+| Documenter/product | per project | documents/architecture by reservation | scope/requirements | no | no |
+| QA | per project | tests by reservation | validates tests/criteria | no | no |
+| Technical lead | per project | yes | yes, independently | with second control | not necessarily |
+| Infrastructure/operator | per project | infrastructure by reservation | infrastructure approval | authorized execution | not necessarily |
+| Administrator | authorized projects | not automatically | not automatically | not automatically | yes |
+| AI agent | token-restricted | scoped operations only | **not as sole final approval** | **never through default token** | no |
+| Future external client | released deliverables only | no | business acceptance | no | no |
 
-Aplicar **RBAC + permissões por projeto + condições por tarefa/recurso**. Ser administrador da plataforma não deve autorizar sem registro e sem revisão a modificar código de cliente.
+Apply **RBAC + project permissions + task/resource conditions**. Platform
+administrator status must not authorize modifying client code without a record and review.
 
-## Tokens e sessões
+## Tokens and sessions
 
-- API tokens curtos por escopo/projeto, com hash armazenado, expiração, rotação e limite de uso.
-- Sessão de navegador em cookie `HttpOnly`, `Secure`, `SameSite` adequado; proteção CSRF quando aplicável; TLS obrigatório.
-- Diferenciar `member`, `device`, `agent_session`, `service_account` e `deploy_identity`.
-- Chaves de serviço, Discord Bot token e dados de clientes ficam em secret manager, não no repositório nem no ZIP.
-- 2FA/passkeys para ações críticas na central é altamente recomendado; sessão Discord sozinha não é garantia suficiente para produção.
-- Registros de auditoria sensíveis com autor, horário, IP de segurança quando necessário, antes/depois resumido e motivo; prazo de retenção documentado.
+- Short API tokens by scope/project, with stored hash, expiration, rotation, and use limit.
+- Browser session in `HttpOnly`, `Secure`, appropriately `SameSite` cookie;
+  CSRF protection when applicable; TLS required.
+- Distinguish `member`, `device`, `agent_session`, `service_account`, and `deploy_identity`.
+- Service keys, Discord bot token, and client data belong in a secret manager,
+  not in the repository or ZIP.
+- 2FA/passkeys for critical Central actions are strongly recommended; a Discord
+  session alone is not sufficient production assurance.
+- Sensitive audit records include author, time, security IP when necessary,
+  summarized before/after, and reason; document retention period.
 
-## Proteção contra abusos
+## Abuse protection
 
-- Convite roubado, troca de conta Discord e remoção do servidor exigem verificação/revogação.
-- Bots e usuários só veem projetos liberados; limitar acesso entre clientes.
-- Rate limits e proteção contra força bruta, validação de webhook/assinaturas, sanitização de Markdown e comentários, isolamento de uploads ZIP contra caminhos `../`, zip bombs e executáveis inesperados.
-- Segredos acidentalmente adicionados ao código: varredura e bloqueio antes de publicar.
-- O cliente de IA só pode executar comandos em sandbox limitado; operações destrutivas e acesso a rede/segredos exigem consentimento apropriado.
-- Informar equipe e clientes sobre que dados entram em ferramentas de terceiros; atender exigências contratuais e legais aplicáveis, inclusive LGPD.
+- Stolen invitation, Discord account swap, and server removal require verification/revocation.
+- Bots and users see only released projects; limit access between clients.
+- Rate limits and brute-force protection, webhook/signature validation, Markdown
+  and comment sanitization, and ZIP upload isolation against `../`, zip bombs,
+  and unexpected executables.
+- Scan and block secrets accidentally added to code before publication.
+- The AI client may execute commands only in a limited sandbox; destructive
+  operations and network/secret access require appropriate consent.
+- Tell the team and clients what data enters third-party tools; meet applicable
+  contractual and legal requirements, including LGPD.
 
-## Condições de aceitação
+## Acceptance conditions
 
-Pessoa sem aprovação não abre workspace; membro de projeto A não acessa B; token revogado falha imediatamente; bot sem acesso não cria aprovação fictícia; alteração fora de reserva é negada; deploy para produção exige permissão humana e snapshot aprovado.
+A person without approval cannot open a workspace; a member of project A cannot
+access B; a revoked token fails immediately; a bot without access cannot create a
+fictional approval; a change outside a reservation is denied; production deploy
+requires human permission and an approved snapshot.
 
+## Addendum — multiple projects, freezing, and delegated review
 
-## Complemento — projetos múltiplos, congelamento e revisão delegada
-
-- Uma sessão de IA recebe apenas a lista de projetos que o integrante **já pode acessar**, mesmo quando o token habilita descoberta de vários projetos. Dados de outros clientes continuam invisíveis.
-- Operações de escrita exigem `project.state=OPEN`, autorização no momento da execução, reserva válida e revisão-base atual. Um comando de fechamento invalida concessões de escrita e bloqueia mesmo tokens já emitidos.
-- Fechamento/reabertura requer cargo autorizado, motivo registrado e transição atômica. Fechar não apaga histórico ou discussões.
-- A capacidade `review.propose` não concede `review.approve`. Aprovação de IA só ocorre com autorização delegada específica para o projeto e risco. A central conserva evidências, identidade da IA, seu responsável, hash exato revisado e política aplicada.
-- Aprovador independente: pessoa/IA não pode aprovar seu próprio lote nem usar segunda identidade do mesmo autor para simular independência. Alteração posterior invalida aprovação daquele hash.
-- Aprovação para integrar código não dá permissão de deploy; publicar produção pede papel próprio, regras de ambiente e testes.
-- Não expor segredos, dados pessoais ou conteúdo privado em mensagens entre agentes ou na telemetria.
+- An AI session receives only the list of projects the member **already may
+  access**, even when the token enables discovery of multiple projects. Other
+  clients' data remains invisible.
+- Write operations require `project.state=OPEN`, authorization at execution
+  time, a valid reservation, and current base revision. A close command invalidates
+  write grants and blocks even previously issued tokens.
+- Closing/reopening requires an authorized role, recorded reason, and atomic
+  transition. Closing does not delete history or discussions.
+- `review.propose` does not grant `review.approve`. AI approval occurs only with
+  specific delegated authorization for project/risk. Central keeps evidence, AI
+  identity, owner, exact reviewed hash, and applied policy.
+- Independent approver: a person/AI cannot approve its own batch or use a second
+  identity from the same author to simulate independence. A later change
+  invalidates approval for that hash.
+- Code-integration approval does not grant deployment permission; production
+  publication requires its own role, environment rules, and tests.
+- Do not expose secrets, personal data, or private content in agent messages or telemetry.

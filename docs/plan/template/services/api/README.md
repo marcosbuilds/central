@@ -1,3 +1,3 @@
-# Serviço backend (opcional)
+# Backend service (optional)
 
-Definir API somente quando necessária ao produto.
+Define an API only when the product requires one.

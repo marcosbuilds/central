@@ -1,54 +1,81 @@
-# 01 — Equipe de 9 pessoas e crescimento
+# 01 — Team of 9 people and growth
 
-## Equipe inicial proposta
-| Pessoas | Área principal | O que entrega | Substituto/colaborador obrigatório |
+## Proposed initial team
+
+| People | Main area | Delivers | Required substitute/collaborator |
 |---:|---|---|---|
-| 3 | Backend e sistemas | APIs, regras, dados, integrações, arquitetura de serviços | Revisão cruzada entre os 3 |
-| 2 | Frontend e aplicações | Telas web, interfaces de aplicações mobile/desktop e acessibilidade | Revisão cruzada entre os 2 |
-| 1 | Infraestrutura e segurança operacional | Build, deploy, monitoramento, backups, infraestrutura e configuração de acesso | Um backend aprende o procedimento |
-| 1 | Testes e qualidade (QA) | Planos de testes, regressão, validação com clientes, automação | Frontend ou backend ajuda a manter testes |
-| 1 | Design de experiência e interface | Protótipos, fluxos, consistência visual, usabilidade | Frontend colabora |
-| 1 | Produto, entrevistas, documentação e planejamento de arquitetura | Descoberta das necessidades, escopo, fluxos, árvore inicial, contratos de API, pacote ZIP | Líder técnico aprova arquitetura |
+| 3 | Backend and systems | APIs, rules, data, integrations, service architecture | Cross-review among the three |
+| 2 | Frontend and applications | Web screens, mobile/desktop application interfaces, and accessibility | Cross-review between the two |
+| 1 | Infrastructure and operational security | Build, deployment, monitoring, backups, infrastructure, and access configuration | One backend developer learns the procedure |
+| 1 | Testing and quality (QA) | Test plans, regression, client validation, and automation | Frontend or backend helps maintain tests |
+| 1 | Experience and interface design | Prototypes, flows, visual consistency, and usability | Frontend collaborates |
+| 1 | Product, interviews, documentation, and architecture planning | Needs discovery, scope, flows, initial tree, API contracts, and ZIP package | Technical lead approves architecture |
 
-**Observação sobre a equipe atual:** foram informados 4 em backend, 2 em frontend e 1 em documentação (7 funções identificadas). A configuração acima requer que uma das quatro pessoas de backend assuma gradualmente infraestrutura; as duas funções não descritas podem ser avaliadas para QA e design. Isso é uma possibilidade, não uma afirmação sobre quem já ocupa esses cargos.
+**Note about the current team:** 4 backend, 2 frontend, and 1 documentation
+person were reported (7 identified functions). The configuration above requires
+one backend person to gradually assume infrastructure; the two undescribed
+functions can be evaluated for QA and design. This is a possibility, not a claim
+about who currently holds these roles.
 
-## Duas lideranças exercidas por integrantes existentes
-- **Responsável de negócio/produto:** organiza cliente, preço, escopo, prazo comercial e prioridades; normalmente o papel de produto/documentação, com aval dos fundadores.
-- **Líder técnico:** um backend experiente (ou integrante tecnicamente mais preparado) que valida arquitetura, segurança das integrações e qualidade. Continua programando; não cria uma 10ª vaga.
-- **Decisões críticas:** quando afetarem custo, prazo ou risco, precisam de validação do responsável de produto + líder técnico; produção também exige o responsável de infraestrutura.
+## Two leadership responsibilities held by existing members
 
-## Funções não são muros
-É desejável especialização principal e conhecimento básico do restante. Uma pessoa pode ajudar em testes, revisão ou documentação sem roubar a responsabilidade do titular. O número de vagas não é a medida de progresso; capacidade de entregar, aprender e manter é.
+- **Business/product owner:** organizes the client, price, scope, commercial
+  schedule, and priorities; usually the product/documentation role, with founder approval.
+- **Technical lead:** an experienced backend developer (or the most technically
+  prepared member) who validates architecture, integration security, and quality.
+  They continue programming; this does not create a 10th opening.
+- **Critical decisions:** when cost, schedule, or risk are affected, they require
+  product-owner + technical-lead validation; production also requires the
+  infrastructure owner.
 
-## Limites desejados de concentração
-- Backend: até **3** na configuração inicial.
-- Frontend web: até **2** na configuração inicial.
-- Outras áreas: preferencialmente até **2** por especialidade.
-- Quando a demanda crescer, abrir **novas especialidades** (por exemplo: mobile, dados, segurança, atendimento) em vez de aumentar backend indiscriminadamente.
-- Esses limites são preferências organizacionais, não leis: um produto excepcionalmente complexo pode exigir reorganização temporária.
+## Roles are not walls
 
-## Expansão guiada por necessidade (cenários, não contratações automáticas)
-| Total | Novas vagas propostas | Gatilho verdadeiro |
+Primary specialization plus basic knowledge of the rest is desirable. A person
+may help with testing, review, or documentation without taking the owner's
+responsibility. The number of openings is not the measure of progress; the ability
+to deliver, learn, and maintain is.
+
+## Desired concentration limits
+
+- Backend: up to **3** in the initial configuration.
+- Web frontend: up to **2** in the initial configuration.
+- Other areas: preferably up to **2** per specialty.
+- When demand grows, open **new specialties** (for example mobile, data,
+  security, support) instead of increasing backend indiscriminately.
+- These limits are organizational preferences, not laws: an unusually complex
+  product may require temporary reorganization.
+
+## Need-driven expansion (scenarios, not automatic hiring)
+
+| Total | Proposed openings | Real trigger |
 |---:|---|---|
-| 9 | Estrutura atual | Construir e concluir entregas pequenas ponta a ponta |
-| 12 | +1 desenvolvimento mobile/desktop; +1 dados/IA e automação; +1 relacionamento com clientes/suporte | Demanda comprovada de aplicativos, uso recorrente de dados/IA e sobrecarga de contato com clientes |
-| 16 | +1 mobile/desktop; +1 QA; +1 especialista de segurança; +1 gestão de projetos/entregas | Mais de uma equipe de entrega paralela, incidentes/retrabalho e clientes exigindo controles fortes |
-| 20 | +1 infraestrutura/DevOps; +1 UI/UX; +1 dados/IA; +1 suporte/implantação | Volume real de produtos, suporte e operações excedendo capacidade |
+| 9 | Current structure | Build and complete small end-to-end deliveries |
+| 12 | +1 mobile/desktop developer; +1 data/AI and automation; +1 client relations/support | Proven demand for applications, recurring data/AI use, and overloaded client contact |
+| 16 | +1 mobile/desktop; +1 QA; +1 security specialist; +1 project/delivery management | More than one parallel delivery team, incidents/rework, and clients requiring strong controls |
+| 20 | +1 infrastructure/DevOps; +1 UI/UX; +1 data/AI; +1 support/implementation | Real product, support, and operations volume exceeding capacity |
 
-Os novos departamentos também podem ser funções temporárias ou prestadores antes da contratação. Vendas e finanças precisam ter **donos claros** desde já, ainda que executadas pelos próprios fundadores, sem criar vagas técnicas adicionais no início.
+New departments may also be temporary functions or contractors before hiring.
+Sales and finance need **clear owners** now, even if founders perform them,
+without creating additional technical openings at the start.
 
-## Critério para abrir uma vaga
-1. Identificar o gargalo por 4 a 6 semanas (fila de trabalho, atrasos, horas de suporte, incidentes).
-2. Verificar se melhoria de processo, capacitação ou serviço externo resolve melhor.
-3. Formalizar resultado esperado, mentoria e forma de avaliar a função.
-4. Confirmar receita/capital para manter a vaga sem comprometer entregas.
-5. Contratar para retirar um gargalo, não para atingir um número bonito.
+## Criterion for opening a role
 
-## Organização por projeto
-- **Projeto pequeno:** produto/documentação + 1 frontend + 1 backend, com design, QA e infraestrutura em momentos planejados.
-- **Projeto médio:** 2 backend + 1–2 frontend, responsável de produto e apoio transversal.
-- **Projeto com app e dados:** incluir especialistas conforme risco; não mobilizar automaticamente os nove para tudo.
-- Sempre: um responsável pelo produto, um responsável técnico e um responsável por cada tarefa.
+1. Identify the bottleneck for 4–6 weeks (work queue, delays, support hours, incidents).
+2. Check whether process improvement, training, or an external service solves it better.
+3. Formalize expected outcome, mentoring, and how the function will be evaluated.
+4. Confirm revenue/capital to sustain the role without compromising deliveries.
+5. Hire to remove a bottleneck, not to reach a flattering number.
 
-## Desenvolvimento de habilidades
-Ciclo semanal: demonstração de algo aprendido, revisão em dupla, investigação de um erro real e anotação do conhecimento útil. Avaliar capacidade de resolver problemas, comunicação e qualidade, não quantidade de código ou quantidade de prompts.
+## Organization by project
+
+- **Small project:** product/documentation + 1 frontend + 1 backend, with design,
+  QA, and infrastructure at planned moments.
+- **Medium project:** 2 backend + 1–2 frontend, product owner, and cross-functional support.
+- **Project with app and data:** add specialists according to risk; do not automatically mobilize all nine for everything.
+- Always: one product owner, one technical owner, and one owner for each task.
+
+## Skill development
+
+Weekly cycle: demonstrate something learned, pair review, investigate a real
+error, and record useful knowledge. Evaluate problem solving, communication, and
+quality, not lines of code or number of prompts.

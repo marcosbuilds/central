@@ -1,13 +1,13 @@
-## Objetivo
+## Objective
 
-Descreva o comportamento observável e o contrato alterado.
+Describe the observable behavior and the contract that changed.
 
-## Checklist de revisão
+## Review checklist
 
-- [ ] A alteração está em uma branch de trabalho e não em `main`.
-- [ ] Não há `.env`, tokens, SQLite, snapshots, logs ou caches no diff.
-- [ ] Central: build/test relevante executado.
-- [ ] Peace: testes relevantes executados.
-- [ ] Migração, permissão ou autenticação possui teste negativo.
-- [ ] Documentação e decisão foram atualizadas quando necessário.
-- [ ] Um colaborador revisou e aprovou a mudança.
+- [ ] The change is on a working branch, not on `main`.
+- [ ] The diff contains no `.env` files, tokens, SQLite databases, snapshots, logs, or caches.
+- [ ] Central: the relevant build/tests were run.
+- [ ] Peace: the relevant tests were run.
+- [ ] Migrations, permissions, or authentication include a negative test.
+- [ ] Documentation and the relevant decision record were updated when needed.
+- [ ] A contributor reviewed and approved the change.

@@ -1,54 +1,63 @@
-# Central Colaborativa — aplicativo desktop Windows
+# Central Colaborativa — Windows desktop application
 
-Implementação da Central Colaborativa para Windows, construída em C# e .NET 8 com WPF. O shell visual continua usando fixtures locais para as áreas ainda não conectadas, enquanto a pasta dedicada já pode sincronizar arquivos entre computadores via Syncthing e receber estado/eventos pelo Supabase.
+Implementation of Central Colaborativa for Windows, built with C# and .NET 8
+using WPF. The visual shell still uses local fixtures for areas that are not
+connected yet, while the dedicated folder can already synchronize files between
+computers through Syncthing and receive state/events through Supabase.
 
-Este repositório agora é um monorepo: o bot Discord da Peace está em
-[`bot`](bot), com testes em [`tests/peace`](tests/peace). O contrato de liberação
-Peace→Central está documentado em
-[`docs/INTEGRATION-PEACE-CENTRAL.md`](docs/INTEGRATION-PEACE-CENTRAL.md), mas a
-troca de código ainda não é uma capacidade implementada.
+This repository is now a monorepo: the Peace Discord bot lives in
+[`bot`](bot), with tests in [`tests/peace`](tests/peace). The Peace→Central
+release contract is documented in
+[`docs/INTEGRATION-PEACE-CENTRAL.md`](docs/INTEGRATION-PEACE-CENTRAL.md), but
+code exchange is not yet an implemented capability.
 
-## O que está entregue
+## Delivered so far
 
-- Shell desktop nativo com navegação por Home, Projetos e projeto selecionado; configurações visuais ficam na engrenagem do perfil.
-- Catálogo com busca por nome, identificador ou módulo.
-- Detalhe de projeto com visão geral, planejamento, Pulso local manual, workspace explorável, discussões, entregas, qualidade, publicações e histórico.
-- Simulações coerentes de reserva semântica, patch com revisão-base, eventos ordenados, referências locais, commits/tags/releases locais, candidatos de entrega, evidências, aprovação local e fechamento/reabertura.
-- Estado fechado bloqueando escrita, reserva, Pulso, versionamento local, aprovação, integração e deploy na camada de domínio local.
-- Catálogo de projetos com marca vetorial própria, título funcional em Apple/Segoe, subtítulos editoriais em Seloryn, tier de prioridade e leitura responsiva.
-- Dashboard de uso técnico preparado para duração, tokens e requests em 1/7/31 dias, mantendo `N/D` quando o gateway não fornece medições.
-- Home sem projeto escolhido por padrão: a Central não adivinha o foco; o catálogo resolve a identidade antes de abrir uma bancada.
-- Suíte xUnit com doze testes de domínio e comportamento cobrindo os invariantes principais, seleção semântica e os fluxos do Pulso/workspace.
-- Núcleo `Central.Core` com normalização de recursos Windows, reservas pai/filho, leases, heartbeat, expiração, fencing token e teste de corrida entre 32 sessões.
-- Primeira migração Supabase versionada em `db/migrations/202611050001_coordination.sql`, com RLS, tabelas de coordenação e RPCs transacionais para adquirir, renovar e liberar reservas; ela foi aplicada ao projeto dedicado `ydouynbssldpjhlnawtm`.
-- Gateway WSGI mínimo publicado em `https://marcosbuilds.pythonanywhere.com`, com `/healthz` e `/v1/capabilities` para smoke test; a publicação não armazena chaves nem substitui o Supabase.
-- O desktop faz um smoke test automático de `/healthz` ao abrir e aceita `CENTRAL_GATEWAY_URL` para apontar a instalação a outro gateway sem recompilar.
-- Publicação self-contained x64 e instalador Windows Inno Setup.
-- Sincronização real opt-in: cada instalação autentica no Supabase, registra seu Device ID, configura uma pasta Syncthing local e acompanha peers, estado, heartbeat e conflitos.
-- Streaming de controle por Supabase Realtime privado, com confirmação de `phx_join`, renovação de sessão, backoff e replay persistente após reconexão. O cursor local é apenas checkpoint; PostgreSQL continua sendo a fonte de verdade.
-- Migração `db/migrations/202611060002_sync_stream.sql` aplicada e verificada no projeto dedicado `ydouynbssldpjhlnawtm`; peers são filtrados por projeto e writes sensíveis passam por RPC autenticada.
-- Estado vazio validado também pela árvore UI Automation: a Home não anuncia escalas fictícias nem cabeçalhos de logs sem linhas; Provar reflowa ações antes de perder conteúdo em largura compacta.
+- Native desktop shell with navigation for Home, Projects, and the selected project; visual settings are available from the profile gear.
+- Catalog with search by name, identifier, or module.
+- Project details with overview, planning, manual local Pulse, browsable workspace, discussions, deliveries, quality, releases, and history.
+- Coherent simulations for semantic reservations, base-reviewed patches, ordered events, local references, local commits/tags/releases, delivery candidates, evidence, local approval, and closing/reopening.
+- Closed state blocks writes, reservations, Pulse, local versioning, approval, integration, and deployment at the local domain layer.
+- Project catalog with its own vector mark, functional Apple/Segoe title, editorial Seloryn subtitles, priority tier, and responsive reading.
+- Technical usage dashboard prepared for duration, tokens, and requests over 1/7/31 days, retaining `N/D` when the gateway provides no measurements.
+- Home starts with no project selected: Central does not guess the focus; the catalog resolves the identity before opening a workbench.
+- xUnit suite with twelve domain and behavior tests covering the main invariants, semantic selection, and Pulse/workspace flows.
+- `Central.Core` with Windows resource normalization, parent/child reservations, leases, heartbeat, expiration, fencing tokens, and a race test across 32 sessions.
+- First versioned Supabase migration in `db/migrations/202611050001_coordination.sql`, with RLS, coordination tables, and transactional RPCs for acquiring, renewing, and releasing reservations; it was applied to the dedicated project `ydouynbssldpjhlnawtm`.
+- Minimal WSGI gateway published at `https://marcosbuilds.pythonanywhere.com`, with `/healthz` and `/v1/capabilities` for smoke testing; the publication stores no keys and does not replace Supabase.
+- The desktop runs an automatic `/healthz` smoke test on startup and accepts `CENTRAL_GATEWAY_URL` to point an installation at another gateway without recompiling.
+- Self-contained x64 publishing and a Windows Inno Setup installer.
+- Opt-in real synchronization: each installation authenticates with Supabase, registers its Device ID, configures a local Syncthing folder, and tracks peers, state, heartbeat, and conflicts.
+- Private Supabase Realtime control streaming, with `phx_join` confirmation, session renewal, backoff, and persistent replay after reconnect. The local cursor is only a checkpoint; PostgreSQL remains the source of truth.
+- Migration `db/migrations/202611060002_sync_stream.sql` was applied and verified in the dedicated project `ydouynbssldpjhlnawtm`; peers are filtered by project and sensitive writes go through authenticated RPCs.
+- Empty state is also validated through the UI Automation tree: Home does not announce fictional scale or log headers without rows; Prove reflows actions before content is lost at compact widths.
 
-## Árvore do repositório
+## Repository tree
 
 ```text
-app/       Central desktop e núcleo compartilhado
-bot/       bot Discord Peace
-db/        migrações Supabase
-ops/       gateway, instalador e scripts
-tests/     testes da Central e da Peace
-assets/    imagens versionadas do bot
-docs/      arquitetura, decisões, integração e plano
-data/      marcadores locais; dados reais ficam fora do Git
+app/       Central desktop and shared core
+bot/       Peace Discord bot
+db/        Supabase migrations
+ops/       gateway, installer, and scripts
+tests/     Central and Peace tests
+assets/    versioned bot images
+docs/      architecture, decisions, integration, and plan
+data/      local markers; real data stays outside Git
 ```
 
-## Limite honesto da fase
+## Honest phase boundary
 
-Ainda não há conexão com Discord, Codex, Claude, Git, CI/CD ou deploy. O Pulso, tags, releases, commits e catálogo visual continuam sendo fixtures locais; eles não devem ser confundidos com o plano de dados da pasta compartilhada. O PythonAnywhere permanece health-only nesta fase: o streaming real usa Supabase Realtime/WebSocket e os bytes usam Syncthing. Uma prova física entre dois PCs ainda precisa ser observada antes de ser declarada concluída.
+There is still no connection to Discord, Codex, Claude, Git, CI/CD, or deploy.
+Pulse, tags, releases, commits, and the visual catalog remain local fixtures;
+they must not be confused with the shared-folder data plane. PythonAnywhere is
+health-only in this phase: real streaming uses Supabase Realtime/WebSocket and
+bytes use Syncthing. A physical proof between two PCs still needs to be
+observed before it can be declared complete.
 
-## Executar a partir do código
+## Run from source
 
-O SDK usado está em `tools/dotnet` para manter o ambiente organizado no disco D:. No PowerShell:
+The SDK is in `tools/dotnet` to keep the environment organized on the D: drive.
+In PowerShell:
 
 ```powershell
 $dotnet = 'D:\projetos\Central\tools\dotnet\dotnet.exe'
@@ -57,27 +66,30 @@ $dotnet = 'D:\projetos\Central\tools\dotnet\dotnet.exe'
 & $dotnet run --project 'D:\projetos\Central\app\desktop\Central.Desktop\Central.Desktop.csproj' -c Debug --no-restore
 ```
 
-## Testes
+## Tests
 
 ```powershell
 & 'D:\projetos\Central\tools\dotnet\dotnet.exe' test 'D:\projetos\Central\Central.sln' -c Debug --no-restore
 ```
 
-## Empacotamento
+## Packaging
 
-O instalador final fica em `artifacts\installer\Central-Colaborativa-Setup-0.2.0.exe`. O fluxo reproduzível está em `ops\scripts\Build-Central.ps1` e a publicação self-contained fica em `artifacts\publish`. O registro da infraestrutura está em [docs/DEPLOYMENT-2026-11-05.md](docs/DEPLOYMENT-2026-11-05.md).
+The final installer is written to
+`artifacts\installer\Central-Colaborativa-Setup-0.2.0.exe`. The reproducible
+flow is in `ops\scripts\Build-Central.ps1`, and the self-contained publish is in
+`artifacts\publish`. Infrastructure records are in
+[docs/DEPLOYMENT-2026-11-05.md](docs/DEPLOYMENT-2026-11-05.md).
 
-## Decisões e próximo passo
+## Decisions and next step
 
-- O contrato visual vigente está em [docs/DESIGN-DECISIONS-2026-11-04.md](docs/DESIGN-DECISIONS-2026-11-04.md).
-- O planejamento futuro do gateway Python, adapters Claude/Codex e chaves por usuário está em [docs/SERVER-PLAN.md](docs/SERVER-PLAN.md). O componente atualmente publicado está em `ops/gateway/` e deliberadamente expõe apenas saúde/capacidades; não é broker de arquivos nem substitui o Supabase.
+- The current visual contract is in [docs/DESIGN-DECISIONS-2026-11-04.md](docs/DESIGN-DECISIONS-2026-11-04.md).
+- Future planning for the Python gateway, Claude/Codex adapters, and per-user keys is in [docs/SERVER-PLAN.md](docs/SERVER-PLAN.md). The currently published component is in `ops/gateway/` and deliberately exposes only health/capabilities; it is not a file broker and does not replace Supabase.
 
-## Fonte de planejamento
+## Planning source
 
-O planejamento original foi preservado como evidência em
-`docs/plan`. O contrato visual e o adendo de
-decisões podem substituir a interpretação de navegação quando o contraexemplo
-documentado demonstrar que a hipótese original faria a pessoa perder contexto;
-os limites de domínio, segurança e integração futura continuam normativos.
-Toda mudança desse tipo está registrada em
+The original planning material is preserved as evidence in `docs/plan`. The
+visual contract and the decision addendum may supersede the navigation
+interpretation when a documented counterexample shows that the original
+hypothesis would make someone lose context; domain, security, and future
+integration boundaries remain normative. Every such change is recorded in
 `docs/DESIGN-DECISIONS-2026-11-04.md`.

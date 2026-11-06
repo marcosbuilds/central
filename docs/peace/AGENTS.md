@@ -1,101 +1,99 @@
-# Regras da fonte do bot Peace
+# Peace bot source rules
 
-Este documento descreve as regras específicas do bot Peace dentro do monorepo.
-As regras gerais estão em `AGENTS.md` na raiz.
+This document describes the Peace bot's specific rules within the monorepo.
+The general rules are in the root `AGENTS.md`.
 
-## Estrutura do bot
+## Bot structure
 
-Os arquivos do bot ficam nestes pontos curtos da árvore:
+The bot files live in these focused locations in the tree:
 
-- `bot/`: código do pacote;
-- `assets/`: imagens e outros recursos versionados usados pelo bot;
-- `docs/peace/`: arquitetura, operação e decisões do bot;
-- `tests/peace/`: testes automatizados;
-- `data/`: estado local e exportações, sempre ignorados quando forem dados reais;
-- `pyproject.toml`: empacotamento e comandos do bot.
+- `bot/`: package code;
+- `assets/`: versioned images and other resources used by the bot;
+- `docs/peace/`: bot architecture, operations, and decisions;
+- `tests/peace/`: automated tests;
+- `data/`: local state and exports, always ignored when they contain real data;
+- `pyproject.toml`: bot packaging and commands.
 
-Não criar na raiz pastas ou arquivos chamados `tmp`, `output`, `backup`, `new`,
-`final`, `logs`, `exports`, `reports` ou equivalentes. Saídas temporárias devem
-ficar em `data/runtime/`, `data/snapshots/` ou em uma pasta temporária fora do
-projeto.
+Do not create root directories or files named `tmp`, `output`, `backup`, `new`,
+`final`, `logs`, `exports`, `reports`, or equivalents. Temporary output must go
+in `data/runtime/`, `data/snapshots/`, or a temporary directory outside the
+project.
 
-## Regras para dados e segredos
+## Data and secret rules
 
-- Nunca versionar `.env`, tokens, credenciais, banco SQLite, snapshots do Discord,
-  dumps, logs com conteúdo de mensagens ou dados pessoais.
-- `data/` é estado local, não código-fonte. O banco legado
-  `data/peace.sqlite3` só deve ser movido através de uma migração explícita e com
-  backup verificado.
-- Novos snapshots devem ser gravados em `data/snapshots/`.
-- Estado operacional novo deve ser gravado em `data/runtime/` quando a migração
-  do banco for planejada.
-- Não imprimir tokens, RG, telefone, conteúdo de tickets ou dados privados em
-  logs, testes ou mensagens de revisão.
+- Never commit `.env` files, tokens, credentials, SQLite databases, Discord
+  snapshots, dumps, logs containing message content, or personal data.
+- `data/` is local state, not source code. The legacy database
+  `data/peace.sqlite3` may be moved only through an explicit migration with a
+  verified backup.
+- New snapshots must be written to `data/snapshots/`.
+- New operational state must be written to `data/runtime/` when a database
+  migration is planned.
+- Do not print tokens, national IDs, phone numbers, ticket content, or private
+  data in logs, tests, or review messages.
 
-## Regras para o código
+## Code rules
 
-- A identidade da Peace é preservada. Não renomear servidor, marca ou categorias
-  de identidade como parte de uma refatoração; mudanças de nomenclatura precisam
-  de decisão explícita e plano de compatibilidade.
-- Manter os pontos de entrada públicos `peace-bot`, `peace-snapshot` e
-  `peace-nick` definidos em `pyproject.toml`.
-- Não alterar os `custom_id` dos painéis existentes sem uma migração planejada.
-- O painel e o asset do canal `spam-control` são contrato rígido: não trocar
-  texto, embed ou `assets/automod.png` sem autorização explícita. Artes de
-  boas-vindas, set, atendimento e operações são os pontos seguros para evolução
-  visual.
-- Não alterar o schema ou mover o SQLite sem preservar os dados e registrar a
-  migração.
-- `bot/main.py` deve permanecer como ponto de compatibilidade durante a
-  refatoração. Novas funcionalidades devem ser extraídas gradualmente para
-  módulos em `bot/features/`, `bot/ui/`, `bot/integrations/` ou
-  `bot/persistence/`, em vez de aumentar o arquivo monolítico.
-- Configurações do servidor vêm de `.env` e `bot/cfg.py`; não hardcodar tokens,
-  IDs ou permissões em novas features.
-- Todo cargo deve ser classificado como `acesso` ou `visual`. Cargo visual deve
-  ter permissões globais zeradas, não aparecer em guards de autorização e nunca
-  controlar a visibilidade de canais. Cargo de acesso deve ter uma finalidade
-  técnica documentada; não usar cargo visual para conceder permissão.
-- Novos nomes operacionais devem seguir o padrão em inglês já usado no servidor.
-  Em categorias organizadas, use `╭` no primeiro canal, `├` nos canais do meio
-  e `╰` no último; áreas secas como `staff-only`, `scan-only` e `logs` não usam
-  ornamentos.
-- Antes de renomear, remover ou reaproveitar cargo/canal, levantar ID, membros,
-  overwrites e uso no código. Preservar o ID quando isso reduzir risco.
-- IDs Peace nunca devem ser reutilizados silenciosamente: saída com Peace reserva
-  o ID; retorno exige card no `scan-only`, aprovação e registro do novo ID.
-- Toda alteração de permissão, cargo, ticket, moderação ou dado pessoal deve
-  validar autorização, hierarquia e falhas parciais.
-- O atendimento com IA permanece desligado enquanto `IRIS_ENABLED=false`; ao
-  reativar, registrar antes quais canais, dados e guardas serão usados.
+- Preserve Peace's identity. Do not rename the server, brand, or identity
+  categories as part of a refactor; naming changes require an explicit decision
+  and compatibility plan.
+- Keep the public entry points `peace-bot`, `peace-snapshot`, and `peace-nick`
+  defined in `pyproject.toml`.
+- Do not change existing panel `custom_id` values without a planned migration.
+- The `spam-control` channel panel and asset are a strict contract: do not change
+  its text, embed, or `assets/automod.png` without explicit authorization.
+  Welcome, set, support, and operations artwork are the safe points for visual
+  evolution.
+- Do not change the schema or move SQLite without preserving the data and
+  recording the migration.
+- `bot/main.py` must remain a compatibility entry point during the refactor.
+  Extract new functionality gradually into modules under `bot/features/`,
+  `bot/ui/`, `bot/integrations/`, or `bot/persistence/` instead of growing the
+  monolithic file.
+- Server settings come from `.env` and `bot/cfg.py`; do not hardcode tokens,
+  IDs, or permissions in new features.
+- Classify every role as `access` or `visual`. A visual role must have all global
+  permissions cleared, must not appear in authorization guards, and must never
+  control channel visibility. An access role must have a documented technical
+  purpose; do not use a visual role to grant permission.
+- New operational names must follow the English pattern already used on the
+  server. In organized categories, use `╭` for the first channel, `├` for
+  middle channels, and `╰` for the last; dry areas such as `staff-only`,
+  `scan-only`, and `logs` use no ornaments.
+- Before renaming, removing, or reusing a role/channel, collect its ID, members,
+  overwrites, and code usage. Preserve the ID when that reduces risk.
+- Peace IDs must never be silently reused: leaving Peace reserves the ID;
+  returning requires a card in `scan-only`, approval, and a record of the new ID.
+- Every change to permissions, roles, tickets, moderation, or personal data
+  must validate authorization, hierarchy, and partial failures.
+- AI support remains disabled while `IRIS_ENABLED=false`; before re-enabling it,
+  record which channels, data, and guards will be used.
 
-## Regras para dependências e bots externos
+## Dependency and external-bot rules
 
-- Antes de adicionar uma dependência ou bot externo, documentar o problema que
-  ele resolve, os dados que acessa e o plano de remoção.
-- Preferir uma integração bem configurada a vários bots com responsabilidades
-  sobrepostas.
-- A Iris pode orientar e preparar ações, mas nunca deve ser tratada como
-  autoridade para conceder cargo, punir membro ou apagar estrutura sem as
-  confirmações e guardas do sistema.
+- Before adding a dependency or external bot, document the problem it solves,
+  the data it accesses, and the removal plan.
+- Prefer one well-configured integration over multiple bots with overlapping
+  responsibilities.
+- Iris may guide and prepare actions, but must never be treated as the authority
+  to grant roles, punish members, or delete structure without system
+  confirmations and guards.
 
-## Processo obrigatório para mudanças
+## Required change process
 
-1. Ler este arquivo e a documentação relevante antes de editar.
-2. Fazer mudanças pequenas e reversíveis, separando organização de alteração de
-   comportamento.
-3. Adicionar ou atualizar testes para lógica pura, banco, permissões e fluxos
-   alterados.
-4. Executar os testes e uma verificação de inicialização antes de concluir.
-5. Atualizar o README ou `docs/` quando a execução, configuração ou árvore mudar.
-6. Descrever riscos, migrações necessárias e arquivos gerados na entrega.
+1. Read this file and the relevant documentation before editing.
+2. Make small, reversible changes, separating organization from behavior changes.
+3. Add or update tests for changed pure logic, database, permissions, and flows.
+4. Run tests and a startup check before completing the change.
+5. Update the README or `docs/` when execution, configuration, or the tree changes.
+6. Describe risks, required migrations, and generated files in the handoff.
 
-## Convenções
+## Conventions
 
-- Python: módulos e funções em `snake_case`, classes em `PascalCase`.
-- Documentação: nomes descritivos em `UPPER_SNAKE_CASE.md` ou `kebab-case.md`,
-  sem cópias concorrentes do mesmo assunto.
-- Um arquivo deve ter uma responsabilidade clara; evitar módulos genéricos como
-  `utils.py` quando um nome de domínio for possível.
-- Artefatos gerados devem ser recriáveis e nunca ser usados como fonte de
-  verdade.
+- Python: modules and functions use `snake_case`; classes use `PascalCase`.
+- Documentation: descriptive names in `UPPER_SNAKE_CASE.md` or `kebab-case.md`,
+  with no competing copies of the same subject.
+- Each file must have a clear responsibility; avoid generic modules such as
+  `utils.py` when a domain-specific name is possible.
+- Generated artifacts must be reproducible and must never be used as the source
+  of truth.

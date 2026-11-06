@@ -1,3 +1,6 @@
-# Modelo de entrega inicial ao time
+# Initial team delivery template
 
-Este é um exemplo vazio para adaptar após entrevista com o cliente. O documentador monta a árvore correta do projeto, valida arquitetura com o líder técnico, e só então exporta o ZIP para a Central. **Não contém aplicação pronta, segredos ou dados reais.**
+This is an empty example to adapt after interviewing the client. The documenter
+creates the correct project tree, validates the architecture with the technical
+lead, and only then exports the ZIP to Central. **It contains no ready-made
+application, secrets, or real data.**

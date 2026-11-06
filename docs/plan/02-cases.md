@@ -1,46 +1,71 @@
-# 02 — Frontend, backend e sistemas: exemplos reais
+# 02 — Frontend, backend, and systems: real examples
 
-## O que significa cada área
-**Frontend** é o que a pessoa vê e usa: menu, botões, formulários, tela de cadastro, gráficos, notificações. Pode estar em um **site**, **aplicativo de celular**, **programa de computador** ou painel de máquinas.
+## What each area means
 
-**Backend** é quem recebe pedidos das telas e aplica as regras: confere senha, verifica estoque, calcula valores, grava dados, conversa com serviços externos e autoriza operações.
+**Frontend** is what a person sees and uses: menus, buttons, forms, registration
+screens, charts, and notifications. It may be a **website**, **mobile app**,
+**desktop program**, or machine panel.
 
-**Sistema** não é apenas backend. É o conjunto de frontend, backend, dados, integrações, processos, segurança, testes e operação que resolve uma necessidade. Alguns sistemas funcionam sem telas; outros incluem web, celular e desktop ao mesmo tempo.
+**Backend** receives requests from screens and applies rules: checks passwords,
+checks inventory, calculates values, records data, talks to external services,
+and authorizes operations.
 
-## Exemplo A — Clínica que quer marcar consultas
-**Problema do cliente:** pacientes ligam demais e há conflitos de horários.
+**A system** is not only backend. It is the set of frontend, backend, data,
+integrations, processes, security, tests, and operations that solves a need.
+Some systems work without screens; others include web, mobile, and desktop at once.
 
-1. **Produto/documentador** entrevista recepção e profissionais: horários, encaixes, cancelamentos, confirmações, regras de acesso e dados sensíveis. Produz requisitos, fluxos, desenhos de entidades e pacote inicial.
-2. **Design** mostra como seria escolher data, médico e receber confirmação.
-3. **Frontend** constrói a tela do paciente e o painel da recepção.
-4. **Backend** verifica disponibilidade, evita dupla reserva, registra consultas e dispara lembretes.
-5. **Infra** disponibiliza ambiente de testes, autenticação, cópias de segurança e monitoramento.
-6. **QA** testa duas pessoas marcando o mesmo horário, falha de internet, cancelamento e acessibilidade.
-7. **Todos** revisam o resultado com a clínica antes do lançamento.
+## Example A — Clinic that wants appointment scheduling
 
-**Entrega:** não apenas um site: um sistema de agendamento com regras, banco de dados, painel e integrações. Dados de saúde exigem cuidado adicional com LGPD e escopo; não começar sem revisão adequada.
+**Client problem:** patients call too often and time slots conflict.
 
-## Exemplo B — Loja com estoque e vendas
-- **Frontend web:** painel de produtos e pedidos.
-- **Frontend mobile/desktop:** aplicativo para consultar o estoque, inclusive eventual modo offline se contratado.
-- **Backend:** controla entradas/saídas, evita venda acima do estoque e integra pagamentos/notas quando previstas.
-- **Produto/documentador:** descobre como a loja trabalha na prática e decide o que vem primeiro.
-- **QA + infra + design:** garantem que o resultado seja utilizável, verificável e estável.
-- **Sistema final:** painel + aplicativo + API + dados + integrações e rotinas.
+1. **Product/documenter** interviews reception and practitioners: hours,
+   overbooking, cancellations, confirmations, access rules, and sensitive data.
+   Produces requirements, flows, entity designs, and the initial package.
+2. **Design** shows how to choose a date and doctor and receive confirmation.
+3. **Frontend** builds the patient screen and reception dashboard.
+4. **Backend** checks availability, prevents double booking, records appointments,
+   and sends reminders.
+5. **Infrastructure** provides test environment, authentication, backups, and monitoring.
+6. **QA** tests two people booking the same time, internet failure, cancellation, and accessibility.
+7. **Everyone** reviews the result with the clinic before launch.
 
-## Exemplo C — Empresa que recebe arquivos por e-mail e preenche planilhas manualmente
-- O produto pode ser **uma automação sem uma interface complexa**: busca arquivos autorizados, valida, transforma dados, registra resultado e avisa falhas.
-- Backend/integrações assume mais trabalho; frontend entrega apenas um pequeno painel se necessário; QA valida arquivos ruins e erros; documentação define regras; infra monitora.
+**Delivery:** not just a website: an appointment system with rules, database,
+dashboard, and integrations. Health data requires additional care with LGPD and
+scope; do not start without appropriate review.
 
-## Exemplo D — Plataforma interna da própria startup
-- **Frontend:** dashboard, lista de projetos, árvore de arquivos, comentários, trabalho ao vivo.
-- **Backend:** login, permissões, tarefas, reservas, histórico e APIs dos agentes.
-- **Conector local:** lê eventos autorizados de Codex/Claude e envia a atividade do desenvolvedor.
-- **QA:** simula duas IAs tentando alterar o mesmo módulo.
-- **Infra:** operação, deploy e segurança.
-- **Produto/documentador:** especifica fluxos e regras da Central antes do código.
+## Example B — Store with inventory and sales
 
-## O que não confundir
-- Ter 3 backends não significa que um faz 'site' e outro faz 'sistema'. Eles podem trabalhar no mesmo produto com responsabilidades por módulos.
-- Uma interface pode ser feita em diferentes tecnologias; não assumir que quem faz frontend web dominará mobile nativo automaticamente.
-- O cliente deve enxergar **resultado**, não nomenclatura técnica: menos trabalho manual, menos erros, atendimento melhor, mais controle ou nova fonte de receita.
+- **Web frontend:** product and order dashboard.
+- **Mobile/desktop frontend:** app for checking inventory, including offline mode
+  if contracted.
+- **Backend:** controls stock in/out, prevents selling above inventory, and
+  integrates payments/invoices when planned.
+- **Product/documenter:** discovers how the store works in practice and decides what comes first.
+- **QA + infrastructure + design:** ensure the result is usable, verifiable, and stable.
+- **Final system:** dashboard + app + API + data + integrations and routines.
+
+## Example C — Company that receives email files and fills spreadsheets manually
+
+- The product may be **an automation without a complex interface**: retrieve
+  authorized files, validate, transform data, record the result, and report failures.
+- Backend/integrations take more of the work; frontend delivers a small dashboard
+  only if needed; QA validates bad files and errors; documentation defines rules;
+  infrastructure monitors.
+
+## Example D — Startup's own internal platform
+
+- **Frontend:** dashboard, project list, file tree, comments, and live work.
+- **Backend:** login, permissions, tasks, reservations, history, and agent APIs.
+- **Local connector:** reads authorized Codex/Claude events and sends developer activity.
+- **QA:** simulates two AIs attempting to change the same module.
+- **Infrastructure:** operations, deployment, and security.
+- **Product/documenter:** specifies Central's flows and rules before coding.
+
+## What not to confuse
+
+- Having 3 backend developers does not mean one builds a “site” and another a
+  “system”. They may work on the same product with module responsibilities.
+- An interface can use different technologies; do not assume that a web frontend
+  developer automatically masters native mobile.
+- The client should see **outcome**, not technical nomenclature: less manual work,
+  fewer errors, better support, more control, or a new revenue source.

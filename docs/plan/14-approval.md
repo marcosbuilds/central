@@ -1,77 +1,117 @@
-# 14 — Entregas aprovadas, commits, versionamento e diálogo entre IAs
+# 14 — Approved deliveries, commits, versioning, and AI dialogue
 
-**Status:** especificação proposta; não está implementada. **Objetivo:** permitir um código vivo compartilhado sem confundir edição, versão oficial e publicação; permitir que IA e pessoas discutam integrações de modo rastreável.
+**Status:** proposed specification; not implemented. **Objective:** enable shared
+live code without confusing editing, official version, and publication; allow AI
+and people to discuss integrations in a traceable way.
 
-## 1. Linguagem da Central: quatro coisas diferentes
+## 1. Central language: four different things
 
-| Nome simples na tela | Registro técnico | Exige revisão humana? | Entra na master? | Faz deploy? |
+| Simple screen name | Technical record | Human review required? | Enters master? | Deploys? |
 |---|---|---|---|---|
-| Edição em andamento | Mudança local não sincronizada | Não | Não | Não |
-| Alteração ao vivo | `change_set`, revisão sequencial, snapshot recuperável | Em geral não; exige checagem automática | Não | Não |
-| Entrega para aprovação | Conjunto de revisões + diff + checks + parecer | Conforme risco e política | Só após aprovação | Não automaticamente |
-| Publicação | Release, ambiente, artefato e rollback | Conforme ambiente | Usa versão já aprovada | Sim, após autorização |
+| Work in progress | Unsynchronized local change | No | No | No |
+| Live change | `change_set`, sequential revision, recoverable snapshot | Usually no; automated checks required | No | No |
+| Delivery for approval | Set of revisions + diff + checks + opinion | According to risk and policy | Only after approval | Not automatically |
+| Publication | Release, environment, artifact, and rollback | According to environment | Uses already-approved version | Yes, after authorization |
 
-**Nota de precisão:** o Git define *commit* como registro de alterações, e não como uma mudança necessariamente grande. A experiência da Central chama o pacote que pede aprovação de **entrega**; sua implementação pode usar commits técnicos periódicos, hash de snapshots e um commit consolidado de integração, sem exigir que cada microedição produza PR e deploy. Alterações pequenas de alto risco continuam exigindo aprovação.
+**Precision note:** Git defines a *commit* as a record of changes, not
+necessarily a large change. Central calls the package requesting approval a
+**delivery**; its implementation may use periodic technical commits, snapshot
+hashes, and one consolidated integration commit, without requiring every
+micro-edit to create a PR and deployment. Small high-risk changes still require approval.
 
-## 2. Modelo de versionamento
+## 2. Versioning model
 
-- `workspace_revision`: incrementa a cada conjunto de patches confirmado no workspace vivo; todos veem a mesma sequência lógica.
-- `change_set`: autor, agente, tarefa, arquivos e símbolos, revisão-base, patch, hash, data, verificações, motivo, reversões; mudanças podem ser agrupadas.
-- `snapshot`: estado recuperável em ponto conhecido; gravação automática por lote/intervalo e antes de entregas importantes.
-- `delivery_candidate`: conjunto imutável de `change_set`s selecionados para integrar; um ID, hash, versão-base da master, dependências e resumo de risco.
-- `master`: histórico estável Git protegido; apenas o serviço de integração aprovado publica uma entrega validada na branch protegida (via mecanismo de PR/merge ou equivalentemente sujeito às regras do provedor).
-- `release`: versão nomeada/tag após entrega aprovada; não implica deploy.
-- `deployment`: ligação entre release/commit, ambiente, solicitante, aprovação, testes, logs e rollback.
+- `workspace_revision`: increments for every confirmed patch set in the live
+  workspace; everyone sees the same logical sequence.
+- `change_set`: author, agent, task, files/symbols, base revision, patch, hash,
+  date, checks, reason, and reversals; changes may be grouped.
+- `snapshot`: recoverable state at a known point; automatic write by batch/interval and before important deliveries.
+- `delivery_candidate`: immutable set of `change_set`s selected for integration;
+  an ID, hash, master base version, dependencies, and risk summary.
+- `master`: protected stable Git history; only the approved integration service
+  publishes a validated delivery to the protected branch (through PR/merge or an
+  equivalent provider-controlled mechanism).
+- `release`: named version/tag after an approved delivery; does not imply deployment.
+- `deployment`: link among release/commit, environment, requester, approval,
+  tests, logs, and rollback.
 
-Recomendação: usar versão semântica para os produtos que precisarem (por exemplo `1.2.0`), e números de revisão do workspace para coordenação cotidiana (`r145`). Não aumentar a versão do produto por cada patch.
+Recommendation: use semantic versioning for products that need it (for example
+`1.2.0`) and workspace revision numbers for daily coordination (`r145`). Do not
+increase product version for every patch.
 
-## 3. Política de risco (não apenas tamanho)
+## 3. Risk policy (not only size)
 
-| Risco | Exemplo | Aprovação sugerida |
+| Risk | Example | Suggested approval |
 |---|---|---|
-| Baixo | Texto da interface, formatação sem efeito em comportamento | IA revisora **independente** com evidências pode ser suficiente, se o projeto autorizar |
-| Médio | Nova rota, ajuste de banco compatível, comportamento de validação | IA especializada independente + verificações obrigatórias; revisão humana opcional/conforme política |
-| Alto | Autenticação, autorização, pagamentos, exclusão de dados, migrations destrutivas, configuração de produção | Pelo menos uma pessoa autorizada, com parecer técnico e testes; IA auxilia, não decide sozinha |
+| Low | Interface text, formatting with no behavior effect | **Independent** AI reviewer with evidence may be sufficient if the project authorizes it |
+| Medium | New route, compatible database adjustment, validation behavior | Independent specialized AI + required checks; human review optional/according to policy |
+| High | Authentication, authorization, payments, data deletion, destructive migrations, production configuration | At least one authorized person, with technical opinion and tests; AI assists but does not decide alone |
 
-**Condição universal:** sem permissão explícita, uma IA só dá **parecer**, não aprovação executável. Nunca se autoaprova. Se a política Git exigir revisão de humano, um parecer da IA não satisfaz essa revisão automaticamente. A aprovação pertence ao hash exato revisado; se muda o diff, reavaliar.
+**Universal condition:** without explicit permission, an AI gives an **opinion**,
+not executable approval. It never self-approves. If Git policy requires human
+review, an AI opinion does not automatically satisfy it. Approval belongs to the
+exact reviewed hash; if the diff changes, reevaluate.
 
-## 4. Prova exigida antes de aprovar
+## 4. Evidence required before approval
 
-Cada entrega gera um **dossiê de evidências**:
+Each delivery generates an **evidence dossier**:
 
-1. **Mudança exata:** referência da revisão, hash, diff, autoria humana e agente, tarefa/requisito.
-2. **Por que mudar:** problema, resultado esperado, impacto nas dependências e no usuário.
-3. **Checagens executadas:** comandos, ambiente, versões, status, logs sem segredos, cobertura relevante, comparação com cenário anterior.
-4. **Contratos:** APIs/rotas/eventos/esquemas tocados, consumidores notificados, testes de contrato.
-5. **Segurança e recuperação:** risco, análise de permissões e de dados, plano de reversão, backup/migration se aplicável.
-6. **Revisão independente:** autor/revisor distintos, comentários respondidos, motivo da decisão, timestamp e ID do job de testes.
+1. **Exact change:** revision reference, hash, human and agent authorship, task/requirement.
+2. **Why change:** problem, expected result, impact on dependencies and user.
+3. **Checks run:** commands, environment, versions, secret-free logs, relevant
+   coverage, and comparison with the previous scenario.
+4. **Contracts:** touched APIs/routes/events/schemas, notified consumers, and contract tests.
+5. **Security and recovery:** risk, permissions/data analysis, reversal plan,
+   backup/migration when applicable.
+6. **Independent review:** distinct author/reviewer, answered comments, decision
+   reason, timestamp, and test-job ID.
 
-Os testes são executados pela infraestrutura isolada de CI, não apenas declarados no texto da IA. Uma IA pode apontar dúvidas, reproduzir defeitos, abrir pedido de correção e marcar `inconclusivo`. Um revisor não pode simplesmente escrever 'aprovado' sem associar a evidência. Logs e artefatos precisam ser verificáveis.
+Tests are run by isolated CI infrastructure, not merely declared in AI text. An
+AI may raise questions, reproduce defects, open correction requests, and mark a
+delivery `inconclusive`. A reviewer cannot simply write “approved” without
+linking evidence. Logs and artifacts must be verifiable.
 
-### Máquina de estados de entrega
+### Delivery state machine
 
-`RASCUNHO → PREPARADA → TESTANDO → EM_REVISAO → [ALTERACOES_SOLICITADAS | REPROVADA | APROVADA] → INTEGRANDO → INTEGRADA`.
+`DRAFT → PREPARED → TESTING → IN_REVIEW → [CHANGES_REQUESTED | REJECTED | APPROVED] → INTEGRATING → INTEGRATED`.
 
-- Alterações solicitadas: autor corrige, atualiza hash, reinicia verificações e revisão quando necessário.
-- Reprovada: não integra master, mas mantém histórico auditável e rollback na área viva. Se outros change sets dependem do reprovado, abrir incidente de reconciliação.
-- Integrando: serviço verifica estado do projeto, permissão, hash e base master de novo; detecta regressão e incompatibilidades; só então publica na branch protegida.
-- `APROVADA` não significa que GitHub ou produção já aceitaram a alteração. Se a regra externa negar merge, marcar `BLOQUEADA` e registrar o motivo.
+- Changes requested: author corrects, updates the hash, and restarts checks and review when necessary.
+- Rejected: do not integrate into master, but keep auditable history and rollback
+  in the live area. If other change sets depend on it, open a reconciliation incident.
+- Integrating: service checks project state, permission, hash, and master base
+  again; detects regressions/incompatibilities; only then publishes to the protected branch.
+- `APPROVED` does not mean GitHub or production accepted the change. If an
+  external rule denies merge, mark `BLOCKED` and record the reason.
 
-## 5. Conversa entre agentes dentro do projeto
+## 5. Conversation between agents inside the project
 
-**Locais:** canal do projeto, thread por tarefa, discussão por arquivo/linha, pedido de integração por API, comentário de revisão, anúncio de mudança de contrato. Cada mensagem pertence a um projeto e pode citar recurso lógico, revisão, contrato e tarefa.
+**Locations:** project channel, task thread, file/line discussion, API
+integration request, review comment, contract-change announcement. Each message
+belongs to a project and may reference logical resource, revision, contract, and task.
 
-**Mensagem mínima:** `message_id, project_id, thread_id, sender_type, member_id, agent_session_id, type, resource_refs, body, created_at, mentions, visibility, reply_to`. A identidade mostrada é `Codex de [integrante]`, `Claude de [integrante]` etc., nunca 'uma IA desconhecida'.
+**Minimum message:** `message_id, project_id, thread_id, sender_type, member_id,
+agent_session_id, type, resource_refs, body, created_at, mentions, visibility,
+reply_to`. The shown identity is `Codex from [member]`, `Claude from [member]`,
+etc., never “an unknown AI”.
 
-Tipos: `question`, `integration_request`, `contract_proposal`, `contract_ack`, `contract_ready`, `blocker`, `decision`, `review_comment`, `evidence`, `notification`. Threads podem ser resolvidas, reabertas, pesquisadas e auditadas.
+Types: `question`, `integration_request`, `contract_proposal`, `contract_ack`,
+`contract_ready`, `blocker`, `decision`, `review_comment`, `evidence`,
+`notification`. Threads can be resolved, reopened, searched, and audited.
 
-**Coordenação:** uma sessão ativa recebe menção e responde por adaptador autorizado; uma sessão inativa recebe notificação/pedido pendente, sem inventar resposta nem iniciar gasto de modelo sem a política e autorização do dono. Recomendado orçamento e limite de mensagens por integração para impedir ciclos infinitos entre IAs.
+**Coordination:** an active session receives a mention and responds through an
+authorized adapter; an inactive session receives a notification/pending request,
+without invented response or model spend without the owner's policy and
+authorization. A budget and message limit per integration are recommended to
+prevent infinite AI loops.
 
-## 6. Exemplo completo — frontend pede API ao backend
+## 6. Complete example — frontend requests an API from backend
 
-1. Codex do frontend reserva `ui.registration` e vê no planejamento dependência de `api.registration`.
-2. Publica a pergunta: 'Qual rota, autenticação, payload, resposta, erros e prazo esperado?'. Central cria `integration_request IR-24` ligado às tarefas T-17 e T-18.
-3. Claude do backend, responsável por `api.registration`, responde com **proposta de contrato** (não promete código pronto):
+1. Frontend Codex reserves `ui.registration` and sees a dependency on
+   `api.registration` in planning.
+2. It posts: “Which route, authentication, payload, response, errors, and expected
+   timing?” Central creates `integration_request IR-24` linked to tasks T-17 and T-18.
+3. Backend Claude, owner of `api.registration`, replies with a **contract
+   proposal** (not a promise of ready code):
 
 ```yaml
 id: api.registration.v1
@@ -89,56 +129,69 @@ owner: task:T-18
 consumer: task:T-17
 ```
 
-4. O Codex responde `contract_ack` (aceita ou pergunta); a Central muda contrato para `acordado`, registra versão e avisa ambos.
-5. Frontend pode preparar a interface usando mock **marcado como simulação**; não confunde API proposta com API disponível.
-6. Backend implementa e publica evidências de teste de contrato. Estado: `implementado` e depois `testado`.
-7. Central avisa o frontend: a rota está testada na revisão `r123`; o Codex sincroniza e executa integração real em ambiente de teste.
-8. Se o backend alterar um campo, cria `contract_change` antes de aplicar mudança incompatível; dependentes ficam alertados e integração é testada novamente.
-9. Todos os envolvidos podem comentar e consultar a decisão meses depois, sem perder contexto em chat privado.
+4. Codex replies `contract_ack` (accepts or asks); Central changes the contract
+   to `agreed`, records the version, and notifies both.
+5. Frontend may prepare the interface using a mock **labeled as simulation**; it
+   does not confuse a proposed API with an available one.
+6. Backend implements and publishes contract-test evidence. State: `implemented`, then `tested`.
+7. Central tells frontend that the route is tested in revision `r123`; Codex
+   synchronizes and runs real integration in a test environment.
+8. If backend changes a field, it creates `contract_change` before an incompatible
+   change; dependents are alerted and integration is tested again.
+9. Everyone can comment and consult the decision months later without losing
+   context in private chat.
 
-## 7. Regras de dependência e conflitos
+## 7. Dependency rules and conflicts
 
-- Recurso lógico tem dono temporário e consumidores (`api.registration` provê, `ui.registration` consome). Dois agentes podem desenvolver em paralelo suas partes; modificação incompatível do contrato exige coordenação.
-- Mensagem *não concede* reserva nem autorização. A central confere reivindicações e permissões por API.
-- Regras por arquivo **e por lógica**; nomes de arquivos diferentes não garantem independência. Em dúvida, reservar módulo maior e bloquear alteração perigosa.
-- O gateway revalida `project.state`, revisão e hashes ao confirmar o patch. Nenhuma conversa pode autorizar bypass.
-- Projetos `FECHADO` permitem discussão/leitura se a política autorizar; escrita, merge, release e deploy ficam bloqueados até reabertura.
+- A logical resource has a temporary owner and consumers (`api.registration`
+  provides, `ui.registration` consumes). Two agents may develop their portions
+  in parallel; an incompatible contract change requires coordination.
+- A message *does not grant* a reservation or authorization. Central checks claims and permissions through the API.
+- Rules apply by file **and by logic**; different file names do not guarantee
+  independence. When in doubt, reserve the larger module and block dangerous changes.
+- The gateway revalidates `project.state`, revision, and hashes when confirming a patch. No conversation can authorize a bypass.
+- `CLOSED` projects allow discussion/reading when policy permits; writing, merge,
+  release, and deployment are blocked until reopening.
 
-## 8. Onde aparece na interface
+## 8. Where it appears in the interface
 
-Tela do projeto: `Visão geral | Planejamento | Workspace vivo | Discussões | Integrações/API | Entregas | Histórico | Publicações | Segurança`.
+Project screen: `Overview | Planning | Live workspace | Discussions | Integrations/API | Deliveries | History | Publications | Security`.
 
-No Workspace, clicar em um arquivo mostra mudanças de cada agente, contratos relacionados, revisões e thread. Em 'Integrações' existem pedidos pendentes, contratos acordados, consumidores e verificações. Em 'Entregas', dossiês, diff comparado com master, checks, quem aprovou e por quê. No histórico, recuperar a revisão sem contaminar a master.
+In Workspace, clicking a file shows each agent's changes, related contracts,
+revisions, and thread. In Integrations, show pending requests, agreed contracts,
+consumers, and checks. In Deliveries, show dossiers, diff against master, checks,
+who approved, and why. In History, recover a revision without contaminating master.
 
-## 9. Riscos e salvaguardas
+## 9. Risks and safeguards
 
-- **Bate-boca/ciclo de IA:** limitar turnos, desestimular ping-pong, permitir cancelar/escalar ao humano.
-- **Alucinação de rota/resultado:** contratos somente mudam para `testado` com check de CI; distinguir proposta de implementação.
-- **Autoaprovação disfarçada:** correlacionar agente→integrante→autor e obrigar outro responsável para revisão executável.
-- **Mudança silenciosa da API:** changelog e assinatura dos consumidores, testes de compatibilidade.
-- **Patch seguido de fechamento:** fencing token e conferência atômica no gateway para não aceitar escrita após fechamento.
-- **Aprovação obsoleta:** aprovação amarrada ao hash exato e commit-base; revalidar na integração.
-- **Merge de entrega em trabalho vivo que mudou:** calcular candidato imutável; conciliar dependências e revisões até ficar consistente antes de aprovar/publicar.
-- **Dados confidenciais em conversas e streaming:** autorização por projeto, retenção configurável e redação de segredos; jamais armazenar raciocínio privado de modelos como requisito.
+- **AI argument/loop:** limit turns, discourage ping-pong, allow cancellation/escalation to a human.
+- **Route/result hallucination:** contracts move to `tested` only with a CI check; distinguish proposal from implementation.
+- **Disguised self-approval:** correlate agent → member → author and require another owner for executable review.
+- **Silent API change:** changelog, consumer acknowledgment, compatibility tests.
+- **Patch followed by closing:** fencing token and atomic gateway check to reject writing after close.
+- **Stale approval:** bind approval to exact hash and base commit; revalidate during integration.
+- **Delivery merge into changed live work:** compute an immutable candidate; reconcile dependencies/revisions before approving/publishing.
+- **Confidential data in conversations/streaming:** project authorization, configurable retention, secret redaction; never store model private reasoning as a requirement.
 
-## 10. Testes de aceite específicos
+## 10. Specific acceptance tests
 
-- Duas IAs solicitam e confirmam contrato; outra pessoa acompanha a thread em tempo real.
-- Sessão backend offline: pedido persiste e é respondido ao reconectar; não fabricar resposta.
-- Mudança de contrato invalida integração afetada e dispara check obrigatório.
-- 100 edições pequenas geram revisões reversíveis **sem** 100 deploys/PRs.
-- Entrega de risco baixo com IA revisora independente, provas válidas e política delegada pode seguir para master; sem delegação, não.
-- IA autora tenta aprovar com outro token da mesma pessoa: bloquear quando política exige independência.
-- Alteração de autenticação com parecer favorável da IA continua bloqueada até revisão humana.
-- Aprovação referente a hash anterior não serve após patch novo.
-- Projeto fechado entre a revisão e o merge impede integração e deploy.
-- Checks externos GitHub rejeitam merge: Central não exibe sucesso falso.
+- Two AIs request and confirm a contract; another person follows the thread in real time.
+- Offline backend session: request persists and is answered on reconnect; no invented response.
+- Contract change invalidates affected integration and triggers a required check.
+- 100 small edits create reversible revisions **without** 100 deployments/PRs.
+- Low-risk delivery with independent AI reviewer, valid evidence, and delegated policy may proceed to master; without delegation, it may not.
+- Authoring AI tries to approve with another token from the same person: block when policy requires independence.
+- Authentication change with a favorable AI opinion remains blocked until human review.
+- Approval referring to an old hash is invalid after a new patch.
+- Project closed between review and merge prevents integration and deployment.
+- External GitHub checks reject merge: Central does not show false success.
 
-## Referências técnicas
+## Technical references
 
-- Git: https://git-scm.com/docs/git-commit (commit registra estado; não requer alteração grande).
-- GitHub protected branches: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches (revisores, verificações, travamento e merge queue).
-- Codex App Server: https://learn.chatgpt.com/docs/app-server (eventos, aprovações e integração de aplicação).
-- Claude Agent SDK: https://platform.claude.com/docs/en/managed-agents/migration (agentes, sessões, ferramentas e permissões).
+- Git: https://git-scm.com/docs/git-commit (commit records state; it does not require a large change).
+- GitHub protected branches: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches (reviewers, checks, locking, merge queue).
+- Codex App Server: https://learn.chatgpt.com/docs/app-server (events, approvals, application integration).
+- Claude Agent SDK: https://platform.claude.com/docs/en/managed-agents/migration (agents, sessions, tools, permissions).
 
-*Todos os números de revisão, tarefas, projetos e APIs deste capítulo são exemplos propostos, não implementações existentes.*
+*All revision numbers, tasks, projects, and APIs in this chapter are proposed
+examples, not existing implementations.*

@@ -1,193 +1,190 @@
-# Adaptação da Peace: comunidade + trabalho
+# Peace adaptation: community + work
 
-## Decisão de produto
+## Product decision
 
-A Peace continua sendo a mesma comunidade: resenha, jogos juntos, calls,
-atendimento e tickets. O trabalho de desenvolvimento entra como uma segunda
-função, usando a estrutura existente e poucos canais. Não há troca de nome,
-marca ou identidade do servidor.
+Peace remains the same community: social conversation, games together, calls,
+support, and tickets. Development work is added as a second function, using the
+existing structure and a small number of channels. The server's name, brand, and
+identity are not changing.
 
-O princípio de governança é separar duas coisas:
+The governance principle is to separate two things:
 
-- cargo de acesso: controla uma permissão ou uma área;
-- cargo visual: organiza a lista de membros e a aparência, sem conceder acesso.
+- access role: controls a permission or area;
+- visual role: organizes the member list and appearance without granting access.
 
-Cargo visual nunca deve aparecer em uma regra de autorização.
+A visual role must never appear in an authorization rule.
 
-## Estado aplicado no servidor
+## State applied on the server
 
-### Raiz pública
+### Public root
 
-- `rules`: permanece no topo e continua público para boas-vindas/regras;
-- `spam-control`: canal público de honeypot, também no topo;
-- `AFK`: call pública visível, sem permissão de conexão, preservando a função de
-  AFK.
+- `rules`: remains at the top and stays public for welcome/rules;
+- `spam-control`: public honeypot channel, also at the top;
+- `AFK`: visible public call without connection permission, preserving its AFK function.
 
-### Categorias preservadas e adaptadas
+### Preserved and adapted categories
 
-| Área | Canais principais | Regra de uso |
+| Area | Main channels | Usage rule |
 | --- | --- | --- |
-| `[🎫] RECEPÇÃO` | `boas-vindas`, `regras`, `pedir-set` | entrada e entrevista inicial |
-| `[💻] DEVELOPERS` | `╰💬・chat-dev`, `╭💻・programming` | colaboração do time técnico |
-| `[🔔] RESENHA & SOCIAL` | chats sociais e `música` | comunidade e convivência |
-| `[☎️] ATENDIMENTO` | painel, espera e suporte | atendimento de jogo, Discord ou trabalho |
-| `[🎙️] CALLS` | quatro calls existentes | calls compartilhadas para Peace e desenvolvimento |
-| `[🎙️] CALL・PRIVADA` | calls privadas atuais | benefício de booster, sem mistura com dev |
-| `[🎟️] TICKETS-FECHADOS` | vazio | arquivo futuro, invisível para membros |
-| `[🛡️] STAFF` | `scan-only`, `staff-only`, `logs` | recrutamento e operação interna |
+| `[🎫] RECEPÇÃO` | `boas-vindas`, `regras`, `pedir-set` | entry and initial interview |
+| `[💻] DEVELOPERS` | `╰💬・chat-dev`, `╭💻・programming` | technical-team collaboration |
+| `[🔔] RESENHA & SOCIAL` | social chats and `música` | community and social life |
+| `[☎️] ATENDIMENTO` | panel, waiting room, and support | game, Discord, or work support |
+| `[🎙️] CALLS` | four existing calls | shared calls for Peace and development |
+| `[🎙️] CALL・PRIVADA` | current private calls | booster benefit, separate from development |
+| `[🎟️] TICKETS-FECHADOS` | empty | future archive, invisible to members |
+| `[🛡️] STAFF` | `scan-only`, `staff-only`, `logs` | recruiting and internal operations |
 
-Os IDs existentes foram reaproveitados sempre que isso reduziu risco. A antiga
-área Florenza foi reaproveitada internamente para `DEVELOPERS`; a identidade
-pública da Peace não foi trocada. O canal de chat virou `╰💬・chat-dev` e a call
-virou `╭💻・programming`.
+Existing IDs were reused whenever that reduced risk. The former Florenza area
+was reused internally for `DEVELOPERS`; Peace's public identity did not change.
+The chat channel became `╰💬・chat-dev` and the call became
+`╭💻・programming`.
 
-## O que foi retirado
+## What was removed
 
-- a categoria `[🔫] AÇÃO` e suas calls específicas do modelo antigo;
-- os canais de ticket abertos/fechados que estavam acumulados;
-- os registros desses tickets no SQLite, mantendo o banco e o histórico técnico
-  do sistema intactos;
-- o cargo legado `Florenza Founds`;
-- os cargos legados `Advertência I`, `Advertência II`, `Advertência III` e
-  `Sublider`;
-- a exposição pública do fluxo antigo `programming-only` como builder;
-- o uso de `programming-only` como canal de execução estrutural.
+- the `[🔫] AÇÃO` category and its model-specific calls;
+- accumulated open/closed ticket channels;
+- records for those tickets in SQLite, while keeping the database and the
+  system's technical history intact;
+- the legacy `Florenza Founds` role;
+- the legacy `Advertência I`, `Advertência II`, `Advertência III`, and `Sublider` roles;
+- public exposure of the old `programming-only` flow as a builder;
+- use of `programming-only` as a structural execution channel.
 
-Nenhum cargo de `Streamer`, booster, Peace, staff, visitante, elite ou
-integração de bot foi removido como parte desta limpeza. `Gerência` foi mantido
-como cargo de organização, mas suas permissões globais foram zeradas.
+No `Streamer`, booster, Peace, staff, visitor, elite, or bot-integration role was
+removed as part of this cleanup. `Gerência` was kept as an organizational role,
+but its global permissions were cleared.
 
-## Matriz de cargos
+## Role matrix
 
-### Acesso técnico
+### Technical access
 
-`Dev` é o cargo técnico que controla o acesso à categoria de Developers. Ele foi
-reaproveitado do antigo `Developer`, mas suas
-permissões globais amplas foram zeradas. A autorização de área fica nos
-overwrites dos canais e categorias, não em `Administrator`, `Manage Guild`,
-`Manage Roles` ou `Manage Channels`.
+`Dev` is the technical role controlling access to the Developers category. It
+was reused from the former `Developer` role, but its broad global permissions
+were cleared. Area authorization lives in channel and category overwrites, not
+in `Administrator`, `Manage Guild`, `Manage Roles`, or `Manage Channels`.
 
-### Identidade visual
+### Visual identity
 
-Os cargos abaixo têm finalidade visual/organizacional e permissões globais
-zeradas:
+The roles below have a visual/organizational purpose and zero global permissions:
 
 - `Developer`;
 - `Frontend`;
 - `Backend`;
 - `Documentation`;
-- `AI & Bots` — reservado para bots com IA; atualmente usado pelo bot da Peace.
+- `AI & Bots` — reserved for AI bots; currently used by the Peace bot.
 
-Eles podem dar cor, ordem e identificação. Não podem abrir canais, conceder
-cargos, moderar ou alterar a estrutura.
+They may provide color, ordering, and identification. They cannot open channels,
+grant roles, moderate, or change the structure.
 
-### Cargos preservados
+### Preserved roles
 
 `Peace`, `Novato Peace`, `Staff Peace`, `Gerência`, `Recrutador`, `Elite Peace`,
-`Visitante`, `Streamer`, booster e cargos gerenciados por integrações foram
-mantidos. Mudanças futuras nesses cargos exigem inventário de membros,
-permissões e dependências antes da aplicação.
+`Visitante`, `Streamer`, booster, and integration-managed roles were kept.
+Future changes to these roles require an inventory of members, permissions, and
+dependencies before application.
 
-## Entrada e entrevistas
+## Entry and interviews
 
-O painel de `pedir-set` agora oferece três entradas:
+The `pedir-set` panel now offers three entry points:
 
 1. `Sou player`;
 2. `Join Developers`;
 3. `Staff — indisponível por hora`.
 
-Quem já tem `Peace` não pode solicitar novamente a entrada de player. A
-entrevista inicial do player mantém a coleta in-game solicitada e passa por
-aprovação manual.
+Members who already have `Peace` cannot request player entry again. The initial
+player interview keeps the requested in-game data collection and requires manual
+approval.
 
-O fluxo de desenvolvedor é separado em etapas:
+The developer flow is split into stages:
 
-1. nome e sobrenome reais, apelido e motivação;
-2. área: Frontend, Backend, Documentação ou IA & Bots · Íris;
-3. tempo de especialização, experiência anterior e portfólio opcional;
-4. envio das respostas para `scan-only`;
-5. aprovação ou recusa manual por um recrutador autorizado;
-6. após aprovação, seleção de horário no próximo dia útil, entre `06:00–13:00`
-   ou `14:00–00:00` no horário de Brasília;
-7. DM com o horário marcado; se não puder comparecer, o integrante é orientado
-   a abrir um ticket.
+1. legal first and last name, nickname, and motivation;
+2. area: Frontend, Backend, Documentation, or AI & Bots · Íris;
+3. specialization time, previous experience, and optional portfolio;
+4. send answers to `scan-only`;
+5. manual approval or rejection by an authorized recruiter;
+6. after approval, select a time on the next business day, between `06:00–13:00`
+   or `14:00–00:00` Brasília time;
+7. DM with the scheduled time; if the person cannot attend, they are instructed
+   to open a ticket.
 
-O fluxo não concede cargo automaticamente. A integração acontece depois da
-reunião e da decisão humana.
+The flow does not grant a role automatically. Integration happens after the
+meeting and the human decision.
 
-### Retorno de membros Peace
+### Returning Peace members
 
-Quando um membro sai com `Peace`, o ID não volta imediatamente para o pool: ele
-fica reservado para a conta. Se a conta retornar, o bot publica um card no
-`scan-only` e não restaura o vínculo sozinho. Um recrutador autorizado pode usar
-`Liberar ID`; essa ação libera o ID antigo e registra um novo ID para o retorno
-aprovado.
+When a member leaves with `Peace`, the ID does not immediately return to the
+pool: it remains reserved for the account. If the account returns, the bot posts
+a card in `scan-only` and does not restore the link automatically. An authorized
+recruiter may use `Liberar ID`; this releases the old ID and records a new ID for
+the approved return.
 
-Na STAFF, `scan-only` é acessível somente a `Recrutador`. `staff-only` e `logs`
-aceitam somente `Staff Peace`, além do bot; `Gerência` não tem acesso.
+In STAFF, `scan-only` is accessible only to `Recrutador`. `staff-only` and `logs`
+allow only `Staff Peace` and the bot; `Gerência` has no access.
 
-## Honeypot de moderação
+## Moderation honeypot
 
-O canal `spam-control` publica um único embed com asset visual e cards de escopo,
-ação, limite e status. Qualquer mensagem enviada por um membro é:
+The `spam-control` channel publishes a single embed with a visual asset and
+scope, action, limit, and status cards. Any message sent by a member is:
 
-1. apagada imediatamente;
-2. registrada no log sem republicar o conteúdo;
-3. punida com timeout de sete dias, sem banimento e sem expulsão.
+1. deleted immediately;
+2. recorded in the log without republishing the content;
+3. punished with a seven-day timeout, without a ban or kick.
 
-O bot precisa manter `Manage Messages` e `Moderate Members`, e a hierarquia do
-bot deve permitir aplicar o timeout. O canal é uma camada específica para
-contas que disparam spam em massa; AutoMod nativo continua sendo uma boa camada
-complementar para links, menções e padrões de spam.
+The bot needs `Manage Messages` and `Moderate Members`, and its hierarchy must
+allow it to apply the timeout. The channel is a specific layer for accounts that
+trigger mass spam; native AutoMod remains a useful complementary layer for
+links, mentions, and spam patterns.
 
-O embed e `assets/automod.png` são rígidos e não entram na rotação de Halloween.
-Halloween fica restrito aos painéis leves de boas-vindas, set, atendimento e
-operações.
+The embed and `assets/automod.png` are strict and are not part of the Halloween
+rotation. Halloween is limited to lightweight welcome, set, support, and
+operations panels.
 
-## Tickets e atendimento
+## Tickets and support
 
-O painel continua em um único canal. As categorias devem tratar tanto a
-comunidade quanto o trabalho:
+The panel remains in a single channel. Categories must cover both community and
+work:
 
-- Comunidade e Discord;
-- Trabalho e desenvolvimento;
-- Apresentar projeto;
-- Ideia ou proposta;
-- Privacidade ou moderação;
-- Parceria ou contato privado.
+- Community and Discord;
+- Work and development;
+- Present a project;
+- Idea or proposal;
+- Privacy or moderation;
+- Partnership or private contact.
 
-`Apresentar projeto` aceita jogo, produto, ferramenta ou ideia. O ticket é
-privado; apresentações públicas continuam no espaço social ou em threads quando
-isso for adequado. A Íris está desativada por enquanto; tickets abertos ficam
-acessíveis à `Staff Peace` e seguem atendimento manual.
+`Present a project` accepts a game, product, tool, or idea. The ticket is
+private; public presentations remain in the social space or in threads when
+appropriate. Íris is currently disabled; open tickets are accessible to `Staff
+Peace` and follow manual support.
 
-## Bots e integrações
+## Bots and integrations
 
-Não foi adicionado outro bot de tickets, música, boas-vindas ou moderação. A
-Peace já possui bot próprio, Jockie Music, DutiesBot, Medal e TimeCord; cada um
-deve manter uma responsabilidade clara. O próximo ganho de integração deve vir
-de recursos nativos do Discord e de GitHub para PRs, CI e releases, somente
-quando a equipe estiver pronta para operá-los.
+No additional ticket, music, welcome, or moderation bot was added. Peace already
+has its own bot, Jockie Music, DutiesBot, Medal, and TimeCord; each must retain a
+clear responsibility. The next integration gain should come from native Discord
+features and GitHub for pull requests, CI, and releases, only when the team is
+ready to operate them.
 
-## Operação e rollback
+## Operations and rollback
 
-- `bot/maintenance.py` aplica a adaptação estrutural em modo seco, normal ou
-  com limpeza explícita;
-- `bot/snap.py` cria snapshots em `data/snapshots/`;
-- `bot/main.py` mantém a sincronização dos painéis, tickets, boosters, Iris
-  (desativada por configuração), honeypot e entrevistas;
-- qualquer nova limpeza deve ser precedida de snapshot e validação de IDs,
-  membros e overwrites.
+- `bot/maintenance.py` applies the structural adaptation in dry-run, normal, or
+  explicit-cleanup mode;
+- `bot/snap.py` creates snapshots in `data/snapshots/`;
+- `bot/main.py` keeps panel, ticket, booster, Iris (configuration-disabled),
+  honeypot, and interview synchronization;
+- any new cleanup must be preceded by a snapshot and validation of IDs, members,
+  and overwrites.
 
-No ACLClouds, a raiz de produção não deve receber cópias soltas do código. O
-entrypoint e as dependências ficam na raiz por exigência do provedor; a versão
-executável permanece dentro de uma pasta versionada e os pacotes ficam em
-`releases/`. Diretórios como `__pycache__` e `.deps` são gerados pelo ambiente e
-podem ser ignorados na revisão da árvore.
+In ACLClouds, the production root must not receive loose copies of the code. The
+entry point and dependencies remain at the root as required by the provider;
+the executable version stays inside a versioned directory and packages go in
+`releases/`. Directories such as `__pycache__` and `.deps` are generated by the
+environment and may be ignored during tree review.
 
-Na entrada do servidor, o bot reconcilia `Visitante` para membros humanos sem
-`Peace`. A rotina é idempotente: não remove cargos existentes, não atribui
-`Visitante` a bots de integração e não reusa IDs de Peace.
+When joining the server, the bot reconciles `Visitante` for human members
+without `Peace`. The routine is idempotent: it does not remove existing roles,
+assign `Visitante` to integration bots, or reuse Peace IDs.
 
-O bot deve ser observado após mudanças de permissão. Se uma sincronização falhar
-parcialmente, corrigir o alvo exato e repetir a etapa; não recriar a árvore toda.
+The bot must be observed after permission changes. If synchronization fails
+partially, correct the exact target and repeat the step; do not recreate the
+entire tree.

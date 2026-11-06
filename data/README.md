@@ -1,6 +1,6 @@
-# Estado local da Peace
+# Peace local state
 
-Esta pasta é reservada para estado operacional e exportações locais do bot.
-Banco SQLite, snapshots do Discord, logs e dados de membros não entram no
-controle de versão. O código fonte fica em `bot/`, os recursos em `assets/` e
-os testes em `tests/`.
+This directory is reserved for the bot's operational state and local exports.
+SQLite databases, Discord snapshots, logs, and member data are not committed to
+version control. Source code lives in `bot/`, assets in `assets/`, and tests in
+`tests/`.

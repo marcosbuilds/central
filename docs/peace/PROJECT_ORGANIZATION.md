@@ -1,12 +1,12 @@
-# Organização do projeto
+# Project organization
 
-## Objetivo
+## Objective
 
-Manter a raiz previsível, separar código de estado local e permitir que o bot
-evolua de um monólito funcional para módulos de domínio sem quebrar o servidor,
-o banco ou os painéis já publicados.
+Keep the root predictable, separate code from local state, and allow the bot to
+evolve from a functional monolith into domain modules without breaking the
+server, database, or already-published panels.
 
-## Árvore atual e regra de destino
+## Current tree and target rule
 
 ```text
 .
@@ -15,58 +15,58 @@ o banco ou os painéis já publicados.
 ├── pyproject.toml
 ├── .env.example
 ├── .gitignore
-├── assets/                 # recursos visuais versionados
-├── bot/                    # pacote Python
-├── docs/                   # documentação e decisões
-├── tests/                  # será criado junto dos primeiros testes
-└── data/                   # dados locais; não é fonte de código
+├── assets/                 # versioned visual assets
+├── bot/                    # Python package
+├── docs/                   # documentation and decisions
+├── tests/                  # to be created with the first tests
+└── data/                   # local data; not a source of code
     ├── README.md
-    ├── runtime/            # estado operacional novo
-    └── snapshots/          # exportações do Discord
+    ├── runtime/            # new operational state
+    └── snapshots/          # Discord exports
 ```
 
-O SQLite atual continua em `data/peace.sqlite3` por compatibilidade. Ele é um
-local legado: não deve ser movido apenas por estética. Uma futura mudança para
-`data/runtime/peace.sqlite3` precisa atualizar configuração, fazer cópia de
-segurança e validar o banco antes e depois.
+The current SQLite database remains at `data/peace.sqlite3` for compatibility.
+It is a legacy location and must not be moved for aesthetics alone. A future
+move to `data/runtime/peace.sqlite3` must update configuration, create a backup,
+and validate the database before and after the move.
 
-## Divisão planejada do pacote
+## Planned package split
 
-Hoje `bot/main.py` contém inicialização, views, painéis, eventos, tickets, set,
-operações, boosters, Iris e programação. A divisão deve ser incremental:
+Today `bot/main.py` contains initialization, views, panels, events, tickets,
+set flow, operations, boosters, Iris, and scheduling. The split must be
+incremental:
 
 ```text
 bot/
-├── main.py                 # compatibilidade e bootstrap
-├── cfg.py                  # leitura e validação de configuração
-├── db.py                   # fachada temporária do banco
-├── context.py              # redaction e limites de contexto
-├── ai.py                   # cliente e prompts da Iris
-├── api.py                  # cliente REST usado pelos utilitários
-├── features/               # regras por domínio
+├── main.py                 # compatibility and bootstrap
+├── cfg.py                  # configuration loading and validation
+├── db.py                   # temporary database facade
+├── context.py              # redaction and context limits
+├── ai.py                   # Iris client and prompts
+├── api.py                  # REST client used by utilities
+├── features/               # domain rules
 │   ├── set_flow.py
 │   ├── tickets.py
 │   ├── operations.py
 │   ├── boosters.py
 │   └── developer_flow.py
-├── ui/                     # views, embeds e sincronização de painéis
-├── integrations/           # Discord REST, Iris e serviços externos
-└── persistence/            # schema, migrações e repositórios
+├── ui/                     # views, embeds, and panel synchronization
+├── integrations/           # Discord REST, Iris, and external services
+└── persistence/            # schema, migrations, and repositories
 ```
 
-As pastas novas só devem ser criadas quando houver código real para colocar
-nelas. Não criar diretórios vazios apenas para completar uma árvore ideal.
+Create new directories only when there is real code to put in them. Do not
+create empty directories just to complete an idealized tree.
 
-## Ordem de refatoração
+## Refactoring order
 
-1. Criar testes para `context.py`, `nick.py`, configuração, IDs Peace e
-   operações básicas do SQLite.
-2. Extrair componentes visuais e embeds sem mudar regras de negócio.
-3. Extrair o fluxo de set e tickets, mantendo chamadas delegadas em
-   `PeaceBot`.
-4. Extrair operações, boosters, Iris e o fluxo de desenvolvedores.
-5. Separar schema e migrações do acesso ao banco.
-6. Reduzir `main.py` a bootstrap, registro de eventos e composição dos módulos.
+1. Create tests for `context.py`, `nick.py`, configuration, Peace IDs, and basic
+   SQLite operations.
+2. Extract visual components and embeds without changing business rules.
+3. Extract the set flow and tickets while keeping delegated calls in `PeaceBot`.
+4. Extract operations, boosters, Iris, and the developer flow.
+5. Separate the schema and migrations from database access.
+6. Reduce `main.py` to bootstrap, event registration, and module composition.
 
-Em todas as etapas devem permanecer estáveis os comandos instaláveis, os
-`custom_id` dos painéis e os dados existentes no SQLite.
+At every stage, installed commands, panel `custom_id` values, and existing
+SQLite data must remain stable.

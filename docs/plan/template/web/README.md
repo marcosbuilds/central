@@ -1,3 +1,3 @@
-# Aplicação web (opcional)
+# Web application (optional)
 
-Excluir esta pasta se o projeto não exigir frontend web.
+Delete this directory if the project does not require a web frontend.

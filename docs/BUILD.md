@@ -1,15 +1,17 @@
-# Build, publicação e instalador
+# Build, publishing, and installer
 
-## Ferramentas instaladas no disco D:
+## Tools installed on the D: drive
 
 - .NET SDK 8.0.427: `D:\projetos\Central\tools\dotnet`
 - Inno Setup 6.7.4: `D:\projetos\Central\tools\inno-setup`
-- Instaladores baixados: `D:\projetos\Central\tools\installers`
+- Downloaded installers: `D:\projetos\Central\tools\installers`
 
-## Comando único
+## One-command build
 
 ```powershell
 & 'D:\projetos\Central\ops\scripts\Build-Central.ps1'
 ```
 
-O script restaura, compila, testa, publica self-contained x64 e chama `ISCC.exe`. O runtime .NET Desktop acompanha `Central.exe`; a máquina do usuário não precisa ter o .NET instalado globalmente.
+The script restores, builds, tests, publishes self-contained x64 output, and
+calls `ISCC.exe`. The .NET Desktop runtime ships with `Central.exe`, so the
+user's machine does not need a global .NET installation.

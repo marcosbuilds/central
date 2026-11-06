@@ -1,91 +1,93 @@
 # Iris
 
-## Contexto e privacidade
+## Context and privacy
 
-Iris usa três camadas separadas:
+Iris uses three separate layers:
 
-- o ticket atual, para responder ao solicitante;
-- canais de gerência, apenas como referência interna de processo e padrão;
-- chats públicos e tickets encerrados, anonimizados para entender cultura e dúvidas recorrentes.
+- the current ticket, to answer the requester;
+- management channels, only as an internal reference for process and style;
+- public chats and closed tickets, anonymized to understand culture and recurring questions.
 
-Mensagens brutas de chats não são gravadas como memória da Iris. Antes de entrar
-no contexto, menções, URLs, e-mails, telefones, tokens e outros identificadores
-são removidos. O SQLite registra somente eventos operacionais sem o conteúdo da
-conversa, como abertura, claim, resposta e escalonamento.
+Raw chat messages are not stored as Iris memory. Before entering context,
+mentions, URLs, email addresses, phone numbers, tokens, and other identifiers
+are removed. SQLite records only operational events without conversation content,
+such as opening, claiming, replying, and escalation.
 
-Informação de gerência nunca deve ser citada para um usuário. Informação antiga
-é uma referência, não uma regra atual: estado verificado do Discord sempre vence
-histórico.
+Management information must never be cited to a user. Old information is a
+reference, not a current rule: verified Discord state always wins over history.
 
-## Atendimento
+## Support
 
-Iris responde quando um ticket é aberto e acompanha mensagens do solicitante.
-Depois que um staff assume, Iris fica silenciosa por padrão e só responde se for
-mencionada. Se o ticket ficar sem atendimento, ela envia um PV ao responsável ou
-a membros online da staff e registra o escalonamento.
+Iris replies when a ticket is opened and follows requester messages. After a
+staff member claims the ticket, Iris is silent by default and replies only when
+mentioned. If the ticket remains unattended, it sends a DM to the responsible
+person or online staff members and records the escalation.
 
-As respostas da Iris são publicadas como texto normal, com indicador de digitação
-durante o processamento; não usam card, título técnico ou menção repetida ao
-solicitante. A regra Humanizer da Iris prioriza palavras comuns, frases curtas,
-resposta direta ao último ponto e uma pergunta por vez. Ela não repete a resposta
-do usuário, não explica o próprio processo e não revela score, histórico interno
-ou critérios de avaliação. Mensagens fixas de painel, abertura, controles e encerramento usam
-embeds com a identidade visual da Peace. Os controles ficam no próprio ticket em
-uma única mensagem exclusiva da staff; o solicitante não recebe botões. O callback
-valida a permissão da staff e o canal `staff-only` não recebe painéis de ticket.
+Iris replies are published as normal text with a typing indicator during
+processing; they do not use a card, technical title, or repeated mention of the
+requester. Iris's Humanizer rule prioritizes common words, short sentences, a
+direct response to the latest point, and one question at a time. It does not
+repeat the user's answer, explain its own process, or reveal a score, internal
+history, or evaluation criteria. Fixed panel, opening, control, and closing
+messages use embeds with Peace's visual identity. Controls stay in the ticket in
+a single staff-only message; the requester receives no buttons. The callback
+validates staff permission, and the `staff-only` channel receives no ticket
+panels.
 
-Tickets encerrados ficam invisíveis para o solicitante e para a staff. A Iris pode
-consultar o histórico encerrado em contexto anonimizado para comparar atendimentos,
-calcular afinidade de suporte e encaminhar ao staff mais adequado; se não houver
-evidência suficiente, menciona o cargo da staff e não inventa um responsável.
+Closed tickets are invisible to the requester and staff. Iris may consult closed
+history as anonymized context to compare support interactions, calculate support
+affinity, and route the ticket to the most suitable staff member; when evidence
+is insufficient, it mentions the staff role instead of inventing an owner.
 
-Pedidos de set entram como pendentes no `scan-only`. O cargo só é aplicado depois
-da aprovação manual de um recrutador ou do recrutador selecionado pelo solicitante.
+Set requests enter `scan-only` as pending. The role is applied only after manual
+approval by a recruiter or the recruiter selected by the requester.
 
-Reports são organizados sem declarar culpa. Projetos, ideias e propostas são
-desenvolvidos como conversa, sem transformar a interação em formulário.
+Reports are organized without declaring guilt. Projects, ideas, and proposals
+are developed as conversation rather than turning the interaction into a form.
 
-## Programação
+## Development
 
-Na área de desenvolvimento, a staff menciona Iris e descreve a ideia em linguagem
-normal. Iris prepara plano, impacto, permissões, riscos e validação. Se faltar
-informação, menciona o autor e pergunta o que precisa saber.
+In the development area, staff mention Iris and describe the idea in normal
+language. Iris prepares a plan, impact analysis, permissions, risks, and
+validation. If information is missing, it mentions the author and asks what it
+needs to know.
 
-Antes de sugerir criação, Iris consulta categorias, canais e cargos existentes.
-Consultas de estado, como "como está a categoria", retornam o estado verificado
-sem criar ou editar nada. Quando já existe um objeto, ela propõe editar o atual
-ou pergunta se deve criar outro.
+Before suggesting creation, Iris checks existing categories, channels, and
+roles. State queries such as "what is the state of this category?" return the
+verified state without creating or editing anything. When an object already
+exists, Iris proposes editing it or asks whether another should be created.
 
-Alterações estruturais ficam pendentes até uma confirmação natural do autor.
-Remover Peace, apagar cargo, apagar canal ou apagar categoria exige autoridade
-compatível e confirmação explícita. A Iris só edita, move ou apaga cargos, canais
-e categorias registrados como criados por ela; para objetos externos, pede que a
-alteração seja solicitada a quem criou ou fez a última edição. A Iris nunca trata
-uma sugestão como execução.
+Structural changes remain pending until the author gives natural confirmation.
+Removing Peace, deleting a role, deleting a channel, or deleting a category
+requires compatible authority and explicit confirmation. Iris edits, moves, or
+deletes only roles, channels, and categories recorded as created by Iris; for
+external objects, it asks the creator or last editor to request the change. Iris
+never treats a suggestion as execution.
 
-Consultas de membros, cargos, canais e permissões usam o estado atual do Discord e
-não passam por adivinhação do modelo. Punições pela área de desenvolvimento exigem alvo
-por ID ou menção exata, motivo e confirmação. Timeout e advertência exigem staff;
-expulsão e banimento exigem fundador, administrador ou `Gerenciar servidor`, além
-de hierarquia compatível. A Iris registra a ação e nunca pune o fundador, o bot,
-quem fez o pedido ou um membro acima da hierarquia do bot.
+Member, role, channel, and permission queries use current Discord state and do
+not rely on model guesses. Development-area punishments require a target by ID
+or exact mention, a reason, and confirmation. Timeouts and warnings require
+staff; kicks and bans require the founder, an administrator, or `Manage Server`,
+along with a compatible hierarchy. Iris records the action and never punishes
+the founder, the bot, the requester, or a member above the bot's hierarchy.
 
-Solicitações de dev, streamer, recrutador ou outra função passam por entrevista
-rígida no ticket e nunca recebem cargo por esse fluxo. Na área de desenvolvimento, somente
-um dev autorizado pode aplicar um cargo com alvo e confirmação exatos; o score de
-histórico e sinais de risco bloqueia operações quando não houver confiança suficiente.
-Tags Peace seguem o padrão `N/D/S/R/G/F ⎰ nome id`, conforme a função principal.
+Requests for a developer, streamer, recruiter, or another role go through a
+strict ticket interview and never receive a role through that flow. In the
+development area, only an authorized developer may apply a role with an exact
+target and confirmation; historical score and risk signals block operations
+when confidence is insufficient. Peace tags follow the pattern
+`N/D/S/R/G/F ⎰ name id`, according to the primary function.
 
-Boosters recebem automaticamente cargo e call privada própria no meio da categoria
-de calls privadas, nomeada `├🎧・username`. O booster pode adicionar/remover pessoas
-do cargo privado e puxá-las ou removê-las da call; a Iris pode explicar o benefício,
-mas não concede o cargo por conversa.
+Boosters automatically receive a role and their own private call in the middle
+of the private-call category, named `├🎧・username`. A booster may add or remove
+people from the private role and pull them into or remove them from the call;
+Iris may explain the benefit but does not grant the role through conversation.
 
-## Configuração atual
+## Current configuration
 
-- Gerência: `1460526534527025208` e `1491899123547242656`
-- Controles privados da staff: `1491899123547242656`
-- Chat geral e demais chats: configurados em `IRIS_GENERAL_CHANNEL_IDS` e
-  descobertos automaticamente quando pertencem à área de resenha/social.
-- Tickets anteriores: categoria `1495064004194861137`
-- Planejamento: `1555060813046226964`
+- Management: `1460526534527025208` and `1491899123547242656`
+- Private staff controls: `1491899123547242656`
+- General chat and other chats: configured in `IRIS_GENERAL_CHANNEL_IDS` and
+  discovered automatically when they belong to the social/chat area.
+- Previous tickets: category `1495064004194861137`
+- Planning: `1555060813046226964`

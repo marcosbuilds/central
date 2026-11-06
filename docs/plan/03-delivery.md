@@ -1,74 +1,114 @@
-# 03 — Entrevista ao cliente, arquitetura inicial e entrega ao time
+# 03 — Client interview, initial architecture, and team delivery
 
-O responsável por produto/documentação **não é apenas alguém que escreve textos**. É o ponto de tradução entre o problema real do cliente e a execução da equipe. **Também faz o primeiro desenho de arquitetura**, sempre validado por líder técnico, QA e infraestrutura onde houver impacto.
+The product/documentation owner **is not just someone who writes text**. They
+translate the client's real problem into team execution. They **also create the
+first architecture sketch**, always validated by the technical lead, QA, and
+infrastructure whenever there is impact.
 
-## Jornada — da conversa à primeira linha de código
+## Journey — from conversation to first line of code
 
-### 1. Preparar e entrevistar o cliente
-- Identificar quem usa, quem paga, quem decide e quem conhece o trabalho diário.
-- Entender primeiro o **problema existente**, não apenas a tela que o cliente pediu.
-- Perguntar como a tarefa funciona hoje, o que provoca erro, o que demora, o que acontece sem internet, quem tem acesso, quais dados são guardados e o que precisa integrar.
-- Demonstrar compreensão com exemplos reais: 'Se dois funcionários realizarem a mesma operação juntos, o que deve acontecer?'.
-- Separar o que é essencial, desejável, fora do escopo e ainda não entendido.
-- Obter autorização para registrar reunião e cuidado com dados pessoais/segredos; nunca colocar dados reais sensíveis em prompts sem base legal/contratual adequada.
+### 1. Prepare and interview the client
 
-### 2. Escrever requisitos testáveis
-Cada requisito deve conter ID, problema, história simples, regra, permissão, prioridade, critérios de aceitação, dependência e dúvida. Exemplo:
+- Identify who uses, pays, decides, and knows the daily work.
+- First understand the **existing problem**, not only the screen the client requested.
+- Ask how the task works today, what causes errors, what takes time, what happens
+  without internet, who has access, which data is stored, and what must integrate.
+- Demonstrate understanding with real examples: “If two employees perform the
+  same operation together, what should happen?”
+- Separate essential, desirable, out-of-scope, and not-yet-understood items.
+- Get permission to record a meeting and take care with personal data/secrets;
+  never put sensitive real data into prompts without an appropriate legal/contractual basis.
 
-> `REQ-012` — Uma recepcionista pode agendar uma consulta em horário livre; se outra pessoa escolher o mesmo horário, somente uma reserva deve vencer. **Teste:** simular duas reservas simultâneas; resultado esperado: um sucesso, um conflito compreensível.
+### 2. Write testable requirements
 
-### 3. Desenhar a solução antes do código
-Preparar: telas/fluxos com designer; módulos com líder técnico; entidades e relações; contratos/API; integração externa e limites; riscos de acesso; ambientes; testes; registro das opções de arquitetura descartadas e motivo. Em caso de dúvida técnica, registrar `PENDENTE`, não inventar a decisão.
+Each requirement should contain ID, problem, simple story, rule, permission,
+priority, acceptance criteria, dependency, and open question. Example:
 
-### 4. Planejar tarefas
-Quebrar entregas pequenas e observáveis, com dependências. Criar responsáveis por **resultado**, não dividir exclusivamente por arquivo. Exemplo: `TASK-17 Criar reserva de consulta` depende de `TASK-08 cadastro de profissionais` e `TASK-11 horários disponíveis`.
+> `REQ-012` — A receptionist can book an appointment in a free slot; if another
+> person chooses the same time, only one reservation should win. **Test:**
+> simulate two simultaneous reservations; expected result: one success and one understandable conflict.
 
-### 5. Produzir o ZIP de início
-O ZIP é um **pacote de partida versionado** com árvore organizada, documentação aprovada, arquivos de exemplo e contratos iniciais. Inclui README, decisões, requisitos, estrutura de apps/serviços, planejamento de testes e configuração de exemplo, mas **não** credenciais, dados reais de clientes, cache ou dependências instaladas. Não é promessa de projeto funcional completo.
+### 3. Design the solution before code
 
-### 6. Reunião de início e aceitação
-O líder técnico revisa viabilidade, alternativas e interfaces entre módulos; designer revisa fluxo; QA revisa critérios; infraestrutura revisa implantação e segurança. Somente depois o pacote vira projeto ativo na Central. Cliente valida escopo e datas comerciais antes de prometer entrega.
+Prepare: screens/flows with the designer; modules with the technical lead;
+entities and relationships; contracts/API; external integration and boundaries;
+access risks; environments; tests; and a record of rejected architecture options
+and why. When a technical decision is unclear, record `PENDING` rather than inventing it.
 
-## Conteúdo obrigatório do pacote
-```
-projeto-cliente/
-├── README.md                      # contexto, instruções e situação do pacote
-├── manifest.json                  # identificador, versão e módulos planejados
+### 4. Plan tasks
+
+Break deliveries into small, observable units with dependencies. Assign owners by
+**outcome**, not only by file. Example: `TASK-17 Create appointment reservation`
+depends on `TASK-08 practitioner registration` and `TASK-11 available hours`.
+
+### 5. Produce the starter ZIP
+
+The ZIP is a **versioned starting package** with an organized tree, approved
+documentation, example files, and initial contracts. It includes README,
+decisions, requirements, app/service structure, test planning, and example
+configuration, but **not** credentials, real client data, caches, or installed
+dependencies. It is not a promise of a complete working project.
+
+### 6. Kickoff and acceptance meeting
+
+The technical lead reviews feasibility, alternatives, and module interfaces; the
+designer reviews flows; QA reviews criteria; infrastructure reviews deployment
+and security. Only afterward does the package become an active Central project.
+The client validates scope and commercial dates before a delivery is promised.
+
+## Required package content
+
+```text
+client-project/
+├── README.md                      # context, instructions, and package status
+├── manifest.json                  # identifier, version, and planned modules
 ├── docs/
-│   ├── briefing.md                # quem é o cliente, problema, pessoas e objetivos
-│   ├── requisitos.md              # regras numeradas, critérios e prioridades
-│   ├── escopo.md                  # entra/não entra, dependências e restrições
-│   ├── fluxos.md                  # uso passo a passo e estados de interface
-│   ├── arquitetura.md             # decisões e limites de cada parte
-│   ├── dados-e-permissoes.md      # entidades e quem pode acessar
-│   ├── integracoes.md             # serviços externos, riscos e contratos
-│   ├── plano-de-testes.md         # cenários reais e requisitos não funcionais
-│   ├── entrega.md                 # etapas, responsáveis, dúvidas e aprovações
-│   └── decisoes/ADR-0001.md      # por que escolhemos esta arquitetura
+│   ├── briefing.md                # client, problem, people, and goals
+│   ├── requirements.md            # numbered rules, criteria, and priorities
+│   ├── scope.md                   # in/out, dependencies, and constraints
+│   ├── flows.md                   # step-by-step use and interface states
+│   ├── architecture.md            # decisions and boundaries for each part
+│   ├── data-and-permissions.md    # entities and who can access them
+│   ├── integrations.md            # external services, risks, and contracts
+│   ├── test-plan.md               # real scenarios and non-functional requirements
+│   ├── delivery.md                # stages, owners, questions, and approvals
+│   └── decisions/ADR-0001.md      # why this architecture was chosen
 ├── apps/
-│   ├── web/                       # incluir quando houver aplicação web
-│   └── mobile/                    # incluir somente quando houver app mobile
-├── services/api/                 # incluir quando o sistema tiver API
-├── packages/contratos/           # formatos compartilhados e especificações
-├── infra/                        # configurações de exemplo, sem segredos
-└── tests/                        # casos e testes iniciais
+│   ├── web/                       # include when there is a web application
+│   └── mobile/                    # include only when there is a mobile app
+├── services/api/                  # include when the system has an API
+├── packages/contracts/            # shared formats and specifications
+├── infra/                         # example configuration, without secrets
+└── tests/                         # initial cases and tests
 ```
-**A árvore deve seguir o projeto.** Não criar pasta `mobile` ou microserviço só porque o modelo a possui; o gerador remove áreas não aplicáveis. É aceitável um único aplicativo bem organizado.
 
-## `manifest.json`: identidade e responsabilidade
-- ID e nome do projeto; cliente e ambiente (sem dados confidenciais em arquivos públicos); tipo de aplicação; módulos; sistemas externos; responsável de produto; aprovação de arquitetura; versão do pacote; origem do repositório; riscos e pendências.
-- A Central lê o manifesto, compara com esquema válido, cria tarefas iniciais, solicita revisão e registra histórico. Não executar scripts desconhecidos automaticamente ao importar ZIP.
+**The tree must follow the project.** Do not create a `mobile` folder or a
+microservice just because the template has one; the generator removes areas that
+do not apply. A single well-organized application is acceptable.
 
-## Critério para liberar ao time
-- [ ] Problema e resultado esperado estão escritos em linguagem simples.
-- [ ] Escopo e exclusões claros; tarefas essenciais priorizadas.
-- [ ] Requisitos principais possuem teste de aceitação.
-- [ ] Fluxos e permissões revisados.
-- [ ] Arquitetura técnica **aprovada**, não apenas gerada.
-- [ ] Árvore do projeto corresponde aos módulos contratados.
-- [ ] ZIP abre corretamente, sem senhas, tokens ou dados reais.
-- [ ] Cliente aprovou o escopo; equipe aceitou a estimativa.
-- [ ] Decisões pendentes têm dono e data para resolução.
+## `manifest.json`: identity and responsibility
 
-## Regra para mudanças posteriores
-Solicitação nova entra como mudança de escopo: registrar impacto em custo, dependências, arquitetura, trabalho já realizado e cronograma; exigir decisão do cliente antes de alterar prioridades da equipe.
+- Project ID and name; client and environment (without confidential data in
+  public files); application type; modules; external systems; product owner;
+  architecture approval; package version; repository origin; risks and open items.
+- Central reads the manifest, compares it with a valid schema, creates initial
+  tasks, requests review, and records history. Do not execute unknown scripts
+  automatically when importing a ZIP.
+
+## Criteria for releasing to the team
+
+- [ ] Problem and expected result are written in plain language.
+- [ ] Scope and exclusions are clear; essential tasks are prioritized.
+- [ ] Main requirements have an acceptance test.
+- [ ] Flows and permissions were reviewed.
+- [ ] Technical architecture is **approved**, not merely generated.
+- [ ] Project tree matches the contracted modules.
+- [ ] ZIP opens correctly, without passwords, tokens, or real data.
+- [ ] Client approved scope; team accepted the estimate.
+- [ ] Open decisions have an owner and resolution date.
+
+## Rule for later changes
+
+A new request enters as a scope change: record impact on cost, dependencies,
+architecture, work already completed, and schedule; require the client's decision
+before changing team priorities.

@@ -1,71 +1,98 @@
-# Plano do servidor Python — gateway de streaming da Central
+# Python server plan — Central streaming gateway
 
-Status: planejamento; nenhuma conexão real é ativada pela Fase 1 desktop  
-Data: 2026-11-04  
-Objetivo: substituir o `CentralStore` em memória por um gateway auditável, com streaming ordenado e integração futura com Claude/Codex
+Status: planning; no real connection is activated by Phase 1 desktop
+Date: 2026-11-04
+Objective: replace the in-memory `CentralStore` with an auditable gateway,
+ordered streaming, and future Claude/Codex integration
 
-Este plano transforma as necessidades da documentação 1.1 e do redesign em contratos implementáveis. Ele não autoriza colocar chaves, chamadas externas ou telemetria inventada na interface atual.
+This plan turns the requirements from documentation 1.1 and the redesign into
+implementable contracts. It does not authorize adding keys, external calls, or
+invented telemetry to the current interface.
 
-## Princípios e limites
+## Principles and limits
 
-1. O servidor é a fonte de eventos observáveis; a UI nunca infere produtividade, presença ou raciocínio privado.
-2. Cada evento tem identidade, sequência, origem, timestamp, estado de disponibilidade e referência de projeto/tarefa.
-3. O cliente pode desconectar e retomar a partir de `last_seq`; reconexão não duplica eventos.
-4. Uso de tokens só é exibido quando o provedor retorna contagens medidas. Se não houver usage, o valor é `N/D`.
-5. Chaves de API são por usuário e provedor, mas nunca são devolvidas ao desktop, gravadas em logs, eventos ou mensagens de erro.
-6. MCP é uma fronteira de ferramentas/recursos. A integração com Claude/Codex deve passar por adapters oficiais e manter um caminho de fallback para a API oficial do provedor quando MCP não for o transporte apropriado.
+1. The server is the source of observable events; the UI never infers
+   productivity, presence, or private reasoning.
+2. Each event has an identity, sequence, origin, timestamp, availability state,
+   and project/task reference.
+3. The client can disconnect and resume from `last_seq`; reconnection does not
+   duplicate events.
+4. Token usage is shown only when the provider returns measured counts. If there
+   is no usage data, the value is `N/D`.
+5. API keys are per user and provider, but are never returned to the desktop or
+   written to logs, events, or error messages.
+6. MCP is a tools/resources boundary. Claude/Codex integration must go through
+   official adapters and retain a fallback path to the provider's official API
+   when MCP is not the appropriate transport.
 
-## Arquitetura proposta
+## Proposed architecture
 
 ```text
 Windows Central
-   │ HTTPS + SSE (eventos) / WebSocket (controle opcional)
+   │ HTTPS + SSE (events) / WebSocket (optional control)
    ▼
 FastAPI gateway
    ├── AuthN/AuthZ + tenant/project policy
    ├── Run service + idempotency + cancellation
    ├── Provider adapters
-   │     ├── Claude adapter (API oficial ou MCP server)
-   │     └── Codex/OpenAI adapter (API oficial ou MCP server)
+   │     ├── Claude adapter (official API or MCP server)
+   │     └── Codex/OpenAI adapter (official API or MCP server)
    ├── Event normalizer + redaction + outbox
-   ├── Stream broker (Redis Streams ou NATS, quando houver escala)
+   ├── Stream broker (Redis Streams or NATS, when scale requires it)
    └── Audit/usage service
-        ├── PostgreSQL: estado, claims, eventos e auditoria
-        └── Secret store/KMS: chaves cifradas por usuário
+        ├── PostgreSQL: state, claims, events, and audit
+        └── Secret store/KMS: encrypted per-user keys
 ```
 
-### Stack inicial
+### Initial stack
 
-- Python 3.12+, FastAPI, Uvicorn, AnyIO e Pydantic v2;
-- PostgreSQL para estado transacional, `workspace_revision`, claims, outbox e auditoria;
-- Redis Streams na primeira implantação distribuída; NATS JetStream é uma alternativa quando o volume e o isolamento de consumidores justificarem;
-- Alembic para migrações, `httpx` para adapters HTTP, SDK oficial quando existir e cliente MCP isolado por processo/sessão;
-- OpenTelemetry para métricas técnicas, com redaction antes do exporter;
-- pytest, pytest-asyncio, Hypothesis e testes de contrato para eventos.
+- Python 3.12+, FastAPI, Uvicorn, AnyIO, and Pydantic v2;
+- PostgreSQL for transactional state, `workspace_revision`, claims, outbox, and audit;
+- Redis Streams for the first distributed deployment; NATS JetStream is an
+  alternative when volume and consumer isolation justify it;
+- Alembic for migrations, `httpx` for HTTP adapters, an official SDK when one
+  exists, and an MCP client isolated by process/session;
+- OpenTelemetry for technical metrics, with redaction before export;
+- pytest, pytest-asyncio, Hypothesis, and event contract tests.
 
-Redis/NATS não são pré-requisitos da primeira vertical slice. O gateway pode iniciar com outbox em PostgreSQL e um worker único, mantendo a mesma interface de stream.
+Redis/NATS are not prerequisites for the first vertical slice. The gateway can
+start with a PostgreSQL outbox and a single worker while keeping the same stream
+interface.
 
-## Identidade, API keys e autorização
+## Identity, API keys, and authorization
 
-### Usuário e sessão
+### User and session
 
-- O desktop autentica o usuário por OIDC/device flow ou sessão local de desenvolvimento explicitamente marcada.
-- O gateway emite um access token curto, com `user_id`, `tenant_id` e escopos; refresh token fica fora dos eventos.
-- Todas as operações recebem `project_id` explícito. Nunca selecionar projeto apenas pelo nome.
-- Policy checa membro, papel, estado do projeto, tarefa, recurso e ação antes de criar claim, run, entrega ou publicação.
+- The desktop authenticates the user through OIDC/device flow or an explicitly
+  marked local development session.
+- The gateway issues a short-lived access token with `user_id`, `tenant_id`, and
+  scopes; the refresh token stays outside events.
+- Every operation receives an explicit `project_id`. Never select a project by name alone.
+- Policy checks member, role, project state, task, resource, and action before
+  creating a claim, run, delivery, or publication.
 
-### Chaves dos provedores
+### Provider keys
 
-- `provider_credentials` guarda `user_id`, `provider`, `key_version`, escopos, estado de revogação e metadados; o segredo cifrado fica em KMS/secret manager ou envelope encryption com chave mestra fora do banco.
-- Em desenvolvimento, usar um secret store local documentado; nunca usar `.env` versionado, `appsettings`, JSON de fixture ou clipboard como armazenamento permanente.
-- A API aceita `POST /v1/me/provider-keys` somente pelo usuário autenticado; grava a chave cifrada e retorna apenas fingerprint mascarada, provedor, data e estado.
-- Worker descriptografa a chave somente no momento da chamada, em memória, e passa a um adapter. Nunca inclui a chave em exceção, trace, prompt, payload MCP ou `request_log`.
-- Rotação/revogação é idempotente. A versão anterior deixa de ser aceita; jobs em andamento terminam como `cancelled` ou `provider_error` sem tentar repetir com segredo revogado.
-- O usuário pode usar uma credencial de serviço por projeto no futuro, mas isso é uma decisão separada e não deve ser inferida a partir da chave pessoal.
+- `provider_credentials` stores `user_id`, `provider`, `key_version`, scopes,
+  revocation state, and metadata; the encrypted secret lives in KMS/Secret
+  Manager or envelope encryption with a master key outside the database.
+- In development, use a documented local secret store; never use a versioned
+  `.env`, `appsettings`, fixture JSON, or clipboard as permanent storage.
+- The API accepts `POST /v1/me/provider-keys` only from the authenticated user;
+  it stores the encrypted key and returns only a masked fingerprint, provider,
+  date, and state.
+- The worker decrypts the key only when the call is made, in memory, and passes
+  it to an adapter. The key must never appear in an exception, trace, prompt, MCP
+  payload, or `request_log`.
+- Rotation/revocation is idempotent. The previous version is no longer accepted;
+  in-progress jobs finish as `cancelled` or `provider_error` without retrying
+  with a revoked secret.
+- A user may use a project service credential in the future, but that is a
+  separate decision and must not be inferred from a personal key.
 
-## Contrato de streaming
+## Streaming contract
 
-Cada evento normalizado tem uma forma equivalente a:
+Each normalized event has a shape equivalent to:
 
 ```json
 {
@@ -86,70 +113,95 @@ Cada evento normalizado tem uma forma equivalente a:
 }
 ```
 
-Tipos mínimos: `run.started`, `run.delta`, `run.tool_call`, `run.tool_result`, `run.usage`, `run.completed`, `run.cancelled`, `run.failed`, `connection.heartbeat` e `audit.decision`. `run.usage` carrega `input_tokens`, `output_tokens`, `total_tokens` e a origem da medição; não calcula tokens por aproximação.
+Minimum types: `run.started`, `run.delta`, `run.tool_call`, `run.tool_result`,
+`run.usage`, `run.completed`, `run.cancelled`, `run.failed`,
+`connection.heartbeat`, and `audit.decision`. `run.usage` carries
+`input_tokens`, `output_tokens`, `total_tokens`, and the measurement source; it
+does not estimate tokens.
 
-### Entrega e retomada
+### Delivery and resumption
 
-- `GET /v1/runs/{run_id}/events` usa SSE e aceita `Last-Event-ID`/`last_seq`.
-- Cada stream mantém sequência monotônica por `run_id`; banco/outbox garante persistência antes da publicação.
-- O cliente confirma apenas leitura local; o servidor não apaga o evento até a política de retenção/auditoria permitir.
-- Repetições são deduplicadas por `event_id`; o cliente aplica somente uma vez e atualiza `last_seq` monotonicamente.
-- Heartbeat não é atividade de agente. Queda, atraso, `stale` e reconexão aparecem como estado de disponibilidade.
-- Backpressure: limite de buffer por sessão, coalescência apenas de `run.delta` consecutivo e nunca de mudança de estado, uso, erro ou decisão.
-- Cancelamento propaga para o adapter e registra quem cancelou e por quê.
+- `GET /v1/runs/{run_id}/events` uses SSE and accepts
+  `Last-Event-ID`/`last_seq`.
+- Each stream keeps a monotonic sequence per `run_id`; the database/outbox
+  guarantees persistence before publication.
+- The client confirms only local reading; the server does not delete the event
+  until retention/audit policy allows it.
+- Repetitions are deduplicated by `event_id`; the client applies each event once
+  and updates `last_seq` monotonically.
+- Heartbeat is not agent activity. Disconnection, delay, `stale`, and
+  reconnection appear as availability state.
+- Backpressure: per-session buffer limit, coalescing only consecutive `run.delta`
+  events, and never state, usage, error, or decision changes.
+- Cancellation propagates to the adapter and records who cancelled it and why.
 
-## Endpoints da primeira vertical slice
+## First vertical-slice endpoints
 
-| Método | Rota | Contrato |
+| Method | Route | Contract |
 |---|---|---|
-| `GET` | `/v1/projects` | catálogo com ID, logo, status, revisão e permissão |
-| `GET` | `/v1/projects/{project_id}` | contexto, tarefa, claims e próximo gate |
-| `POST` | `/v1/runs` | cria run idempotente; recebe projeto, tarefa, provider/model e prompt permitido |
-| `GET` | `/v1/runs/{run_id}` | snapshot de estado, origem e `last_seq` |
-| `GET` | `/v1/runs/{run_id}/events` | SSE retomável, redigido e ordenado |
-| `POST` | `/v1/runs/{run_id}/cancel` | cancelamento autorizado e auditado |
-| `GET` | `/v1/usage?range=1d\|7d\|31d` | agregações por equipe/projeto, somente de usage medido |
-| `GET` | `/v1/request-logs` | logs mascarados com fonte, frescor, modelo, transporte e status |
-| `POST/DELETE` | `/v1/me/provider-keys/{provider}` | salvar/revogar credencial do usuário sem expor o segredo |
+| `GET` | `/v1/projects` | catalog with ID, logo, status, revision, and permission |
+| `GET` | `/v1/projects/{project_id}` | context, task, claims, and next gate |
+| `POST` | `/v1/runs` | creates an idempotent run; receives project, task, provider/model, and allowed prompt |
+| `GET` | `/v1/runs/{run_id}` | state snapshot, origin, and `last_seq` |
+| `GET` | `/v1/runs/{run_id}/events` | resumable, redacted, ordered SSE |
+| `POST` | `/v1/runs/{run_id}/cancel` | authorized and audited cancellation |
+| `GET` | `/v1/usage?range=1d\|7d\|31d` | team/project aggregates using measured usage only |
+| `GET` | `/v1/request-logs` | masked logs with source, freshness, model, transport, and status |
+| `POST/DELETE` | `/v1/me/provider-keys/{provider}` | save/revoke the user's credential without exposing the secret |
 
-## Modelo de dados mínimo
+## Minimum data model
 
-- `users`, `tenants`, `project_members`, `projects`, `tasks`, `claims` com TTL e fencing;
-- `runs`, `run_events` com unique `(run_id, seq)` e unique `event_id`;
-- `provider_credentials` com envelope cifrado, `key_version`, fingerprint e revocation timestamp;
-- `outbox_events` com tentativas, published_at e erro redigido;
-- `request_logs` com `request_id`, principal mascarado, provider/model, transport, status, TTFT medido, usage e freshness;
-- `audit_log` append-only para autorização, acesso a segredo, cancelamento, aprovação, integração e publicação.
+- `users`, `tenants`, `project_members`, `projects`, `tasks`, and `claims` with
+  TTL and fencing;
+- `runs`, `run_events` with unique `(run_id, seq)` and unique `event_id`;
+- `provider_credentials` with encrypted envelope, `key_version`, fingerprint,
+  and revocation timestamp;
+- `outbox_events` with attempts, `published_at`, and redacted error;
+- `request_logs` with `request_id`, masked principal, provider/model, transport,
+  status, measured TTFT, usage, and freshness;
+- append-only `audit_log` for authorization, secret access, cancellation,
+  approval, integration, and publication.
 
-Índices e retenção devem ser definidos com o volume real. Não declarar SLA, stale threshold ou duração de retenção antes de medir e decidir com o responsável operacional.
+Indexes and retention must be defined against real volume. Do not declare an SLA,
+stale threshold, or retention duration before measuring and deciding with the
+operations owner.
 
-## Observabilidade e segurança operacional
+## Observability and operational security
 
-- correlation ID de ponta a ponta (`request_id`) sem incluir prompt completo por padrão;
-- logs estruturados com allowlist, redaction de chaves, tokens e conteúdo sensível;
-- métricas: latência até primeiro token, duração, eventos descartados, reconexões, duplicatas, erro por provider e usage retornado;
-- alertas de fila, outbox atrasado, falha de KMS, provider rate-limit e divergência de sequência;
-- testes de autorização por projeto, isolamento entre usuários, replay de eventos, rotação de chave, cancelamento, reconexão e carga com nove sessões;
-- limites de tamanho e tempo, rate limit por usuário/provedor e circuit breaker por provider;
-- CSP/HTTPS, secrets fora do desktop, dependências fixadas e SBOM no empacotamento.
+- end-to-end correlation ID (`request_id`) without the full prompt by default;
+- structured allowlist logs with redaction of keys, tokens, and sensitive content;
+- metrics: time to first token, duration, dropped events, reconnections,
+  duplicates, provider errors, and returned usage;
+- alerts for queue depth, delayed outbox, KMS failures, provider rate limits, and
+  sequence divergence;
+- authorization-by-project, cross-user isolation, event replay, key rotation,
+  cancellation, reconnection, and nine-session load tests;
+- size and time limits, per-user/provider rate limits, and a provider circuit breaker;
+- CSP/HTTPS, secrets outside the desktop, pinned dependencies, and an SBOM in packaging.
 
-## Fases de entrega
+## Delivery phases
 
-1. **Contrato e fake gateway**: schemas, redaction, sequência, SSE e cliente de teste; sem chamadas externas.
-2. **Persistência**: PostgreSQL, outbox, claims, auditoria, autorização por projeto e migrações.
-3. **Credenciais**: secret store, chaves por usuário, rotação/revogação e testes de não-vazamento.
-4. **Adapter Claude**: caminho oficial escolhido após validar disponibilidade da API/MCP, usage, tool calls e cancelamento.
-5. **Adapter Codex/OpenAI**: mesmo contrato normalizado, sem vazar diferenças de provider para a UI.
-6. **Desktop streaming**: substituir fixtures por cliente SSE/WebSocket, manter `N/D` em offline e suportar retomada.
-7. **Operação**: broker, workers, tracing, load test, rollout gradual e plano de rollback.
+1. **Contract and fake gateway**: schemas, redaction, sequence, SSE, and test
+   client; no external calls.
+2. **Persistence**: PostgreSQL, outbox, claims, audit, project authorization,
+   and migrations.
+3. **Credentials**: secret store, per-user keys, rotation/revocation, and
+   non-leakage tests.
+4. **Claude adapter**: official path chosen after validating API/MCP
+   availability, usage, tool calls, and cancellation.
+5. **Codex/OpenAI adapter**: same normalized contract, without exposing provider
+   differences to the UI.
+6. **Desktop streaming**: replace fixtures with an SSE/WebSocket client, keep
+   `N/D` offline, and support resumption.
+7. **Operations**: broker, workers, tracing, load test, gradual rollout, and rollback plan.
 
-## Critérios de aceite do servidor
+## Server acceptance criteria
 
-- um run produz eventos ordenados e retomáveis sem duplicação;
-- dois usuários não conseguem ler, cancelar ou usar credencial do outro;
-- uma chave revogada não é usada em novas chamadas e não aparece em logs/eventos;
-- tokens exibidos são os retornados pelo provider, com origem e frescor;
-- queda do provider resulta em estado explícito `provider_error`/`stale`, nunca sucesso verde;
-- nove sessões concorrentes preservam claims, `workspace_revision`, sequência e auditoria;
-- testes de contrato provam que a Central desktop consegue renderizar o mesmo modelo com fake gateway e com provider real sem mudar a UI.
-
+- a run produces ordered, resumable events without duplication;
+- two users cannot read, cancel, or use each other's credentials;
+- a revoked key is not used in new calls and does not appear in logs/events;
+- displayed tokens are returned by the provider, with source and freshness;
+- provider failure results in explicit `provider_error`/`stale` state, never green success;
+- nine concurrent sessions preserve claims, `workspace_revision`, sequence, and audit;
+- contract tests prove that the desktop can render the same model with a fake
+  gateway and a real provider without changing the UI.

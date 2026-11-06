@@ -1,64 +1,84 @@
-# 10 — Fluxos de trabalho, revisões, testes, publicações e produtividade
+# 10 — Workflows, reviews, tests, publications, and productivity
 
-## Estados de uma tarefa
+## Task states
 
-`rascunho` → `aprovada-para-executar` → `disponível` → `reservada` → `em-execução` → `aguardando-revisão` → `solicitadas-correções` (volta a execução) / `validada` → `entregue`. Estados auxiliares: `bloqueada`, `cancelada`. Mudanças de estado têm autor e justificativa.
+`draft` → `approved-to-run` → `available` → `reserved` → `in-progress` →
+`awaiting-review` → `corrections-requested` (returns to execution) / `validated`
+→ `delivered`. Auxiliary states: `blocked`, `cancelled`. State changes have an
+author and reason.
 
-## Estados de um change set
+## Change-set states
 
-**Pequenos change sets:** `proposto` → `validado-automaticamente` → `aplicado-no-workspace-vivo` → `revisionado/snapshot` (sem aprovar master nem fazer deploy).
+**Small change sets:** `proposed` → `automatically-validated` →
+`applied-to-live-workspace` → `reviewed/snapshotted` (without master approval or deployment).
 
-**Entrega para master:** `candidato-imutável` → `CI` → `em-revisão` → `correções-pendentes` / `reprovado` / `aprovado` → `integrado-na-master` → `elegível-para-release` (deploy exige autorização separada).
+**Master delivery:** `immutable-candidate` → `CI` → `in-review` →
+`pending-corrections` / `rejected` / `approved` → `integrated-into-master` →
+`release-eligible` (deployment requires separate authorization).
 
-Rejeitado exige reversão/neutralização documentada no workspace vivo ou decisão de substituição; não pode ficar afetando silenciosamente a versão estável. Aprovações são vinculadas a hash exato: alterou diff, reavaliar.
+A rejection requires documented reversal/neutralization in the live workspace or
+a replacement decision; it must not silently affect the stable version. Approvals
+are tied to the exact hash: if the diff changes, reevaluate.
 
-## Regras de revisão
+## Review rules
 
-- O autor nunca é único aprovador de sua própria mudança.
-- Mudança em área sensível (autorização, pagamento, dados, infraestrutura, deploy, exclusão de dados) tem dois olhares ou política especial.
-- Review considera: requisito e aceite; diff; impactos; segurança; testes; legibilidade; tratamento de erros; desempenho quando necessário; documentação.
-- Comentário tem estado aberto/resolvido e linha ou recurso lógico. Decisão precisa de justificativa nas rejeições.
-- QA automatiza testes rotineiros; revisão humana foca risco e coerência.
+- The author is never the sole approver of their own change.
+- A change in a sensitive area (authorization, payments, data, infrastructure,
+  deployment, data deletion) gets two reviewers or a special policy.
+- Review considers requirement and acceptance, diff, impacts, security, tests,
+  readability, error handling, performance when needed, and documentation.
+- A comment has open/resolved state and a line or logical resource. Rejection
+  decisions need a reason.
+- QA automates routine tests; human review focuses on risk and coherence.
 
-## Testes mínimos por tipo
+## Minimum tests by type
 
-- Backend: regras, erro de entrada, autorização, concorrência, banco e integração.
-- Frontend/mobile: fluxos, acessibilidade, estados vazios, erros de rede e dispositivos suportados.
-- Contratos: API, eventos e compatibilidade com clientes.
-- Infra: publicação reprodutível, rollback, backup e segredos.
-- Motor da central: claims, revisões, patches, eventos, idempotência, agentes malcomportados e isolamento por projeto.
+- Backend: rules, input errors, authorization, concurrency, database, and integration.
+- Frontend/mobile: flows, accessibility, empty states, network errors, and supported devices.
+- Contracts: API, events, and client compatibility.
+- Infrastructure: reproducible publication, rollback, backup, and secrets.
+- Central engine: claims, revisions, patches, events, idempotency, misbehaving
+  agents, and project isolation.
 
-## Política de deploy
+## Deployment policy
 
-1. Escolher revisão candidata, congelar snapshot e listar change sets.
-2. Exigir aprovações e testes válidos na **mesma revisão**; impedir aprovação antiga para diff alterado.
-3. Gerar artefato identificável, de preferência com hash e evidências de build.
-4. Fazer preview/staging; testar o funcionamento conforme risco.
-5. Responsável autorizado aprova produção, com confirmação adicional nos sistemas sensíveis.
-6. Publicar artefato imutável; monitorar falhas; ter comando de rollback pronto.
-7. Registrar data, executor, versão, changelog, links e incidentes.
+1. Choose the candidate revision, freeze the snapshot, and list change sets.
+2. Require approvals and valid tests on the **same revision**; prevent old
+   approval for a changed diff.
+3. Generate an identifiable artifact, preferably with hash and build evidence.
+4. Use preview/staging and test behavior according to risk.
+5. An authorized owner approves production, with additional confirmation for sensitive systems.
+6. Publish an immutable artifact, monitor failures, and keep rollback ready.
+7. Record date, executor, version, changelog, links, and incidents.
 
-A expressão “subir deploy com streaming” na interface deve significar **acompanhar ao vivo** etapas, logs filtrados, testes e resultado. Nunca confundir acompanhar build com autorização para promover código não revisado.
+“Deploy with streaming” in the interface must mean **following live** the stages,
+filtered logs, tests, and result. Never confuse watching a build with authorization
+to promote unreviewed code.
 
-## Métricas de trabalho e empenho
+## Work and effort metrics
 
-Medir equipe e projetos primeiro. Exemplos:
+Measure teams and projects first. Examples:
 
-- **Entrega:** tarefas aceitas conforme critérios, previsibilidade da etapa, valor demonstrado ao cliente.
-- **Qualidade:** falhas em produção, retrabalho por erro, testes cobertos por risco, revisões concluídas.
-- **Fluxo:** tempo bloqueado, espera por revisão, tempo para restaurar um incidente.
-- **Colaboração:** dependências resolvidas, documentação útil, revisões que previnem problemas.
-- **Custo:** uso de ferramentas/infra por projeto, quando mensurável e com consentimento.
+- **Delivery:** tasks accepted against criteria, stage predictability, and value demonstrated to the client.
+- **Quality:** production failures, error rework, risk-covered tests, and completed reviews.
+- **Flow:** blocked time, review wait, and incident recovery time.
+- **Collaboration:** resolved dependencies, useful documentation, and reviews that prevent problems.
+- **Cost:** tool/infrastructure usage by project when measurable and consented.
 
-**Não usar:** linhas de código, número bruto de commits, tokens usados, horas conectado, frequência de teclas, número de mensagens, “pontuação de produtividade” punitiva e opaca. Um membro pode evitar um prejuízo importante com poucas linhas ou com uma boa entrevista.
+**Do not use:** lines of code, raw commit count, tokens used, connected hours,
+keystroke frequency, message count, or punitive opaque “productivity scores”. A
+member may avoid major loss with a few lines or a good interview.
 
-## Comentários e planejamento
+## Comments and planning
 
-Uma decisão importante no comentário deve ser promovida a `decision` no projeto; discussões soltas não substituem requisitos. Menções avisam apenas membros autorizados do mesmo projeto. Cliente pode aprovar entrega funcional sem precisar entender internamente cada linha de código.
+An important decision in a comment should be promoted to a project `decision`;
+loose discussion does not replace requirements. Mentions notify only authorized
+members of the same project. A client can approve a functional delivery without
+understanding every line internally.
 
-## Reuniões mínimas
+## Minimum meetings
 
-- Definição de escopo com documento claro.
-- Alinhamento de dependências quando muda contrato compartilhado.
-- Revisão curta de entrega e demonstração para cliente/usuários.
-- Retrospectiva de falhas sem caça às bruxas; corrigir processo.
+- Scope definition with a clear document.
+- Dependency alignment when a shared contract changes.
+- Short delivery review and demonstration for client/users.
+- Blameless failure retrospective; correct the process.
