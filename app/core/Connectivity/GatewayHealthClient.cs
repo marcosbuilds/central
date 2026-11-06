@@ -19,6 +19,14 @@ public sealed record GatewayHealthSnapshot(
         "unknown",
         null,
         "Ainda não foi feita uma consulta ao gateway.");
+
+    public static GatewayHealthSnapshot NotConfigured => new(
+        false,
+        "not-configured",
+        "unknown",
+        "unknown",
+        null,
+        "O gateway não está configurado.");
 }
 
 public sealed class GatewayHealthClient : IDisposable
@@ -33,9 +41,12 @@ public sealed class GatewayHealthClient : IDisposable
         _httpClient.Timeout = TimeSpan.FromSeconds(5);
     }
 
-    public async Task<GatewayHealthSnapshot> CheckAsync(Uri gatewayBaseUri, CancellationToken cancellationToken = default)
+    public async Task<GatewayHealthSnapshot> CheckAsync(Uri? gatewayBaseUri, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(gatewayBaseUri);
+        if (gatewayBaseUri is null)
+        {
+            return GatewayHealthSnapshot.NotConfigured;
+        }
 
         if (!gatewayBaseUri.IsAbsoluteUri || gatewayBaseUri.Scheme is not ("http" or "https"))
         {

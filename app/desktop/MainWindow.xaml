@@ -126,10 +126,10 @@
                             <ColumnDefinition x:Name="UserSettingsColumn" Width="28" />
                         </Grid.ColumnDefinitions>
                         <Border x:Name="UserAvatar" Width="28" Height="28" CornerRadius="14" Background="{StaticResource BlueSoftBrush}">
-                            <TextBlock Text="MP" Foreground="{StaticResource BlueBrush}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock Text="LD" Foreground="{StaticResource BlueBrush}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <StackPanel x:Name="UserText" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="Marcos Pereira" FontSize="11" FontWeight="SemiBold" />
+                            <TextBlock Text="Local developer" FontSize="11" FontWeight="SemiBold" />
                             <TextBlock Text="Administrador local" Style="{StaticResource CaptionText}" FontSize="9" />
                         </StackPanel>
                         <Path x:Name="SettingsGlyph" Grid.Column="2"

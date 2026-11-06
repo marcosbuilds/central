@@ -1,0 +1,64 @@
+# Peace bot public inventory
+
+This inventory describes the committed code and its public boundaries. Server
+names, Discord identifiers, member counts, provider paths, snapshots, and
+credentials are intentionally omitted.
+
+## Code and entry points
+
+| File | Responsibility | State |
+| --- | --- | --- |
+| `bot/main.py` | gateway, views, panels, tickets, onboarding, and support | active |
+| `bot/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
+| `bot/db.py` | SQLite access, tickets, events, onboarding, and requests | active |
+| `bot/cfg.py` | environment configuration | active |
+| `bot/ai.py` | local support adapter and prompts | available; configuration-controlled |
+| `bot/context.py` | redaction, limits, and sanitization | active |
+| `bot/api.py` | REST used by utilities | active |
+| `bot/snap.py` | read-only snapshot utility | active |
+| `bot/nick.py` | reviewed nickname utility | restricted |
+
+## Applied behavior
+
+- community entry and rules remain separate from technical collaboration;
+- the technical access role is checked by explicit permission overwrites;
+- support and moderation panels use one responsibility per workflow;
+- closed tickets remain hidden from ordinary members;
+- structural changes are idempotent and require a recoverable snapshot;
+- visual roles do not participate in authorization;
+- provider credentials remain in protected environment configuration.
+
+## Data boundary
+
+SQLite and snapshot output are local runtime state and are ignored by Git.
+Onboarding and ticket fields are processed only as required by the configured
+workflow. Personal identifiers, ticket content, raw messages, tokens, and
+provider secrets must not appear in logs, tests, assets, documentation, or Pull
+Requests.
+
+The database retains compatibility tables only when a migration requires them.
+Schema cleanup requires its own migration, backup, rollback path, and review.
+
+## Audit and security
+
+- authorization checks use access roles, not visual labels;
+- moderation records only the minimum data required for audit;
+- support context is redacted before model use;
+- a role or permission change requires a target, hierarchy check, snapshot, and
+  negative test;
+- partial synchronization is corrected at the exact target rather than by
+  recreating the whole structure.
+
+## Provider boundary
+
+The production host is provider-managed. Its protected token field, launcher,
+release layout, generated directories, and rollback packages are not part of
+the public source-of-truth tree and are not described with live paths here.
+
+## Next checks
+
+1. run synthetic onboarding and developer-access simulations;
+2. verify the anti-spam flow with a disposable test account;
+3. assert that each configured panel has one active instance;
+4. review effective permissions for technical, staff, and recruiting roles;
+5. keep persistence, migration, and negative authorization tests green.

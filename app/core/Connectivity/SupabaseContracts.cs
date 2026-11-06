@@ -8,8 +8,7 @@ public sealed record SupabaseOptions(Uri Url, string PublishableKey)
 {
     public static SupabaseOptions? FromEnvironment()
     {
-        var configuredUrl = Environment.GetEnvironmentVariable("CENTRAL_SUPABASE_URL")
-            ?? "https://ydouynbssldpjhlnawtm.supabase.co/";
+        var configuredUrl = Environment.GetEnvironmentVariable("CENTRAL_SUPABASE_URL");
         var publishableKey = Environment.GetEnvironmentVariable("CENTRAL_SUPABASE_PUBLISHABLE_KEY");
 
         return Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri)

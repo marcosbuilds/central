@@ -13,12 +13,12 @@ public sealed class CentralViewModel : ObservableObject
     private bool _isToastVisible;
     private OperationState _toastState = OperationState.Success;
     private readonly GatewayHealthClient _gatewayHealthClient = new();
-    private readonly Uri _gatewayBaseUri = ResolveGatewayBaseUri();
+    private readonly Uri? _gatewayBaseUri = ResolveGatewayBaseUri();
     private readonly CentralSyncRuntime _syncRuntime = new();
     private readonly SemaphoreSlim _syncOperationLock = new(1, 1);
     private GatewayHealthSnapshot _gatewayHealth = GatewayHealthSnapshot.Pending;
     private bool _gatewayCheckInProgress;
-    private string _syncSupabaseUrl = "https://ydouynbssldpjhlnawtm.supabase.co";
+    private string _syncSupabaseUrl = string.Empty;
     private string _syncPublishableKey = string.Empty;
     private string _syncEmail = string.Empty;
     private string _syncOrganizationId = string.Empty;
@@ -75,19 +75,23 @@ public sealed class CentralViewModel : ObservableObject
     public string LocalModeDescription => SyncStatus.State is CentralSyncConnectionState.Connected
         ? "Arquivos via Syncthing; identidade, estado e eventos via Supabase."
         : "Fixtures locais continuam disponíveis; a sincronização só é afirmada quando o agente e a sessão respondem.";
-    public Uri GatewayBaseUri => _gatewayBaseUri;
-    public string GatewayUrl => _gatewayBaseUri.ToString().TrimEnd('/');
+    public Uri? GatewayBaseUri => _gatewayBaseUri;
+    public string GatewayUrl => _gatewayBaseUri?.ToString().TrimEnd('/') ?? "não configurado";
     public bool IsGatewayCheckInProgress => _gatewayCheckInProgress;
     public string GatewayStatusLabel => _gatewayCheckInProgress
         ? "SERVIDOR · VERIFICANDO"
-        : _gatewayHealth.IsReachable
-            ? "SERVIDOR · ALCANÇÁVEL"
-            : "SERVIDOR · PENDENTE";
+        : _gatewayBaseUri is null
+            ? "SERVIDOR · NÃO CONFIGURADO"
+            : _gatewayHealth.IsReachable
+                ? "SERVIDOR · ALCANÇÁVEL"
+                : "SERVIDOR · PENDENTE";
     public string GatewayStatusDetail => _gatewayCheckInProgress
         ? $"Consultando /healthz em {GatewayUrl}"
-        : _gatewayHealth.IsReachable
-            ? $"{_gatewayHealth.Deployment} · gateway v{_gatewayHealth.Version} · resposta de saúde confirmada"
-            : $"{_gatewayHealth.Error ?? "Ainda não verificado"} · {GatewayUrl}";
+        : _gatewayBaseUri is null
+            ? "Gateway opcional não configurado."
+            : _gatewayHealth.IsReachable
+                ? $"{_gatewayHealth.Deployment} · gateway v{_gatewayHealth.Version} · resposta de saúde confirmada"
+                : $"{_gatewayHealth.Error ?? "Ainda não verificado"} · {GatewayUrl}";
     public CentralSyncStatus SyncStatus => _syncRuntime.Status;
     public string SyncStatusLabel => SyncStatus.Label;
     public string SyncStatusDetail => SyncStatus.Detail;
@@ -167,12 +171,20 @@ public sealed class CentralViewModel : ObservableObject
             return;
         }
 
+        var gatewayBaseUri = _gatewayBaseUri;
+        if (gatewayBaseUri is null)
+        {
+            _gatewayHealth = GatewayHealthSnapshot.NotConfigured;
+            RaiseGatewayState();
+            return;
+        }
+
         _gatewayCheckInProgress = true;
         RaiseGatewayState();
 
         try
         {
-            _gatewayHealth = await _gatewayHealthClient.CheckAsync(_gatewayBaseUri, cancellationToken);
+            _gatewayHealth = await _gatewayHealthClient.CheckAsync(gatewayBaseUri, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -291,7 +303,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de reservar uma tarefa.", OperationState.Denied)
-            : Store.ClaimTask(project, task, "Marcos · sessão local");
+            : Store.ClaimTask(project, task, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -302,7 +314,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de aplicar uma alteração.", OperationState.Denied)
-            : Store.ApplyWorkspaceChange(project, "Marcos · sessão local", summary);
+            : Store.ApplyWorkspaceChange(project, "Local developer · local session", summary);
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -313,7 +325,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de avançar o Pulso local.", OperationState.Denied)
-            : Store.AdvanceSimulation(project, "Marcos · sessão local");
+            : Store.AdvanceSimulation(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -324,7 +336,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma tag local.", OperationState.Denied)
-            : Store.CreateWorkspaceTag(project, "Marcos · sessão local");
+            : Store.CreateWorkspaceTag(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -335,7 +347,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma release local.", OperationState.Denied)
-            : Store.CreateWorkspaceRelease(project, "Marcos · sessão local");
+            : Store.CreateWorkspaceRelease(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -514,7 +526,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de publicar uma mensagem.", OperationState.Denied)
-            : Store.PostMessage(project, "Marcos Pereira", body);
+            : Store.PostMessage(project, "Local developer", body);
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -525,7 +537,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de criar uma entrega.", OperationState.Denied)
-            : Store.CreateDelivery(project, "Marcos · sessão local");
+            : Store.CreateDelivery(project, "Local developer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -536,7 +548,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de revisar uma entrega.", OperationState.Denied)
-            : Store.ApproveDelivery(project, delivery, "Marcos · revisor independente");
+            : Store.ApproveDelivery(project, delivery, "Independent reviewer · local session");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -569,7 +581,7 @@ public sealed class CentralViewModel : ObservableObject
         var project = SelectedProject;
         var result = project is null
             ? new OperationResult(false, "Selecione um projeto antes de alterar o ciclo de vida.", OperationState.Denied)
-            : Store.ToggleProjectLifecycle(project, "Marcos · administrador local");
+            : Store.ToggleProjectLifecycle(project, "Local administrator");
         Notify(result.Message, result.State);
         RefreshMetrics();
         return result;
@@ -758,10 +770,10 @@ public sealed class CentralViewModel : ObservableObject
         string? Folder,
         string? Mode);
 
-    private static Uri ResolveGatewayBaseUri()
+    public static Uri? ResolveGatewayBaseUri()
     {
         var configured = Environment.GetEnvironmentVariable("CENTRAL_GATEWAY_URL");
-        if (Uri.TryCreate(configured, UriKind.Absolute, out var configuredUri)
+        if (Uri.TryCreate(configured?.Trim(), UriKind.Absolute, out var configuredUri)
             && configuredUri.Scheme is "http" or "https")
         {
             return configuredUri.ToString().EndsWith('/')
@@ -769,7 +781,7 @@ public sealed class CentralViewModel : ObservableObject
                 : new Uri(configuredUri + "/");
         }
 
-        return new Uri("https://marcosbuilds.pythonanywhere.com/");
+        return null;
     }
 
     private static string FormatCount(int count, string singular, string plural)

@@ -42,7 +42,7 @@ OPERATIONS_PANEL_ASSET = "ops-halloween.png"
 
 
 def asset(name: str) -> discord.File:
-    return discord.File(ROOT / "assets" / name, filename=name)
+    return discord.File(ROOT / "assets" / "bot" / name, filename=name)
 
 
 def now_unix() -> int:
