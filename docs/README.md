@@ -60,6 +60,16 @@ movement and authoritative state.
 Use this visual with [`guide/branches.md`](guide/branches.md) when explaining the
 branch → commit → Pull Request → review → `main` path.
 
+### Desktop visual system
+
+The WPF visual contract, audit, acceptance matrix, and staged login interface
+are maintained with the architecture decisions:
+
+- [`visual-system.md`](architecture/visual-system.md)
+- [`visual-audit.md`](architecture/visual-audit.md)
+- [`visual-acceptance.md`](architecture/visual-acceptance.md)
+- [`login-flow.md`](architecture/login-flow.md)
+
 ## Status language
 
 Every document must make its status clear:

@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:Central.Desktop"
              MinWidth="0"
              AutomationProperties.IsOffscreenBehavior="Onscreen">
-    <Grid Margin="30,26,30,34">
+    <Grid Margin="24,22,24,28">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -16,10 +16,10 @@
             <TextBlock Text="Seleção explícita de contexto · catálogo local" Style="{StaticResource SubtitleText}" Margin="0,7,0,0" TextWrapping="Wrap" />
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,20,0,14">
+        <Grid Grid.Row="1" Margin="0,18,0,12">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-            <TextBlock Text="BUSCAR" Style="{StaticResource CaptionText}" Margin="2,0,0,6" />
-            <Border x:Name="SearchShell" Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="9" Padding="10,2">
+            <TextBlock Text="Buscar projetos" Style="{StaticResource CaptionText}" Margin="2,0,0,6" />
+            <Border x:Name="SearchShell" Grid.Row="1" Background="{StaticResource SurfaceBrush}" CornerRadius="6" Padding="9,1">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
@@ -59,23 +59,23 @@
                 </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,13">
+                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="12,12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="52" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Border Width="42" Height="42" CornerRadius="12" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top">
-                                    <Path Data="{Binding LogoPathData}" Stroke="{StaticResource AccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" Margin="9" />
+                                <Border Width="40" Height="40" CornerRadius="6" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" VerticalAlignment="Top">
+                                    <Path Data="{Binding LogoPathData}" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" Margin="9" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="14,0,18,0">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontFamily="{StaticResource SelorynFont}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                        <TextBlock Text="{Binding Id}" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" FontSize="9" Margin="10,3,0,0" />
+                                    <TextBlock Text="{Binding Name}" FontFamily="{StaticResource AppleDisplayFont}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Id}" Style="{StaticResource CaptionText}" FontFamily="{StaticResource MonoFont}" FontSize="9" Margin="9,3,0,0" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding Description}" Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                         <TextBlock Text="{Binding WorkspaceRevisionLabel}" Foreground="{StaticResource BlueBrush}" FontSize="11" FontWeight="SemiBold" />
                                         <TextBlock Text="  /  " Style="{StaticResource MutedText}" FontSize="11" />
                                         <TextBlock Text="{Binding OpenTaskCount}" Style="{StaticResource MutedText}" FontSize="11" />
@@ -89,7 +89,7 @@
                                         <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding AccessLabel}" Style="{StaticResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                    <Button AutomationProperties.Name="{Binding OpenAccessibleLabel}" ToolTip="Abrir projeto" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Width="34" Height="34" Padding="9" Margin="-9,4,0,0" Click="OpenProject_Click">
+                                    <Button AutomationProperties.Name="{Binding OpenAccessibleLabel}" ToolTip="Abrir projeto" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Width="34" Height="34" Padding="9" Margin="0,4,0,0" Click="OpenProject_Click">
                                         <Path Data="M5,19 L19,5 M10,5 H19 V14" Stroke="{StaticResource MutedTextBrush}" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeLineJoin="Round" Stretch="Uniform" />
                                     </Button>
                                 </StackPanel>

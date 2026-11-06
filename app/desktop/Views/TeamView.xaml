@@ -3,19 +3,19 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="0">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="32,28,32,34">
+        <Grid Margin="24,22,24,28">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <Grid>
                 <StackPanel Margin="0,0,18,0">
                     <TextBlock Text="Pessoas e sessões" Style="{StaticResource DisplayText}" />
-                    <TextBlock Text="Papéis e fatos observáveis. Presença não é ranking de produtividade." Style="{StaticResource MutedText}" FontSize="14" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    <TextBlock Text="Papéis e fatos observáveis. Presença não é ranking de produtividade." Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,5,0,0" />
                 </StackPanel>
                 <Border HorizontalAlignment="Right" Style="{StaticResource PillBorder}" Background="{StaticResource BlueSoftBrush}" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding TeamMembers.Count}" Foreground="{StaticResource BlueBrush}" FontSize="11" FontWeight="Bold" /><TextBlock Text=" pessoas · " Style="{StaticResource CaptionText}" FontSize="10" Margin="4,0,0,0" /><TextBlock Text="{Binding ConnectedAgentCount}" Foreground="{StaticResource BlueBrush}" FontSize="11" FontWeight="Bold" /><TextBlock Text=" sessões observáveis" Style="{StaticResource CaptionText}" FontSize="10" Margin="4,0,0,0" /></StackPanel>
                 </Border>
             </Grid>
 
-            <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,24,0,18" Padding="17">
+            <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,20,0,16" Padding="16">
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,18,0"><TextBlock Text="ESCOPO DA EQUIPE" Style="{StaticResource CaptionText}" /><TextBlock Text="{Binding TeamMembers.Count}" FontSize="25" FontWeight="SemiBold" Margin="0,6,0,0" /><TextBlock Text="papéis propostos na documentação" Style="{StaticResource MutedText}" FontSize="11" Margin="0,3,0,0" /></StackPanel>
@@ -28,16 +28,16 @@
                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource CardBorder}" Width="300" Padding="15" Margin="0,0,12,12">
+                            <Border Style="{StaticResource CardBorder}" Width="300" Padding="14" Margin="0,0,10,10">
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="38" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <Border Width="32" Height="32" CornerRadius="16" Background="{StaticResource BlueSoftBrush}"><TextBlock Text="{Binding Initials}" Foreground="{StaticResource BlueBrush}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                    <Border Width="32" Height="32" CornerRadius="6" Background="{StaticResource BlueSoftBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"><TextBlock Text="{Binding Initials}" Foreground="{StaticResource BlueBrush}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
                                     <StackPanel Grid.Column="1" Margin="10,0,0,0"><TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" /><TextBlock Text="{Binding Role}" Style="{StaticResource MutedText}" FontSize="11" /></StackPanel>
                                     <Ellipse Grid.Column="2" Style="{StaticResource StatusDotStyle}" VerticalAlignment="Top" />
                                 </Grid>
-                                <TextBlock Grid.Row="1" Text="{Binding Area}" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,15,0,0" />
+                                <TextBlock Grid.Row="1" Text="{Binding Area}" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,13,0,0" />
                                 <Grid Grid.Row="2" Margin="0,9,0,0"><TextBlock Text="{Binding Focus}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Status}" Style="{StaticResource CaptionText}" FontSize="10" HorizontalAlignment="Right" /></Grid>
                             </Grid>
                         </Border>

@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private bool _isSidebarCollapsed = true;
     private bool _isSettingsOpen;
     private bool _reduceMotion;
+    private int _loginStage;
     private Button? _settingsInvoker;
 
     public MainWindow()
@@ -47,9 +48,10 @@ public partial class MainWindow : Window
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Closing += MainWindow_Closing;
 
-        SidebarColumn.Width = new GridLength(78);
+        SidebarColumn.Width = new GridLength(72);
         SetSidebarCollapsedVisual(true);
         ShowPage("Dashboard");
+        SetLoginStage(0);
         _ = _viewModel.CheckGatewayAsync();
     }
 
@@ -140,7 +142,7 @@ public partial class MainWindow : Window
     private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
     {
         _isSidebarCollapsed = !_isSidebarCollapsed;
-        var target = _isSidebarCollapsed ? 78d : 238d;
+        var target = _isSidebarCollapsed ? 72d : 216d;
         var current = SidebarColumn.ActualWidth > 0 ? SidebarColumn.ActualWidth : SidebarColumn.Width.Value;
 
         if (_reduceMotion)
@@ -190,7 +192,7 @@ public partial class MainWindow : Window
     private void SetSidebarCollapsedVisual(bool collapsed)
     {
         var visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        SidebarContent.Margin = collapsed ? new Thickness(10, 14, 10, 12) : new Thickness(14, 14, 14, 12);
+        SidebarContent.Margin = collapsed ? new Thickness(8, 12, 8, 10) : new Thickness(12, 12, 12, 10);
         BrandIdentity.Visibility = visibility;
         BrandMark.Visibility = visibility;
         BrandText.Visibility = visibility;
@@ -211,7 +213,7 @@ public partial class MainWindow : Window
         foreach (var button in new[] { DashboardNav, ProjectsNav, ProjectNav })
         {
             button.HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-            button.Padding = collapsed ? new Thickness(8) : new Thickness(12, 10, 12, 10);
+            button.Padding = collapsed ? new Thickness(8) : new Thickness(10, 8, 10, 8);
             button.ToolTip = button.Tag switch
             {
                 "Dashboard" => "Home",
@@ -230,6 +232,100 @@ public partial class MainWindow : Window
         _isSettingsOpen = true;
         SettingsOverlay.Visibility = Visibility.Visible;
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => ReducedMotionCheckBox.Focus()));
+    }
+
+    private void LoginDiscord_Click(object sender, RoutedEventArgs e)
+    {
+        SetLoginStage(1);
+    }
+
+    private void LoginRequestCode_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(LoginPeaceIdTextBox.Text))
+        {
+            LoginIdentityValidation.Text = "Informe o Peace ID para continuar.";
+            LoginPeaceIdTextBox.Focus();
+            return;
+        }
+
+        LoginIdentityValidation.Text = string.Empty;
+        SetLoginStage(2);
+    }
+
+    private void LoginConfirmCode_Click(object sender, RoutedEventArgs e)
+    {
+        var code = LoginCodeTextBox.Text.Trim();
+        if (code.Length != 6 || code.Any(character => character is < '0' or > '9'))
+        {
+            LoginCodeValidation.Text = "Digite o código de 6 dígitos recebido por DM.";
+            LoginCodeTextBox.Focus();
+            return;
+        }
+
+        LoginCodeValidation.Text = string.Empty;
+        SetLoginStage(3);
+    }
+
+    private void LoginBack_Click(object sender, RoutedEventArgs e)
+    {
+        SetLoginStage(Math.Max(0, _loginStage - 1));
+    }
+
+    private void LoginRestart_Click(object sender, RoutedEventArgs e)
+    {
+        LoginPeaceIdTextBox.Clear();
+        LoginCodeTextBox.Clear();
+        LoginIdentityValidation.Text = string.Empty;
+        LoginCodeValidation.Text = string.Empty;
+        SetLoginStage(0);
+    }
+
+    private void SetLoginStage(int stage)
+    {
+        _loginStage = Math.Clamp(stage, 0, 3);
+        LoginStageWelcome.Visibility = _loginStage == 0 ? Visibility.Visible : Visibility.Collapsed;
+        LoginStageIdentity.Visibility = _loginStage == 1 ? Visibility.Visible : Visibility.Collapsed;
+        LoginStageCode.Visibility = _loginStage == 2 ? Visibility.Visible : Visibility.Collapsed;
+        LoginStageReady.Visibility = _loginStage == 3 ? Visibility.Visible : Visibility.Collapsed;
+
+        var copy = _loginStage switch
+        {
+            1 => ("ETAPA 2 DE 4", "Confirme seu vínculo", "O bot precisa relacionar o Discord ao Peace ID antes de solicitar o código."),
+            2 => ("ETAPA 3 DE 4", "Digite o código da DM", "Use o código temporário enviado pelo bot para concluir a prova de posse."),
+            3 => ("ETAPA 4 DE 4", "Pronto para a sessão", "O fluxo visual terminou. A troca por uma sessão real ainda será conectada."),
+            _ => ("ETAPA 1 DE 4", "Comece pelo Discord", "Use o vínculo da Peace para iniciar o acesso à Central."),
+        };
+        LoginStepKicker.Text = copy.Item1;
+        LoginTitle.Text = copy.Item2;
+        LoginDescription.Text = copy.Item3;
+        AutomationProperties.SetName(LoginOverlay, $"Login da Central, {copy.Item1.ToLowerInvariant()}");
+
+        var activeBackground = (Brush)FindResource("AccentSoftBrush");
+        var inactiveBackground = (Brush)FindResource("SurfaceBrush");
+        var activeForeground = (Brush)FindResource("AccentBrush");
+        var inactiveForeground = (Brush)FindResource("SubtleTextBrush");
+        var steps = new[] { LoginStep1, LoginStep2, LoginStep3, LoginStep4 };
+        for (var index = 0; index < steps.Length; index++)
+        {
+            var active = index <= _loginStage;
+            steps[index].Background = active ? activeBackground : inactiveBackground;
+            if (steps[index].Child is TextBlock label)
+            {
+                label.Foreground = active ? activeForeground : inactiveForeground;
+            }
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            var focusTarget = _loginStage switch
+            {
+                1 => (UIElement)LoginPeaceIdTextBox,
+                2 => LoginCodeTextBox,
+                3 => LoginRestartButton,
+                _ => LoginDiscordButton,
+            };
+            focusTarget.Focus();
+        }));
     }
 
     private void CloseSettings_Click(object sender, RoutedEventArgs e) => CloseSettingsPanel();
@@ -274,6 +370,12 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (LoginOverlay.Visibility == Visibility.Visible && e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (_isSettingsOpen && e.Key == Key.Escape)
         {
             e.Handled = true;
