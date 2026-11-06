@@ -42,7 +42,7 @@ public sealed class CentralAccessClient
 
     public CentralAccessClient()
         : this(
-            new HttpClientHandler(),
+            new HttpClientHandler { AllowAutoRedirect = false },
             Environment.GetEnvironmentVariable("CENTRAL_BRIDGE_URL"),
             Environment.GetEnvironmentVariable("CENTRAL_BRIDGE_KEY"),
             Environment.GetEnvironmentVariable("CENTRAL_CLIENT_ID"),
@@ -136,6 +136,11 @@ public sealed class CentralAccessClient
                 : result;
         }
 
+        if (!SessionMatches(result.Session, parsedPeaceId, _configuredProjectId))
+        {
+            return new CentralAccessResult(false, GenericDenial);
+        }
+
         Session = result.Session;
         return result;
     }
@@ -164,6 +169,12 @@ public sealed class CentralAccessClient
         {
             Session = null;
             return result;
+        }
+
+        if (!SessionMatches(result.Session, null, requestedProject))
+        {
+            Session = null;
+            return new CentralAccessResult(false, GenericDenial);
         }
 
         Session = result.Session with { Token = Session.Token };
@@ -236,7 +247,8 @@ public sealed class CentralAccessClient
     private static bool TryParseLoopbackUrl(string? value, out Uri uri)
     {
         uri = new Uri("http://127.0.0.1:8765/");
-        if (!Uri.TryCreate(string.IsNullOrWhiteSpace(value) ? uri.ToString() : value.Trim(), UriKind.Absolute, out var parsed)
+        if (string.IsNullOrWhiteSpace(value)
+            || !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var parsed)
             || parsed.Scheme != Uri.UriSchemeHttp
             || parsed.Host is not ("localhost" or "127.0.0.1" or "::1")
             || parsed.UserInfo.Length > 0
@@ -255,6 +267,13 @@ public sealed class CentralAccessClient
         => value.Length >= 32
             && !value.Equals("generate-a-local-secret", StringComparison.OrdinalIgnoreCase)
             && !value.StartsWith("replace-with-", StringComparison.OrdinalIgnoreCase);
+
+    private bool SessionMatches(CentralAccessSession session, int? peaceId, Guid? projectId)
+        => string.Equals(session.ClientId, _clientId, StringComparison.Ordinal)
+            && (!peaceId.HasValue || session.PeaceId == peaceId.Value)
+            && session.ProjectId == projectId
+            && session.Scope.Contains("central:access", StringComparer.Ordinal)
+            && (!projectId.HasValue || session.Scope.Contains("central:sync", StringComparer.Ordinal));
 
     private static bool IsValidClientId(string? value)
         => value is not null

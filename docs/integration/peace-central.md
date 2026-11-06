@@ -1,7 +1,8 @@
 # Integration contract — Peace and Central
 
-Status: implemented locally; the bridge is loopback-only and the provider-side
-identity exchange remains a separate deployment decision
+Status: implemented locally; the bridge is loopback-only, scoped sessions are
+enforced by protected Central operations, and the provider-side identity
+exchange remains a separate deployment decision
 
 ## Objective
 
@@ -59,6 +60,9 @@ a desktop credential.
 - IP address, machine name, and Discord display name are not sufficient identity.
 - Partial failure never grants access: a DM sent without a persisted challenge,
   expired challenge, revoked session, or Supabase error results in denial.
+- Protected synchronization revalidates the Central session for the configured
+  client and project before starting Supabase or Syncthing operations. Local
+  fixture actions are not a substitute for that protected path.
 
 ## Planned verification
 

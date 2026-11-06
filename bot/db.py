@@ -461,6 +461,71 @@ class PeaceDatabase:
             connection.commit()
             return int(cursor.lastrowid)
 
+    def try_create_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        code: str,
+        expires_at: str,
+        window_seconds: int = 600,
+        max_user_requests: int = 3,
+        max_client_requests: int = 6,
+    ) -> int | None:
+        """Atomically enforce request throttles before storing a challenge."""
+        self.initialize()
+        timestamp = now_iso()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        salt = secrets.token_hex(16)
+        code_hash = _central_code_hash(code, salt)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            user_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE discord_user_id = ? AND created_at >= ?
+                """,
+                (str(discord_user_id), cutoff),
+            ).fetchone()["total"]
+            client_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE client_id = ? AND created_at >= ?
+                """,
+                (client_id, cutoff),
+            ).fetchone()["total"]
+            if int(user_count) >= max_user_requests or int(client_count) >= max_client_requests:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE central_login_challenges
+                SET consumed_at = ?
+                WHERE discord_user_id = ? AND consumed_at IS NULL
+                """,
+                (timestamp, str(discord_user_id)),
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO central_login_challenges (
+                    discord_user_id, peace_id, client_id, code_hash, code_salt,
+                    attempts, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(peace_id),
+                    client_id,
+                    code_hash,
+                    salt,
+                    timestamp,
+                    expires_at,
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid)
+
     def central_login_request_allowed(
         self,
         *,
@@ -489,16 +554,22 @@ class PeaceDatabase:
             ).fetchone()["total"]
         return int(user_count) < max_user_requests and int(client_count) < max_client_requests
 
-    def revoke_central_login_challenges(self, discord_user_id: int | str) -> None:
+    def revoke_central_login_challenges(
+        self,
+        discord_user_id: int | str,
+        client_id: str | None = None,
+    ) -> None:
         self.initialize()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE central_login_challenges
                 SET consumed_at = COALESCE(consumed_at, ?)
-                WHERE discord_user_id = ? AND consumed_at IS NULL
+                WHERE discord_user_id = ?
+                  AND consumed_at IS NULL
+                  AND (? IS NULL OR client_id = ?)
                 """,
-                (now_iso(), str(discord_user_id)),
+                (now_iso(), str(discord_user_id), client_id, client_id),
             )
             connection.commit()
 

@@ -1360,7 +1360,14 @@ class PeaceBot(commands.Bot):
                 status=429,
                 headers={"Retry-After": "600"},
             )
-        if not await self.issue_central_login_code(member, peace_id, client_id):
+        issued = await self.issue_central_login_code(member, peace_id, client_id)
+        if issued is None:
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        if not issued:
             return web.json_response(
                 {"ok": False, "message": "Não foi possível enviar a DM. Abra suas mensagens privadas."},
                 status=502,
@@ -3400,18 +3407,20 @@ class PeaceBot(commands.Bot):
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
 
-    async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool:
+    async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
         code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = datetime.now(timezone.utc) + timedelta(
             seconds=self.settings.central_auth_code_ttl_seconds
         )
-        self.database.create_central_login_challenge(
+        challenge_id = self.database.try_create_central_login_challenge(
             discord_user_id=member.id,
             peace_id=peace_id,
             client_id=client_id,
             code=code,
             expires_at=expires_at.isoformat(),
         )
+        if challenge_id is None:
+            return None
         try:
             await member.send(
                 "Código de acesso da Central\n"
@@ -3421,6 +3430,7 @@ class PeaceBot(commands.Bot):
                 "Não compartilhe este código."
             )
         except (discord.Forbidden, discord.HTTPException):
+            self.database.revoke_central_login_challenges(member.id, client_id)
             log.info("DM fechada para o código da Central do membro %s", member.id)
             return False
         return True
