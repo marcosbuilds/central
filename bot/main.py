@@ -3238,7 +3238,6 @@ class PeaceBot(commands.Bot):
             await member.add_roles(
                 peace_role,
                 novato_role,
-                central_role,
                 reason=f"Set aprovado manualmente por recrutador {recruiter.id}",
             )
             if visitor_role is not None:
