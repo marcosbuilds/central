@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 
 ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CENTRAL_ACCESS_ROLE_ID = 1486121978468372693
 load_dotenv(ROOT / ".env")
 
 
@@ -73,6 +74,11 @@ class Settings:
     recruiter_role_id: int | None
     visitor_role_id: int | None
     booster_role_id: int | None
+    central_access_role_id: int
+    central_auth_code_ttl_seconds: int
+    central_bridge_host: str
+    central_bridge_port: int
+    central_bridge_key: str
     private_call_category_id: int | None
     automod_channel_id: int | None
     website_url: str
@@ -117,6 +123,14 @@ class Settings:
             recruiter_role_id=_int_env("DISCORD_RECRUITER_ROLE_ID", None),
             visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
             booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
+            central_access_role_id=_int_env(
+                "DISCORD_CENTRAL_ACCESS_ROLE_ID",
+                DEFAULT_CENTRAL_ACCESS_ROLE_ID,
+            ),
+            central_auth_code_ttl_seconds=_int_env("CENTRAL_AUTH_CODE_TTL_SECONDS", 600),
+            central_bridge_host=os.getenv("CENTRAL_BRIDGE_HOST", "127.0.0.1").strip(),
+            central_bridge_port=_int_env("CENTRAL_BRIDGE_PORT", 8765),
+            central_bridge_key=os.getenv("CENTRAL_BRIDGE_KEY", "").strip(),
             private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
