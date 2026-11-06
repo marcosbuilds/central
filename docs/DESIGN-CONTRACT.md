@@ -88,7 +88,7 @@ Not authorized:
   deployment, human approval, or real online presence;
 - show private reasoning, tokens, connected time, or activity as productivity;
 - invent ACLs, aliases, event sources, stale thresholds, reconnection, or delivery guarantees;
-- offer “approve”, “integrate master”, or “publish” as though they had external effects.
+- offer “approve”, “integrate into main”, or “publish” as though they had external effects.
 
 ## Information and navigation hypothesis
 

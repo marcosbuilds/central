@@ -440,7 +440,7 @@ column and is not lost at compact width.
 - Release build: 0 warnings, 0 errors.
 - Release xUnit: 12 passed.
 - Self-contained win-x64 publish and Inno Setup installer regenerated in
-  `D:\projetos\Central\artifacts`.
+  the ignored `artifacts/` directory at the repository root.
 - UI Automation observed on the published Home: only the active empty state
   appears; collapsed chart axes and log header/rows do not appear in `Document text`.
 - Home, Projects, Operate, Workspace, Coordination, Prove, and settings were

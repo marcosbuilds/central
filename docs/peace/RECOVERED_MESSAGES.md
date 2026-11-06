@@ -1,43 +1,28 @@
-# Messages recovered from the original bot
+# Public interaction inventory
 
-Snapshot consulted on 2026-09-30 (project time):
+This document records only the interaction families required to understand the
+bot source. Raw Discord snapshots, channel identifiers, member identifiers,
+message payloads, and local database contents are intentionally excluded from
+the public repository.
 
-- server: `1427129030427279503`
-- observed bot: `Peace tools` (`1495083108083433643`)
-- unique messages recovered: `238`
-- complete source: the JSON files in `data/snapshots/discord_snapshot_*.json`
-- local storage: `bot_messages` table in `data/peace.sqlite3`
+## Interaction families
 
-## Identified panels and interactions
+- member onboarding and request submission;
+- approval and status notices;
+- support ticket creation, claim, rename, close, and call creation;
+- attendance and activity records;
+- absence requests and operational notices;
+- controlled support responses from the local Iris adapter.
 
-| Channel | Message/title | Observed custom IDs |
-| --- | --- | --- |
-| `1459443839998759042` · request-set | `🔹 Pedir set 🔹` | `peace_pedir_set_open` |
-| `1459446670411567105` · ticket | `Suporte Peace` | `peace_support_open_ticket` |
-| `1495087589604982785` · panel | `Painel de operações` | `clock_in_btn` |
-| closed/open tickets | `Ticket aberto`, `Ticket encerrado`, `Atendimento assumido` | `peace_support_poke_ticket`, `peace_support_poke_staff`, `peace_support_close_ticket`, `peace_support_rename_ticket`, `peace_support_claim_ticket`, `peace_support_create_call` |
+## Contract rule
 
-## Observed message families
+The implementation preserves stable component identifiers only when they are
+part of the public bot contract. A real server snapshot must stay in an
+operator-controlled, ignored location and must never be copied into Git,
+issues, logs, or review comments.
 
-- `Pedir set`
-- `Set aprovado`
-- `Set atualizado`
-- `Suporte Peace`
-- `Ticket aberto`, `Ticket encerrado`, `Atendimento assumido`
-- `Ponto iniciado`, `Ponto finalizado`
-- `Farme confirmado`
-- `Top 3 da temporada`
-- `Solicitação de ausência`
-- `Painel de operações`
-- goal and record notices without an embed/title
+## Public evidence boundary
 
-The first slice implemented in this project preserves the set-request custom ID
-and recreates the initial interview, including nickname, national ID, phone,
-source (`recruited`, `streamer`, or `clips`), and recruiter selection when
-applicable.
-
-The support and operations panels were also reintegrated. The nickname
-migration updates only the Peace ID stored in SQLite; members above the bot's
-hierarchy and the server owner remain untouched to avoid permission errors.
-Closed tickets have their components removed during synchronization and are also
-rejected in the callback, even if an old message still exists.
+Tests should use synthetic members, channels, messages, and identifiers. Any
+production observation must be summarized at the behavior level, with personal
+data, Discord identifiers, ticket content, and raw message text removed.

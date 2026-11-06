@@ -32,15 +32,14 @@ Iris support uses a local model. Keep the service available at `IRIS_URL` before
 starting the bot. Iris builds context from ticket data and recent messages;
 this is local context retrieval, not a change to the model weights.
 
-In the current environment, the service uses storage at `D:\Ollama\Models`, port
-`11435`, and the `iris-peace` profile, which was validated on the available
-hardware. On a smaller machine, `iris-peace-micro` remains available as a lower-
-resource alternative:
+The model service is operator-configured and must remain outside the public
+repository. Choose a local model profile appropriate for the machine and keep
+its storage path, port, and runtime options in environment variables:
 
 ```powershell
-$env:OLLAMA_MODELS = "D:\Ollama\Models"
-$env:OLLAMA_HOST = "127.0.0.1:11435"
-$env:OLLAMA_LLM_LIBRARY = "cpu_avx2"
+$env:OLLAMA_MODELS = "<local-model-directory>"
+$env:OLLAMA_HOST = "127.0.0.1:<local-port>"
+$env:OLLAMA_LLM_LIBRARY = "<local-library>"
 ollama serve
 ```
 

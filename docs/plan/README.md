@@ -1,8 +1,8 @@
 # Software startup + Central Colaborativa for development
 
 **Planning version:** 1.1 · **Date:** 2026-11-03 · **Initial team:** 9 people
-**Source state:** original planning preserved; the Phase 1 desktop implementation
-is in `D:\projetos\Central` and does not rewrite this package's domain contracts.
+**Source state:** the original planning is preserved as public product context;
+the current implementation and its evidence live in the repository documents.
 
 ## What we will build
 
@@ -26,7 +26,7 @@ official versions and publication.
 4. **Projects can be closed** to make their code/state immutable until reopened,
    including against agents and old tokens; reading follows permission.
 5. **Everyday changes ≠ official delivery ≠ deployment.** Live code has
-   recoverable history; `master` is protected and receives only approved
+   recoverable history; `main` is protected and receives only approved
    deliveries; publication is an independent decision.
 6. **Human or specialized-AI review with explicit delegation and reproducible
    evidence.** An AI cannot approve its own change. Critical changes require
@@ -70,8 +70,8 @@ official versions and publication.
   almost in real time.
 - **Revision `r123`:** recoverable record of one stage of live work.
 - **Git commit:** record of changes; it may be small or large.
-- **Delivery for approval:** coherent group of changes seeking entry into `master`.
-- **`master`:** protected, stable history separated from work in progress.
+- **Delivery for approval:** coherent group of changes seeking entry into `main`.
+- **`main`:** protected, stable history separated from work in progress.
 - **Deployment:** putting an approved version into a test or production environment.
 - **API contract:** documented agreement about routes, data, and errors between frontend and backend.
 
@@ -80,7 +80,7 @@ official versions and publication.
 Before creating dashboards, test the **coordination core** with two simulated AIs
 and then nine sessions: select a project; lock logic; submit a patch; show
 activity; open an API discussion; freeze the project; prepare a delivery; review
-with evidence; integrate into master without automatic deployment. Require test
+with evidence; integrate into main without automatic deployment. Require test
 and failure-recovery evidence before expanding.
 
 **Attention:** flows and endpoints are **proposals**, not currently available

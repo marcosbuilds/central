@@ -1,74 +1,54 @@
-# Infrastructure delivery — Central Colaborativa
+# Deployment and smoke-test record
 
 Date: 2026-11-05
-Scope: dedicated provisioning and remote smoke test
+Scope: public deployment boundaries and reproducible smoke checks
 
-## Supabase
+## Database control plane
 
-- Organization: `Seloryn Collective FREE`
-- Project: `Central Colaborativa`
-- Project ref: `ydouynbssldpjhlnawtm`
-- Public project URL: `https://ydouynbssldpjhlnawtm.supabase.co`
-- Observed state after provisioning: `Healthy`
-- Compute: `Nano`
-- Region shown in the dashboard: `Canada (Central)` / `ca-central-1`
-- Applied migrations: `db/migrations/202611050001_coordination.sql` and
-  `db/migrations/202611060002_sync_stream.sql`
-- Second application result: `Success. No rows returned`
+A dedicated Supabase project was provisioned for the coordination and
+synchronization migrations. Public documentation intentionally omits tenant
+names, project references, URLs, account names, and dashboard details.
 
-### Verification performed in the real project
+The committed migrations are:
 
-The verification query returned 19 rows: all 14 coordination tables have RLS
-enabled (`true`), and the five coordination functions are denied to `anon` and
-granted to `authenticated` (`false/true`).
+- `db/migrations/202611050001_coordination.sql`
+- `db/migrations/202611060002_sync_stream.sql`
 
-After the second application, a query in the real project confirmed the
-`register_device`, `get_project_devices`, `heartbeat_device`,
-`upsert_sync_state`, `append_project_event`, and `ensure_sync_folder` RPCs, the
-private `realtime.messages` policy, and `project_events`/`sync_states` in the
-`supabase_realtime` publication.
+The recorded verification checked that coordination tables use row-level
+security and that sensitive coordination functions require an authenticated
+session. No credentials or production data belong in the schema or in this
+record.
 
-No organization, project, user, password, service-role key, or production data
-was created inside the schema. Creating an organization or project requires a
-session authenticated by the client itself.
+## Availability gateway
 
-## PythonAnywhere
+The PythonAnywhere component is a minimal availability gateway. Its public
+contract is limited to health and capabilities endpoints; it is not a file
+broker, Syncthing disk, authentication broker, or authoritative data source.
 
-- Account: `MarcosBuilds`
-- Web app: `https://marcosbuilds.pythonanywhere.com`
-- Python: `3.12`
-- WSGI: `/var/www/marcosbuilds_pythonanywhere_com_wsgi.py`
-- Uploaded code: `ops/gateway/central_gateway.py`
-- Endpoint verified after the 0.2.0 publish: `/healthz` → `status: ok`,
-  `deployment: pythonanywhere`, `version: 0.2.0`
-- Endpoint verified: `/v1/capabilities` → only `health` available
-
-The gateway received no password, service-role key, or publishable key. Optional
-variables are read from the environment and exposed only as configuration
-booleans. PythonAnywhere is an availability gateway, not a Syncthing disk or an
-authoritative data source.
+Deployment-specific account names, WSGI paths, environment values, and live
+URLs are intentionally kept outside the public repository. The gateway must
+receive no database password, service-role key, bot token, or provider key.
 
 ## Package for computers
 
-The Windows installer is self-contained x64 and remains local/offline-first.
-This version's desktop contains in-memory password login, an authenticated REST/
-Realtime client, a replay checkpoint, and bundled Syncthing. Creating a user,
-organization, or project still requires an authenticated session; no user or
-production data was created automatically by the migration.
+The Windows package is self-contained x64 and remains offline-first. The
+desktop contains the authenticated REST/Realtime client, replay checkpoint,
+and bundled Syncthing integration described by the implementation documents.
+Creating users, organizations, or projects requires an authenticated session;
+no user or production data is created by a migration alone.
 
-The second physical computer is not under this session's control. The package
-can be installed there, but the test will not be declared complete until the
-execution is observed on that device.
+The second physical computer is outside the repository's control. A package may
+be installed there, but a two-computer test is not complete until both devices
+are observed and the evidence is recorded without private identifiers.
 
 ## Verification
 
-- `dotnet test Central.sln -c Debug --no-restore`: 30 passed, 0 failed.
-- `dotnet build Central.sln -c Debug --no-restore`: passed, 0 errors and 0 warnings.
-- The desktop client now queries only `/healthz` on startup; client health unit
-  tests cover success, HTTP errors, and an invalid URL.
-- Release packaging completed through `ops/scripts/Build-Central.ps1`; the
-  installer `artifacts/installer/Central-Colaborativa-Setup-0.2.0.exe` was
-  installed and uninstalled in a temporary directory, with `Central.exe` and
-  `syncthing.exe` present and exit codes of 0.
-- Local Python test: not run; Python is not installed on this Windows machine.
-- Remote PythonAnywhere smoke test: passed through an HTTPS browser.
+- Release build and test commands are defined in `docs/BUILD.md` and the CI
+  workflow.
+- The gateway health and capability smoke checks are repeatable against the
+  deployment chosen by the operator.
+- Migration verification must cover row-level security, authenticated RPCs,
+  Realtime publication, and project-scoped filtering.
+- Physical synchronization requires two Device IDs, heartbeats, equal test
+  file hashes, reconnect evidence, and visible conflict handling. Do not report
+  this as complete from a server health check alone.

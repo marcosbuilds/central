@@ -17,7 +17,7 @@
 | CA-13 | AI reviews a change it created | Denied for lack of independence |
 | CA-14 | Authorized AI reviews a low-risk change | Approves only with verified evidence and allowed policy |
 | CA-15 | Authentication change has only AI opinion | Blocked until defined human approval |
-| CA-16 | Tests failed but AI wrote “approved” | Do not integrate into master |
+| CA-16 | Tests failed but AI wrote “approved” | Do not integrate into main |
 | CA-17 | GitHub rule blocks merge | Show the real block, not “approved and published” |
 | CA-18 | Master version was approved | Do not deploy without its own authorization stage |
 | CA-19 | API contract changed incompatibly | Alert consumers; block integration until reconciliation |

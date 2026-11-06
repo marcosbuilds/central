@@ -22,7 +22,7 @@ Central
 │   ├── Planning (scope, stages, tasks, dependencies)
 │   ├── Workspace (live shared version, tree, reserved areas, diff, activity)
 │   ├── Discussions / Integrations (people, AIs, contracts, questions)
-│   ├── Deliveries / Reviews (evidence, approvals, master)
+│   ├── Deliveries / Reviews (evidence, approvals, main)
 │   ├── Quality (tests, failures, coverage when available)
 │   ├── Publications (preview, staging, production, logs)
 │   ├── Documentation / Decisions
@@ -87,7 +87,7 @@ saying it is finished is not enough.
   simultaneous writes to the same responsibility. Directory/file reservations
   reinforce the block when needed.
 - Small changes enter the live area after permission, base-revision, patch
-  integrity, and minimum-test checks. They **do not require master approval or deployment**.
+  integrity, and minimum-test checks. They **do not require main approval or deployment**.
 - Before applying a batch, the gateway checks base revision, hashes, reservations,
   open project status, dependencies, and permissions. It accepts atomically or
   rejects; it never trusts only the AI prompt.
@@ -120,7 +120,7 @@ saying it is finished is not enough.
 - `Delivery for approval` gathers a coherent change (large or small but risky),
   with diff, modules, reason, authorship, tests, impact, contracts, and recovery plan.
 - Flow: prepare → validate automatically → independent review → approve/reject/
-  request correction → integrate into `master` → publish when authorized.
+  request correction → integrate into `main` → publish when authorized.
 - A reviewer may be **human** or a **delegated specialized AI** with explicit
   scope, its own identity, and attached evidence; never the author/authoring AI,
   and never without evidence.

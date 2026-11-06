@@ -35,18 +35,17 @@ receives real-time notices but rereads persistent events after a disconnect.
   `ops/gateway/central_gateway.py`.
 - E-003: the initial migration already contains `devices`, `sync_states`, and
   `project_events`; `db/migrations/202611050001_coordination.sql`.
-- E-004: Lorentz (`01a1ae5c-a9a1-7742-815e-406db1c711e3`) and Newton
-  (`01a1ae5c-aae1-7a42-8a8d-6b61431069bd`) performed read-only adversarial passes
-  over the current worktree; their reports are separate review/role simulation
-  and do not replace two-PC integration testing.
+- E-004: independent read-only adversarial passes were performed over the
+  current worktree; those reports are separate review/role simulation and do
+  not replace two-PC integration testing.
 - E-005: official Syncthing documentation confirms the configuration REST API,
   status, events, and restart query; `https://docs.syncthing.net/rest/config` and
   `https://docs.syncthing.net/dev/rest.html`.
 - E-006: Supabase Realtime documentation requires rereading the database after
   reconnection; the channel is not authoritative.
-- E-007: migration 202611060002 was executed in the SQL Editor of project
-  `ydouynbssldpjhlnawtm`, and the follow-up query confirmed RPCs, the private
-  policy, and the `sync_states` publication.
+- E-007: migration `202611060002` was executed in the dedicated test project,
+  and a follow-up query confirmed the RPCs, private policy, and `sync_states`
+  publication. Tenant and project identifiers are intentionally omitted here.
 
 ## Decision
 

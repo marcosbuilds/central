@@ -34,7 +34,7 @@
 
 - Create immutable candidate, run CI, attach evidence, and use human/authorized-AI
   review according to risk.
-- Integrate with real `master` protection, reversal, releases, and separate
+- Integrate with real `main` protection, reversal, releases, and separate
   deployment with approval trail.
 - Prove that small changes do not publish automatically and an AI cannot self-approve.
 

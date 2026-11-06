@@ -6,7 +6,7 @@ and people to discuss integrations in a traceable way.
 
 ## 1. Central language: four different things
 
-| Simple screen name | Technical record | Human review required? | Enters master? | Deploys? |
+| Simple screen name | Technical record | Human review required? | Enters main? | Deploys? |
 |---|---|---|---|---|
 | Work in progress | Unsynchronized local change | No | No | No |
 | Live change | `change_set`, sequential revision, recoverable snapshot | Usually no; automated checks required | No | No |
@@ -27,8 +27,8 @@ micro-edit to create a PR and deployment. Small high-risk changes still require 
   date, checks, reason, and reversals; changes may be grouped.
 - `snapshot`: recoverable state at a known point; automatic write by batch/interval and before important deliveries.
 - `delivery_candidate`: immutable set of `change_set`s selected for integration;
-  an ID, hash, master base version, dependencies, and risk summary.
-- `master`: protected stable Git history; only the approved integration service
+  an ID, hash, main base version, dependencies, and risk summary.
+- `main`: protected stable Git history; only the approved integration service
   publishes a validated delivery to the protected branch (through PR/merge or an
   equivalent provider-controlled mechanism).
 - `release`: named version/tag after an approved delivery; does not imply deployment.
@@ -76,9 +76,9 @@ linking evidence. Logs and artifacts must be verifiable.
 `DRAFT → PREPARED → TESTING → IN_REVIEW → [CHANGES_REQUESTED | REJECTED | APPROVED] → INTEGRATING → INTEGRATED`.
 
 - Changes requested: author corrects, updates the hash, and restarts checks and review when necessary.
-- Rejected: do not integrate into master, but keep auditable history and rollback
+- Rejected: do not integrate into main, but keep auditable history and rollback
   in the live area. If other change sets depend on it, open a reconciliation incident.
-- Integrating: service checks project state, permission, hash, and master base
+- Integrating: service checks project state, permission, hash, and main base
   again; detects regressions/incompatibilities; only then publishes to the protected branch.
 - `APPROVED` does not mean GitHub or production accepted the change. If an
   external rule denies merge, mark `BLOCKED` and record the reason.
@@ -159,8 +159,8 @@ Project screen: `Overview | Planning | Live workspace | Discussions | Integratio
 
 In Workspace, clicking a file shows each agent's changes, related contracts,
 revisions, and thread. In Integrations, show pending requests, agreed contracts,
-consumers, and checks. In Deliveries, show dossiers, diff against master, checks,
-who approved, and why. In History, recover a revision without contaminating master.
+consumers, and checks. In Deliveries, show dossiers, diff against main, checks,
+who approved, and why. In History, recover a revision without contaminating main.
 
 ## 9. Risks and safeguards
 
@@ -179,7 +179,7 @@ who approved, and why. In History, recover a revision without contaminating mast
 - Offline backend session: request persists and is answered on reconnect; no invented response.
 - Contract change invalidates affected integration and triggers a required check.
 - 100 small edits create reversible revisions **without** 100 deployments/PRs.
-- Low-risk delivery with independent AI reviewer, valid evidence, and delegated policy may proceed to master; without delegation, it may not.
+- Low-risk delivery with independent AI reviewer, valid evidence, and delegated policy may proceed to main; without delegation, it may not.
 - Authoring AI tries to approve with another token from the same person: block when policy requires independence.
 - Authentication change with a favorable AI opinion remains blocked until human review.
 - Approval referring to an old hash is invalid after a new patch.

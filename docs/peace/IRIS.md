@@ -30,17 +30,17 @@ direct response to the latest point, and one question at a time. It does not
 repeat the user's answer, explain its own process, or reveal a score, internal
 history, or evaluation criteria. Fixed panel, opening, control, and closing
 messages use embeds with Peace's visual identity. Controls stay in the ticket in
-a single staff-only message; the requester receives no buttons. The callback
-validates staff permission, and the `staff-only` channel receives no ticket
-panels.
+a single restricted staff message; the requester receives no buttons. The
+callback validates staff permission, and restricted staff surfaces receive no
+ticket panels.
 
 Closed tickets are invisible to the requester and staff. Iris may consult closed
 history as anonymized context to compare support interactions, calculate support
 affinity, and route the ticket to the most suitable staff member; when evidence
 is insufficient, it mentions the staff role instead of inventing an owner.
 
-Set requests enter `scan-only` as pending. The role is applied only after manual
-approval by a recruiter or the recruiter selected by the requester.
+Set requests enter a restricted review surface as pending. The role is applied
+only after manual approval by an authorized recruiter.
 
 Reports are organized without declaring guilt. Projects, ideas, and proposals
 are developed as conversation rather than turning the interaction into a form.
@@ -78,16 +78,12 @@ target and confirmation; historical score and risk signals block operations
 when confidence is insufficient. Peace tags follow the pattern
 `N/D/S/R/G/F ⎰ name id`, according to the primary function.
 
-Boosters automatically receive a role and their own private call in the middle
-of the private-call category, named `├🎧・username`. A booster may add or remove
-people from the private role and pull them into or remove them from the call;
-Iris may explain the benefit but does not grant the role through conversation.
+Boosters automatically receive a role and a configured private call. A booster
+may add or remove people according to the server's current permissions; Iris
+may explain the benefit but does not grant the role through conversation.
 
-## Current configuration
+## Configuration boundary
 
-- Management: `1460526534527025208` and `1491899123547242656`
-- Private staff controls: `1491899123547242656`
-- General chat and other chats: configured in `IRIS_GENERAL_CHANNEL_IDS` and
-  discovered automatically when they belong to the social/chat area.
-- Previous tickets: category `1495064004194861137`
-- Planning: `1555060813046226964`
+Channel, category, role, and provider identifiers are loaded from protected
+environment configuration or discovered from current Discord state. They must
+never be hardcoded in public documentation, tests, or review messages.

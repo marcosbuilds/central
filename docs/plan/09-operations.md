@@ -10,10 +10,10 @@ author and reason.
 ## Change-set states
 
 **Small change sets:** `proposed` → `automatically-validated` →
-`applied-to-live-workspace` → `reviewed/snapshotted` (without master approval or deployment).
+`applied-to-live-workspace` → `reviewed/snapshotted` (without main approval or deployment).
 
 **Master delivery:** `immutable-candidate` → `CI` → `in-review` →
-`pending-corrections` / `rejected` / `approved` → `integrated-into-master` →
+`pending-corrections` / `rejected` / `approved` → `integrated-into-main` →
 `release-eligible` (deployment requires separate authorization).
 
 A rejection requires documented reversal/neutralization in the live workspace or
