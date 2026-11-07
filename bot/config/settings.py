@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2] if (__package__ or "").startswith("bot.") else Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}

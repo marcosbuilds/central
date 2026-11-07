@@ -16,8 +16,12 @@ import logging
 
 import discord
 
-from ..config.settings import Settings
-from ..persistence.database import PeaceDatabase
+if (__package__ or "").startswith("bot."):
+    from ..config.settings import Settings
+    from ..persistence.database import PeaceDatabase
+else:
+    from config.settings import Settings
+    from persistence.database import PeaceDatabase
 
 
 log = logging.getLogger("peace.maintenance")
