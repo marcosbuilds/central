@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import logging
+import json
 import re
 import asyncio
+import secrets
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import discord
+from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from .cfg import Settings
+from .cfg import Settings, is_valid_central_bridge_key, parse_central_bridge_url
 from .db import PeaceDatabase
 from .ai import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
 from .context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
@@ -22,6 +24,8 @@ from .error_handling import configure_logging, exception_details
 
 log = logging.getLogger("peace")
 ROOT = Path(__file__).resolve().parent.parent
+CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
+CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -88,6 +92,20 @@ async def respond(interaction: discord.Interaction, content: str, *, ephemeral: 
         await interaction.followup.send(content, **kwargs)
     else:
         await interaction.response.send_message(content, **kwargs)
+
+
+async def dismiss_component_message(interaction: discord.Interaction) -> None:
+    """Remove an ephemeral interview step after the member advances."""
+    message = interaction.message
+    if message is None:
+        return
+    try:
+        await message.delete()
+    except discord.HTTPException:
+        try:
+            await message.edit(content="", embed=None, view=None)
+        except discord.HTTPException:
+            log.debug("Não consegui limpar a etapa efêmera da entrevista", exc_info=True)
 
 
 @dataclass
@@ -204,12 +222,14 @@ class EntryTypeSelect(discord.ui.Select):
                 await respond(interaction, "No momento não há vagas abertas para player. A entrevista de desenvolvimento continua disponível.")
                 return
             await interaction.response.send_modal(SetModal(self.bot))
+            await dismiss_component_message(interaction)
             return
         if self.values[0] == "developer":
             if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
-                await respond(interaction, "Você já possui uma entrevista de desenvolvimento em análise ou integração.")
+                await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
                 return
             await interaction.response.send_modal(DeveloperIdentityModal(self.bot))
+            await dismiss_component_message(interaction)
             return
         await respond(interaction, "A seleção para staff está indisponível por hora.")
 
@@ -282,6 +302,7 @@ class DeveloperAreaSelect(discord.ui.Select):
             return
         draft.area = self.values[0]
         await interaction.response.send_modal(DeveloperExperienceModal(self.bot))
+        await dismiss_component_message(interaction)
 
 
 class DeveloperAreaView(discord.ui.View):
@@ -323,7 +344,7 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
             await respond(interaction, "Sua entrevista expirou; inicie novamente pelo painel.")
             return
         if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
-            await respond(interaction, "Você já possui uma entrevista de desenvolvimento em análise ou integração.")
+            await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
             return
         request_id = self.bot.database.save_developer_request(
             discord_user_id=interaction.user.id,
@@ -347,7 +368,7 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
         )
         await respond(
             interaction,
-            "Entrevista enviada ao scan-only. A integração depende de análise manual; não há cargo automático.",
+            "Currículo enviado ao scan-only. A entrevista manual será feita na call de suporte; depois da avaliação, a equipe avisará se você foi aprovado para entrar no time.",
         )
 
 
@@ -356,13 +377,19 @@ class DeveloperApprovalView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.request_id = request_id
+        request = bot.database.developer_request(request_id)
+        self.phase = "interview" if request is None or request["status"] == "pending" else "member"
         approve = discord.ui.Button(
-            label="✓ Aprovar integração",
+            label=(
+                "✓ Aprovar entrevista"
+                if self.phase == "interview"
+                else "✓ Aprovar como integrante"
+            ),
             style=discord.ButtonStyle.secondary,
             custom_id=f"peace_dev_approve_{request_id}",
         )
         reject = discord.ui.Button(
-            label="× Recusar",
+            label="× Recusar candidatura",
             style=discord.ButtonStyle.secondary,
             custom_id=f"peace_dev_reject_{request_id}",
         )
@@ -377,13 +404,13 @@ class DeveloperApprovalView(discord.ui.View):
 
     async def guard(self, interaction: discord.Interaction):
         request = self.bot.database.developer_request(self.request_id)
-        if request is None or request["status"] != "pending":
-            await respond(interaction, "Esta entrevista já foi processada.")
+        if request is None or request["status"] not in {"pending", "interview_scheduled"}:
+            await respond(interaction, "Esta candidatura já foi processada.")
             return None
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
         allowed = member is not None and role_member(member, self.bot.settings.recruiter_role_id)
         if not allowed:
-            await respond(interaction, "Somente um recrutador autorizado pode analisar integrações dev.")
+            await respond(interaction, "Somente um recrutador autorizado pode analisar candidaturas Dev.")
             return None
         return request
 
@@ -392,14 +419,69 @@ class DeveloperApprovalView(discord.ui.View):
         if request is None:
             return
         await interaction.response.defer()
+        if request["status"] == "pending":
+            self.bot.database.update_developer_request(self.request_id, status="interview_scheduled")
+            sent = await self.bot.send_developer_interview_notice(request)
+            updated = self.bot.database.developer_request(self.request_id) or request
+            next_view = DeveloperApprovalView(self.bot, self.request_id)
+            self.bot.developer_approval_views[self.request_id] = next_view
+            if interaction.message is not None:
+                text = (
+                    "✅ Entrevista aprovada. O candidato foi avisado para fazer a entrevista manual na call de suporte. "
+                    "Após a call, use **Aprovar como integrante**."
+                    if sent else
+                    "✅ Entrevista aprovada, mas o PV está fechado. Faça a entrevista manual na call de suporte e depois use **Aprovar como integrante**."
+                )
+                await interaction.message.edit(
+                    content=text,
+                    embed=self.bot.developer_request_embed(updated),
+                    view=next_view,
+                )
+            return
+        guild = interaction.guild or self.bot.guild
+        member = await self.bot.member(guild, int(request["discord_user_id"])) if guild else None
+        developer_role = guild.get_role(self.bot.settings.central_access_role_id) if guild else None
+        if member is None or developer_role is None:
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content="⚠️ Não foi possível aprovar: o candidato ou o cargo Dev não foi encontrado. Nenhuma alteração foi aplicada.",
+                    embed=self.bot.developer_request_embed(request),
+                    view=self,
+                )
+            return
+        try:
+            if developer_role not in member.roles:
+                await member.add_roles(
+                    developer_role,
+                    reason=f"Candidatura Dev aprovada por recrutador {interaction.user.id}",
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao aplicar o cargo Dev ao candidato %s", member.id)
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content="⚠️ Não foi possível aplicar o cargo Dev. Verifique a hierarquia e as permissões do bot; a candidatura continua pendente.",
+                    embed=self.bot.developer_request_embed(request),
+                    view=self,
+                )
+            return
+        member_roles = {role.id: role.name for role in member.roles}
+        member_roles[developer_role.id] = developer_role.name
+        peace_id = self.bot.database.ensure_runtime_member(
+            discord_user_id=member.id,
+            username=member.name,
+            nickname=member.nick,
+            role_ids=list(member_roles),
+            role_names=list(member_roles.values()),
+            founder_id=self.bot.settings.founder_user_id,
+        )
         self.bot.database.update_developer_request(self.request_id, status="approved")
-        sent = await self.bot.send_developer_meeting_invite(request)
+        sent = await self.bot.send_developer_decision_notice(request, peace_id=peace_id)
         self.disable_all()
         if interaction.message is not None:
             text = (
-                "✅ Integração aprovada. O candidato recebeu no PV as opções do próximo dia útil."
+                "✅ Candidato aprovado como integrante. Cargo Dev aplicado e DM de aceite enviada."
                 if sent else
-                "✅ Integração aprovada, mas o PV está fechado. O candidato deve abrir um ticket."
+                "✅ Candidato aprovado como integrante e cargo Dev aplicado, mas o PV está fechado."
             )
             await interaction.message.edit(content=text, embed=None, view=self)
 
@@ -408,66 +490,20 @@ class DeveloperApprovalView(discord.ui.View):
         if request is None:
             return
         await interaction.response.defer()
+        after_interview = request["status"] == "interview_scheduled"
         self.bot.database.update_developer_request(self.request_id, status="rejected")
         member = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
+        sent = False
         if member is not None:
-            try:
-                await member.send("Sua entrevista de desenvolvimento não foi aprovada nesta análise. Se precisar, abra um ticket para receber orientação.")
-            except (discord.Forbidden, discord.HTTPException):
-                log.info("DM fechada para entrevista dev %s", request["id"])
+            sent = await self.bot.send_developer_rejection_notice(request, after_interview=after_interview)
         self.disable_all()
         if interaction.message is not None:
-            await interaction.message.edit(content=f"× Integração recusada por {interaction.user.mention}.", embed=None, view=self)
-
-
-class DeveloperMeetingSelect(discord.ui.Select):
-    def __init__(self, bot: "PeaceBot", request_id: int, meeting_day: date):
-        self.bot = bot
-        self.request_id = request_id
-        self.meeting_day = meeting_day
-        options = [
-            discord.SelectOption(label=f"{hour:02d}:00 BRT", value=f"{hour:02d}:00")
-            for hour in list(range(6, 14)) + list(range(14, 24)) + [0]
-        ]
-        super().__init__(
-            placeholder=f"Escolha um horário em {meeting_day.strftime('%d/%m/%Y')}",
-            custom_id=f"peace_dev_meeting_{request_id}",
-            options=options,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        request = self.bot.database.developer_request(self.request_id)
-        if request is None or request["status"] not in {"approved", "meeting_scheduled"}:
-            await respond(interaction, "Esta integração não está disponível para agendamento.")
-            return
-        hour = self.values[0]
-        meeting_at = f"{self.meeting_day.isoformat()} {hour}:00 America/Sao_Paulo"
-        self.bot.database.update_developer_request(
-            self.request_id,
-            status="meeting_scheduled",
-            meeting_at=meeting_at,
-        )
-        await respond(
-            interaction,
-            f"Reunião de integração marcada para **{self.meeting_day.strftime('%d/%m/%Y')} às {hour} BRT**. Se precisar trocar, abra um ticket.",
-        )
-        await self.bot.send_to_channel(
-            self.bot.settings.scan_channel_id,
-            content=f"Integração dev `#{self.request_id:04d}` agendada para {self.meeting_day.strftime('%d/%m/%Y')} às {hour} BRT.",
-        )
-
-
-class DeveloperMeetingView(discord.ui.View):
-    def __init__(self, bot: "PeaceBot", request_id: int, meeting_day: date):
-        super().__init__(timeout=86400)
-        self.add_item(DeveloperMeetingSelect(bot, request_id, meeting_day))
-        ticket_id = bot.settings.ticket_panel_channel_id
-        if ticket_id is not None:
-            self.add_item(discord.ui.Button(
-                label="Não consigo · abrir ticket",
-                style=discord.ButtonStyle.link,
-                url=f"https://discord.com/channels/{bot.settings.guild_id}/{ticket_id}",
-            ))
+            text = (
+                f"× {'Candidatura' if after_interview else 'Entrevista'} recusada por {interaction.user.mention}. O candidato foi avisado por DM."
+                if sent else
+                f"× {'Candidatura' if after_interview else 'Entrevista'} recusada por {interaction.user.mention}. O PV do candidato está fechado."
+            )
+            await interaction.message.edit(content=text, embed=None, view=self)
 
 
 class SourceSelect(discord.ui.Select):
@@ -490,12 +526,16 @@ class SourceSelect(discord.ui.Select):
             return
         if self.values[0] == "recrutado":
             recruiters = await self.bot.recruiter_members()
-            await interaction.response.edit_message(
-                content="Selecione quem fez o recrutamento:",
+            await interaction.response.defer(ephemeral=True)
+            await dismiss_component_message(interaction)
+            await interaction.followup.send(
+                "Selecione quem fez o recrutamento:",
                 view=RecruiterView(self.bot, draft, recruiters),
+                ephemeral=True,
             )
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+        await dismiss_component_message(interaction)
         await self.bot.finish_set(interaction, draft, self.values[0], None)
 
 
@@ -520,7 +560,8 @@ class RecruiterSelect(discord.ui.Select):
         super().__init__(placeholder="Quem fez seu recrutamento?", options=options, custom_id="peace_set_recruiter")
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+        await dismiss_component_message(interaction)
         await self.bot.finish_set(interaction, self.draft, "recrutado", int(self.values[0]))
 
 
@@ -1175,9 +1216,11 @@ class PeaceBot(commands.Bot):
         self.iris_context_cache_at = 0.0
         self.iris_context_lock = asyncio.Lock()
         self.iris_context_task: asyncio.Task | None = None
+        self.central_bridge_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
         self.database.initialize()
+        await self.start_central_bridge()
         self.add_view(SetView(self))
         self.add_view(SupportView(self))
         self.add_view(OperationsView(self))
@@ -1194,6 +1237,246 @@ class PeaceBot(commands.Bot):
             await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         except discord.HTTPException:
             log.exception("Falha ao sincronizar comandos slash")
+
+    async def start_central_bridge(self) -> None:
+        if not is_valid_central_bridge_key(self.settings.central_bridge_key):
+            log.warning("Ponte local da Central desativada: CENTRAL_BRIDGE_KEY inválida")
+            return
+        try:
+            host, port, bridge_url = parse_central_bridge_url(self.settings.central_bridge_url)
+        except RuntimeError:
+            log.exception("Ponte local da Central desativada: CENTRAL_BRIDGE_URL inválida")
+            return
+        app = web.Application()
+        app.router.add_post("/v1/central/auth/request", self.central_auth_request)
+        app.router.add_post("/v1/central/auth/verify", self.central_auth_verify)
+        app.router.add_post("/v1/central/auth/session", self.central_auth_session)
+        app.router.add_post("/v1/central/auth/revoke", self.central_auth_revoke)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            site = web.TCPSite(runner, host, port)
+            await site.start()
+        except OSError:
+            await runner.cleanup()
+            log.exception(
+                "Não consegui abrir a ponte local da Central em %s:%s",
+                host,
+                port,
+            )
+            return
+        self.central_bridge_runner = runner
+        log.info("Ponte local da Central ativa em %s", bridge_url)
+
+    async def stop_central_bridge(self) -> None:
+        if self.central_bridge_runner is not None:
+            await self.central_bridge_runner.cleanup()
+            self.central_bridge_runner = None
+
+    def central_bridge_authorized(self, request: web.Request) -> bool:
+        supplied = request.headers.get("X-Central-Bridge-Key", "")
+        return bool(
+            supplied
+            and is_valid_central_bridge_key(self.settings.central_bridge_key)
+            and secrets.compare_digest(supplied, self.settings.central_bridge_key)
+        )
+
+    @staticmethod
+    def central_client_id(value: object) -> str | None:
+        client_id = str(value or "").strip()
+        return client_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", client_id) else None
+
+    @staticmethod
+    def central_project_id(value: object) -> str | None:
+        project_id = str(value or "").strip()
+        return project_id if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", project_id) else None
+
+    @staticmethod
+    def central_bearer_token(request: web.Request) -> str | None:
+        authorization = request.headers.get("Authorization", "")
+        match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{40,})", authorization)
+        return match.group(1) if match else None
+
+    async def central_auth_member(self, peace_id: int) -> discord.Member | None:
+        record = self.database.member_by_peace_id(peace_id)
+        if record is None:
+            return None
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+        try:
+            member = await guild.fetch_member(int(record["discord_user_id"]))
+        except discord.NotFound:
+            member = None
+        except (discord.Forbidden, discord.HTTPException):
+            return None
+        if member is None or not role_member(member, self.settings.central_access_role_id):
+            return None
+        return member
+
+    @staticmethod
+    def central_denied() -> web.Response:
+        return web.json_response({"ok": False, "message": CENTRAL_AUTH_DENIAL}, status=403)
+
+    @staticmethod
+    def central_session_response(row, token: str | None = None) -> dict[str, object]:
+        response: dict[str, object] = {
+            "peace_id": int(row["peace_id"]),
+            "subject": f"discord:{row['discord_user_id']}",
+            "client_id": row["client_id"],
+            "scope": str(row["scope"]).split(),
+            "project_id": row["project_id"],
+            "expires_at": row["expires_at"],
+        }
+        if token is not None:
+            response["token"] = token
+        return response
+
+    async def central_auth_request(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+            peace_id = int(payload.get("peace_id", 0))
+            client_id = self.central_client_id(payload.get("client_id"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        if peace_id <= 0 or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
+        if member is None:
+            return self.central_denied()
+        if not self.database.central_login_request_allowed(
+            discord_user_id=member.id,
+            client_id=client_id,
+        ):
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        issued = await self.issue_central_login_code(member, peace_id, client_id)
+        if issued is None:
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        if not issued:
+            return web.json_response(
+                {"ok": False, "message": "Não foi possível enviar a DM. Abra suas mensagens privadas."},
+                status=502,
+            )
+        return web.json_response({"ok": True, "message": "Código enviado no Discord."})
+
+    async def central_auth_verify(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+            peace_id = int(payload.get("peace_id", 0))
+            code = str(payload.get("code", "")).strip()
+            client_id = self.central_client_id(payload.get("client_id"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        if peace_id <= 0 or not re.fullmatch(r"\d{6}", code) or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
+        if member is None:
+            return self.central_denied()
+        valid = self.database.consume_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+        )
+        if not valid:
+            return web.json_response({"ok": False, "message": "Código inválido, expirado ou já utilizado."}, status=401)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=self.settings.central_auth_session_ttl_seconds
+        )
+        scope = "central:access central:sync" if project_id else "central:access"
+        token = self.database.create_central_login_session(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            project_id=project_id,
+            scope=scope,
+            expires_at=expires_at.isoformat(),
+        )
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return web.json_response({"ok": False, "message": "Não foi possível criar a sessão da Central."}, status=503)
+        return web.json_response({
+            "ok": True,
+            "message": "Acesso à Central liberado.",
+            "session": self.central_session_response(row, token),
+        })
+
+    async def central_auth_session(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if client_id is None or token is None or (payload.get("project_id") and project_id is None):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return self.central_denied()
+        member = await self.central_auth_member(int(row["peace_id"]))
+        if member is None:
+            self.database.revoke_central_login_session(token=token, client_id=client_id)
+            return self.central_denied()
+        return web.json_response({
+            "ok": True,
+            "message": "Sessão válida.",
+            "session": self.central_session_response(row),
+        })
+
+    async def central_auth_revoke(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        if client_id is None or token is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        self.database.revoke_central_login_session(token=token, client_id=client_id)
+        return web.json_response({"ok": True, "message": "Sessão encerrada."})
+
+    async def close(self) -> None:
+        await self.stop_central_bridge()
+        await super().close()
 
     async def run_startup_step(self, label: str, operation):
         """Run one startup reconciliation without blocking the remaining steps."""
@@ -2302,8 +2585,24 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def developer_request_embed(request) -> discord.Embed:
+        if request["status"] == "pending":
+            decision_instruction = (
+                "Esta é a primeira etapa. Confira o currículo e use "
+                "**Aprovar entrevista** para encaminhar o candidato à entrevista manual na call de suporte. "
+                "Use **Recusar candidatura** se ele não deve seguir."
+            )
+        else:
+            decision_instruction = (
+                "A entrevista manual na call de suporte deve estar concluída. O candidato foi bem? "
+                "Ele fará diferença no time? Use **Aprovar como integrante** para conceder o cargo Dev "
+                "e liberar o acesso da Central. Use **Recusar candidatura** quando a decisão for negativa."
+            )
         embed = discord.Embed(
-            title="Integração dev pendente · scan-only",
+            title=(
+                "Candidatura Dev · aprovar entrevista"
+                if request["status"] == "pending"
+                else "Candidatura Dev · decisão final"
+            ),
             description=(
                 f"**Candidato:** {mention(request['discord_user_id'])}\n"
                 f"**Nome real:** `{redact(str(request['full_name']), limit=100)}`\n"
@@ -2313,47 +2612,69 @@ class PeaceBot(commands.Bot):
                 f"**Tempo de especialização:** {redact(str(request['specialization_time']), limit=180)}\n"
                 f"**Onde atuou/praticou:** {redact(str(request['previous_experience']), limit=1100)}\n"
                 f"**Portfólio:** {redact(str(request['portfolio']) or 'não informado', limit=300)}\n\n"
-                "A integração não concede cargo automaticamente. Analise as respostas e, se aprovar, o candidato receberá no PV os horários do próximo dia útil."
+                f"{decision_instruction}"
             ),
             color=0x5865F2,
         )
         embed.set_footer(text=f"developer_request:{request['id']}")
         return embed
 
-    @staticmethod
-    def next_business_day() -> date:
-        current = datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
-        while current.weekday() >= 5:
-            current += timedelta(days=1)
-        return current
-
-    async def send_developer_meeting_invite(self, request) -> bool:
+    async def send_developer_interview_notice(self, request) -> bool:
         if self.guild is None:
             return False
         member = await self.member(self.guild, int(request["discord_user_id"]))
         if member is None:
             return False
-        meeting_day = self.next_business_day()
-        embed = discord.Embed(
-            title="Integração dev aprovada · escolha o horário",
-            description=(
-                f"Sua entrevista para a área **{redact(str(request['area']), limit=60)}** foi aprovada para integração.\n\n"
-                f"Escolha um horário no próximo dia útil (**{meeting_day.strftime('%d/%m/%Y')}**, BRT).\n"
-                "As opções estão separadas entre manhã (06:00–13:00) e tarde/noite (14:00–00:00). "
-                "Se nenhum horário funcionar, abra um ticket pelo botão abaixo."
-            ),
-            color=0x57F287,
-        )
         try:
             await member.send(
-                embed=embed,
-                view=DeveloperMeetingView(self, int(request["id"]), meeting_day),
-                allowed_mentions=discord.AllowedMentions.none(),
+                "✅ Sua candidatura foi aprovada para a etapa de entrevista manual!\n\n"
+                f"Área: **{redact(str(request['area']), limit=60)}**\n"
+                "Procure a call de suporte para fazer a entrevista. Depois dela, a equipe decidirá se você entra como integrante do time."
             )
-            return True
         except (discord.Forbidden, discord.HTTPException):
-            log.info("DM fechada para convite de integração dev %s", request["id"])
+            log.info("DM fechada para convite de entrevista dev %s", request["id"])
             return False
+        return True
+
+    async def send_developer_decision_notice(self, request, *, peace_id: int) -> bool:
+        if self.guild is None:
+            return False
+        member = await self.member(self.guild, int(request["discord_user_id"]))
+        if member is None:
+            return False
+        try:
+            await member.send(
+                "✅ Você foi aprovado como integrante do time de desenvolvimento da Peace!\n\n"
+                f"Área: **{redact(str(request['area']), limit=60)}**\n"
+                f"Seu cargo Dev foi aplicado e seu ID Peace é `{peace_id}`.\n"
+                    "Entre no painel da Central com esse ID para solicitar o código de acesso no Discord."
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("DM fechada para decisão da candidatura dev %s", request["id"])
+            return False
+        return True
+
+    async def send_developer_rejection_notice(self, request, *, after_interview: bool) -> bool:
+        if self.guild is None:
+            return False
+        member = await self.member(self.guild, int(request["discord_user_id"]))
+        if member is None:
+            return False
+        try:
+            if after_interview:
+                await member.send(
+                    "Sua candidatura para o time de desenvolvimento não foi aprovada após a entrevista manual.\n\n"
+                    "Se quiser entender os próximos passos, procure a staff."
+                )
+            else:
+                await member.send(
+                    "Sua candidatura não foi aprovada para a etapa de entrevista manual.\n\n"
+                    "Se quiser entender os próximos passos, procure a staff."
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("DM fechada para recusa da candidatura dev %s", request["id"])
+            return False
+        return True
 
     async def sync_pending_developer_panels(self) -> None:
         if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
@@ -3048,7 +3369,11 @@ class PeaceBot(commands.Bot):
         )
         nickname = f"N ⎰ {request['in_game_username']} {peace_id}"
         try:
-            await member.add_roles(peace_role, novato_role, reason=f"Set aprovado manualmente por recrutador {recruiter.id}")
+            await member.add_roles(
+                peace_role,
+                novato_role,
+                reason=f"Set aprovado manualmente por recrutador {recruiter.id}",
+            )
             if visitor_role is not None:
                 await member.remove_roles(visitor_role, reason="Set aprovado: visitante convertido em Peace")
             await member.edit(nick=nickname, reason="Set aprovado manualmente por recrutador")
@@ -3081,6 +3406,34 @@ class PeaceBot(commands.Bot):
                 await member.send("Seu pedido de set foi recusado por um recrutador. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
+
+    async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=self.settings.central_auth_code_ttl_seconds
+        )
+        challenge_id = self.database.try_create_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+            expires_at=expires_at.isoformat(),
+        )
+        if challenge_id is None:
+            return None
+        try:
+            await member.send(
+                "Código de acesso da Central\n"
+                f"ID Peace: `{peace_id}`\n"
+                f"Código: `{code}`\n"
+                f"Validade: {self.settings.central_auth_code_ttl_seconds // 60} minutos.\n"
+                "Não compartilhe este código."
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            self.database.revoke_central_login_challenges(member.id, client_id)
+            log.info("DM fechada para o código da Central do membro %s", member.id)
+            return False
+        return True
 
     async def open_ticket(self, interaction: discord.Interaction, reason: str, details: str) -> None:
         guild = interaction.guild or self.guild

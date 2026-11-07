@@ -16,6 +16,7 @@ public sealed class CentralViewModel : ObservableObject
     private readonly Uri? _gatewayBaseUri = ResolveGatewayBaseUri();
     private readonly CentralSyncRuntime _syncRuntime = new();
     private readonly SemaphoreSlim _syncOperationLock = new(1, 1);
+    private CentralAccessClient? _centralAccessClient;
     private GatewayHealthSnapshot _gatewayHealth = GatewayHealthSnapshot.Pending;
     private bool _gatewayCheckInProgress;
     private string _syncSupabaseUrl = string.Empty;
@@ -39,6 +40,9 @@ public sealed class CentralViewModel : ObservableObject
         _syncRuntime.ProjectEventReceived += SyncRuntime_ProjectEventReceived;
         _ = _syncRuntime.StartLocalAsync();
     }
+
+    public void SetCentralAccessClient(CentralAccessClient client)
+        => _centralAccessClient = client ?? throw new ArgumentNullException(nameof(client));
 
     public CentralStore Store { get; }
     public ProjectModel? SelectedProject => Store.SelectedProject;
@@ -241,6 +245,19 @@ public sealed class CentralViewModel : ObservableObject
             return;
         }
 
+        if (_centralAccessClient is null)
+        {
+            Notify("Sincronização não ativada: a sessão da Central não foi configurada.", OperationState.Denied);
+            return;
+        }
+
+        var centralAccess = await _centralAccessClient.ValidateSessionAsync(parsedProjectId, cancellationToken);
+        if (!centralAccess.Success || centralAccess.Session is null)
+        {
+            Notify("Sincronização não ativada: a sessão da Central expirou ou foi revogada.", OperationState.Denied);
+            return;
+        }
+
         try
         {
             await _syncRuntime.ConnectAsync(
@@ -251,6 +268,7 @@ public sealed class CentralViewModel : ObservableObject
                 parsedProjectId,
                 folder,
                 mode,
+                centralAccess.Session,
                 cancellationToken);
             SaveSyncSettings();
             _syncPassword = string.Empty;

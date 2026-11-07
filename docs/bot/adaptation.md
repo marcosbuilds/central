@@ -40,6 +40,13 @@ The entry flow is staged:
 
 The flow does not grant privileged access automatically from a message alone.
 
+Developer applications use two human approvals: the first sends the candidate
+to the manual support-call interview, and the second approves the candidate as
+a member and applies the technical role. After that final decision, the Central
+desktop can use the local Peace bridge described in
+[`../integration/peace-central.md`](../integration/peace-central.md). The bridge
+issues a short, project-scoped session only after the current role is confirmed.
+
 ## Moderation and support
 
 The bot may provide a controlled anti-spam surface, ticket workflows, and a

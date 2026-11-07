@@ -61,7 +61,6 @@ ROLE_IDS = {
     "recruiter": 1466837291686297600,
     "visitor": 1474515602625269936,
     "elite": 1486981235719934082,
-    "developer_legacy": 1486121978468372693,
     "florenza_legacy": 1506409509667606569,
     "founder": 1428158506887938231,
 }
@@ -176,7 +175,9 @@ async def configure_voice(
         await set_role_access(channel, role, view=True, connect=connect, speak=speak)
 
 
-def role_by_id_or_name(guild: discord.Guild, role_id: int, name: str | None = None) -> discord.Role | None:
+def role_by_id_or_name(guild: discord.Guild, role_id: int | None, name: str | None = None) -> discord.Role | None:
+    if role_id is None:
+        return None
     role = guild.get_role(role_id)
     if role is not None:
         return role
@@ -296,7 +297,11 @@ async def remove_action_category(guild: discord.Guild) -> None:
     await category.delete(reason="Remoção da categoria AÇÃO solicitada pela Peace")
 
 
-async def apply_structure(guild: discord.Guild, database: PeaceDatabase) -> None:
+async def apply_structure(
+    guild: discord.Guild,
+    database: PeaceDatabase,
+    central_access_role_id: int | None = None,
+) -> None:
     await remove_deprecated_roles(guild)
     roles = {
         key: role_by_id_or_name(guild, value)
@@ -309,7 +314,7 @@ async def apply_structure(guild: discord.Guild, database: PeaceDatabase) -> None
     visitor = roles["visitor"]
     elite = roles["elite"]
     founder = roles["founder"]
-    legacy_dev = roles["developer_legacy"]
+    legacy_dev = role_by_id_or_name(guild, central_access_role_id)
     legacy_florenza = roles["florenza_legacy"]
 
     if manager is not None and manager.permissions != discord.Permissions.none():
@@ -570,7 +575,7 @@ def run_once(*, apply: bool, clean: bool, clean_dev: bool) -> None:
             await client.close()
             return
         database = PeaceDatabase(settings.database_path)
-        await apply_structure(guild, database)
+        await apply_structure(guild, database, settings.central_access_role_id)
         if clean:
             await clean_tickets(guild, database)
             await remove_action_category(guild)
