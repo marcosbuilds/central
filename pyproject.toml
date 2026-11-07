@@ -16,8 +16,8 @@ dependencies = [
 
 [project.scripts]
 peace-bot = "bot.main:run"
-peace-snapshot = "bot.snap:run"
-peace-nick = "bot.nick:run"
+peace-snapshot = "bot.commands.snapshot:run"
+peace-nick = "bot.commands.nick:run"
 
 [tool.setuptools.packages.find]
 include = ["bot*"]

@@ -4,9 +4,9 @@ import argparse
 import re
 import sys
 
-from .api import DiscordAPI, DiscordAPIError
-from .cfg import Settings
-from .db import PeaceDatabase
+from ..integrations.discord_api import DiscordAPI, DiscordAPIError
+from ..config.settings import Settings
+from ..persistence.database import PeaceDatabase
 
 
 OLD_NAME = re.compile(r"^\s*[A-Za-z]\s*⎰\s*(.+?)\s+\d+\s*$")

@@ -7,8 +7,12 @@ from unittest.mock import AsyncMock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from bot.db import PeaceDatabase
-from bot.cfg import is_valid_central_bridge_key, parse_central_bridge_url
+from bot.persistence.database import PeaceDatabase
+from bot.config.settings import (
+    _central_bridge_key_env,
+    is_valid_central_bridge_key,
+    parse_central_bridge_url,
+)
 from bot.main import CENTRAL_AUTH_DENIAL, CENTRAL_AUTH_THROTTLED, PeaceBot, role_member
 
 
@@ -331,6 +335,12 @@ def test_bridge_configuration_rejects_remote_urls_and_placeholders():
         pass
     else:
         raise AssertionError("remote bridge URL should be rejected")
+
+
+def test_missing_central_bridge_key_disables_the_optional_bridge(monkeypatch):
+    monkeypatch.delenv("CENTRAL_BRIDGE_KEY", raising=False)
+
+    assert _central_bridge_key_env() == ""
 
 
 def test_central_auth_helpers_use_opaque_client_and_project_formats():

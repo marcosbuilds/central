@@ -68,8 +68,8 @@ spaces or approved threads.
 
 ## Operations and rollback
 
-- `bot/maintenance.py` supports dry-run and explicit cleanup modes.
-- `bot/snap.py` creates operator-controlled snapshots.
+- `bot/operations/maintenance.py` supports dry-run and explicit cleanup modes.
+- `bot/commands/snapshot.py` creates operator-controlled snapshots.
 - `bot/main.py` synchronizes panels, tickets, support, moderation, and
   onboarding according to configuration.
 - Any structural change must identify its target, validate hierarchy and

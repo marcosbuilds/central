@@ -1,8 +1,8 @@
 """Aplicação única da reorganização do servidor Peace.
 
 Uso recomendado:
-    python -m bot.maintenance --apply
-    python -m bot.maintenance --apply --clean
+    python -m bot.operations.maintenance --apply
+    python -m bot.operations.maintenance --apply --clean
 
 Sem --apply, o módulo apenas lista o que seria alterado. A limpeza destrutiva
 de tickets e da categoria de ação só ocorre com --clean explícito.
@@ -16,8 +16,8 @@ import logging
 
 import discord
 
-from .cfg import Settings
-from .db import PeaceDatabase
+from ..config.settings import Settings
+from ..persistence.database import PeaceDatabase
 
 
 log = logging.getLogger("peace.maintenance")

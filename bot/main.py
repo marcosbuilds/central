@@ -15,11 +15,11 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from .cfg import Settings, is_valid_central_bridge_key, parse_central_bridge_url
-from .db import PeaceDatabase
-from .ai import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
-from .context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
-from .error_handling import configure_logging, exception_details
+from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
+from .persistence.database import PeaceDatabase
+from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
+from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
+from .core.error_handling import configure_logging, exception_details
 
 
 log = logging.getLogger("peace")
@@ -440,7 +440,12 @@ class DeveloperApprovalView(discord.ui.View):
             return
         guild = interaction.guild or self.bot.guild
         member = await self.bot.member(guild, int(request["discord_user_id"])) if guild else None
-        developer_role = guild.get_role(self.bot.settings.central_access_role_id) if guild else None
+        central_access_role_id = self.bot.settings.central_access_role_id
+        developer_role = (
+            guild.get_role(central_access_role_id)
+            if guild is not None and central_access_role_id is not None
+            else None
+        )
         if member is None or developer_role is None:
             if interaction.message is not None:
                 await interaction.message.edit(

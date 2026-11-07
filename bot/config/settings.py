@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
@@ -69,7 +69,9 @@ def is_valid_central_bridge_key(value: str) -> bool:
 
 
 def _central_bridge_key_env() -> str:
-    value = _required("CENTRAL_BRIDGE_KEY")
+    value = os.getenv("CENTRAL_BRIDGE_KEY", "").strip()
+    if not value:
+        return ""
     if not is_valid_central_bridge_key(value):
         raise RuntimeError("CENTRAL_BRIDGE_KEY precisa ser um segredo local aleatório de pelo menos 32 caracteres")
     return value
@@ -115,7 +117,7 @@ class Settings:
     recruiter_role_id: int | None
     visitor_role_id: int | None
     booster_role_id: int | None
-    central_access_role_id: int
+    central_access_role_id: int | None
     central_auth_code_ttl_seconds: int
     central_auth_session_ttl_seconds: int
     central_bridge_url: str
@@ -143,6 +145,7 @@ class Settings:
         database_path = Path(os.getenv("DATABASE_PATH", "data/peace.sqlite3"))
         if not database_path.is_absolute():
             database_path = ROOT / database_path
+        central_bridge_url = os.getenv("CENTRAL_BRIDGE_URL", "").strip()
         return cls(
             token=_required("DISCORD_TOKEN"),
             guild_id=_int_env("DISCORD_GUILD_ID"),
@@ -164,10 +167,14 @@ class Settings:
             recruiter_role_id=_int_env("DISCORD_RECRUITER_ROLE_ID", None),
             visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
             booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
-            central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID"),
+            central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID", None),
             central_auth_code_ttl_seconds=_int_env("CENTRAL_AUTH_CODE_TTL_SECONDS", 600),
             central_auth_session_ttl_seconds=_int_env("CENTRAL_AUTH_SESSION_TTL_SECONDS", 1800),
-            central_bridge_url=parse_central_bridge_url(_required("CENTRAL_BRIDGE_URL"))[2],
+            central_bridge_url=(
+                parse_central_bridge_url(central_bridge_url)[2]
+                if central_bridge_url
+                else ""
+            ),
             central_bridge_key=_central_bridge_key_env(),
             private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
