@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from bot.main import needs_visitor, role_member, staff_member
+from main import needs_visitor, role_member, staff_member
 
 
 def member(member_id, roles=(), *, bot=False):

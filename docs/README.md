@@ -35,7 +35,7 @@ responsibility, not by implementation history.
 | Architecture | `architecture/` | runtime, design, server, and decisions |
 | Integration | `integration/` | public contracts between components |
 | Operations | `operations/` | deployment boundaries and smoke checks |
-| Bot | `bot/` | companion bot behavior and source rules |
+| Bot | `bot/` | companion bot behavior, operations, and source rules |
 | Planning | `plan/` | product, security, roadmap, and acceptance planning |
 | Template | `template/` | reusable project-delivery structure |
 

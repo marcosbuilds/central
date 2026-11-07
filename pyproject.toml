@@ -15,10 +15,13 @@ dependencies = [
 ]
 
 [project.scripts]
-peace-bot = "bot.main:run"
-peace-snapshot = "bot.commands.snapshot:run"
-peace-nick = "bot.commands.nick:run"
+peace-bot = "main:run"
+peace-snapshot = "commands.snapshot:run"
+peace-nick = "commands.nick:run"
+
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.setuptools.packages.find]
-include = ["bot*"]
+include = ["commands*", "config*", "core*", "integrations*", "operations*", "persistence*"]
 

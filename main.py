@@ -15,15 +15,15 @@ from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
 
-from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
-from .persistence.database import PeaceDatabase
-from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
-from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
-from .core.error_handling import configure_logging, exception_details
+from config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
+from persistence.database import PeaceDatabase
+from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
+from core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
+from core.error_handling import configure_logging, exception_details
 
 
 log = logging.getLogger("peace")
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
 CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
 TICKET_IDS = {

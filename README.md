@@ -15,7 +15,8 @@ separately; a proposal is never presented as a production capability.
 ## Public scope
 
 - .NET 8 and WPF desktop application in `app/`.
-- Companion automation bot in `bot/`.
+- Companion automation bot with `main.py` as its root entry point and focused
+  support packages at the repository root.
 - Database migrations and access rules in `db/`.
 - Gateway, installer, and operational scripts in `ops/`.
 - Automated tests in `tests/`.
@@ -27,7 +28,7 @@ separately; a proposal is never presented as a production capability.
 | Path | Responsibility |
 |---|---|
 | `app/` | desktop application and shared core |
-| `bot/` | companion automation bot |
+| `main.py`, `config/`, `core/`, `integrations/`, `operations/`, `persistence/`, `commands/` | companion automation bot |
 | `db/` | database migrations |
 | `ops/` | gateway, installer, and operational scripts |
 | `tests/` | application and bot tests |
