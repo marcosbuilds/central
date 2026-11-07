@@ -27,13 +27,7 @@ The public boundary is strict:
 ```text
 .
 ├── app/       # Central desktop and shared core
-├── main.py    # companion bot entry point for the provider runtime
-├── config/    # bot configuration loading
-├── core/      # bot safety and context helpers
-├── integrations/ # bot provider adapters
-├── operations/   # bot maintenance utilities
-├── persistence/  # bot database access
-├── commands/     # bot operator commands
+├── bot/       # companion automation bot; its contents deploy to the provider root
 ├── db/        # database migrations
 ├── ops/       # gateway, installer, and operational scripts
 ├── tests/     # application and bot tests

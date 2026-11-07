@@ -1,6 +1,6 @@
 import logging
 
-from core.error_handling import PeaceErrorFilter, exception_details
+from bot.core.error_handling import PeaceErrorFilter, exception_details
 
 
 class Forbidden(Exception):

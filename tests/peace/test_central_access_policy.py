@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from persistence.database import PeaceDatabase
-from config.settings import (
+from bot.persistence.database import PeaceDatabase
+from bot.config.settings import (
     _central_bridge_key_env,
     is_valid_central_bridge_key,
     parse_central_bridge_url,
 )
-from main import CENTRAL_AUTH_DENIAL, CENTRAL_AUTH_THROTTLED, PeaceBot, role_member
+from bot.main import CENTRAL_AUTH_DENIAL, CENTRAL_AUTH_THROTTLED, PeaceBot, role_member
 
 
 CENTRAL_ACCESS_ROLE_ID = 9001

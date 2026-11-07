@@ -15,15 +15,17 @@ First slice of the Real Peace bot in Python:
 
 ```powershell
 python -m pip install -e .
-python -m commands.snapshot
-python main.py
-python -m commands.nick --apply
+python -m bot.commands.snapshot
+python -m bot.main
+python -m bot.commands.nick --apply
 ```
 
-The provider executes the root-level `main.py` with `python -u main.py`.
-Supporting code is grouped by responsibility under `config/`, `core/`,
-`integrations/`, `persistence/`, `operations/`, and `commands/`; there is no
-second bot source tree nested below a `bot/` package.
+The repository keeps the bot source in `bot/`, with `bot/main.py` as its
+compatibility entry point. The provider deployment copies the contents of
+`bot/` into its runtime root, so its startup command is `python -u main.py` and
+there is no `bot/` directory in production. Supporting code remains grouped by
+responsibility under `config/`, `core/`, `integrations/`, `persistence/`,
+`operations/`, and `commands/` inside that deployment payload.
 
 `snapshot` is read-only against Discord and writes the JSON snapshot to
 `data/snapshots/` and the database to `data/`. It does not rename members or
@@ -72,6 +74,6 @@ uses management, chat, and previous-ticket information as controlled context,
 but does not store raw conversations as memory or reveal internal content to the
 requester.
 
-`commands.nick` changes only the final ID portion of existing nicknames and preserves
+`bot.commands.nick` changes only the final ID portion of existing nicknames and preserves
 the in-game name. It automatically skips the server owner and members above the
 bot's hierarchy; roles are not removed or added by this migration.

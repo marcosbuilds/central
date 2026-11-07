@@ -8,15 +8,15 @@ credentials are intentionally omitted.
 
 | File | Responsibility | State |
 | --- | --- | --- |
-| `main.py` | root gateway entry point, views, panels, tickets, onboarding, and support | active |
-| `operations/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
-| `persistence/database.py` | SQLite access, tickets, events, onboarding, and requests | active |
-| `config/settings.py` | environment configuration | active |
-| `integrations/iris.py` | local support adapter and prompts | available; configuration-controlled |
-| `core/context.py` | redaction, limits, and sanitization | active |
-| `integrations/discord_api.py` | REST used by utilities | active |
-| `commands/snapshot.py` | read-only snapshot utility | active |
-| `commands/nick.py` | reviewed nickname utility | restricted |
+| `bot/main.py` | repository entry point; provider receives it as `main.py` | active |
+| `bot/operations/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
+| `bot/persistence/database.py` | SQLite access, tickets, events, onboarding, and requests | active |
+| `bot/config/settings.py` | environment configuration | active |
+| `bot/integrations/iris.py` | local support adapter and prompts | available; configuration-controlled |
+| `bot/core/context.py` | redaction, limits, and sanitization | active |
+| `bot/integrations/discord_api.py` | REST used by utilities | active |
+| `bot/commands/snapshot.py` | read-only snapshot utility | active |
+| `bot/commands/nick.py` | reviewed nickname utility | restricted |
 
 ## Applied behavior
 
