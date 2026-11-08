@@ -47,7 +47,7 @@ AUTOMOD_CHANNEL_ID = 1555060813046226964
 VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
 VERIFICATION_CHANNEL_NAME = "verificar"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
-INTERN_ROLE_NAME = "Estagiário"
+INTERN_ROLE_NAME = "Intern"
 
 CHANNEL_IDS = {
     "staff_only": 1491899123547242656,
@@ -84,11 +84,11 @@ ROLE_NAMES = {
     "peace": "Peace",
     "staff": "Staff",
     "manager": "Management",
-    "general_manager": "Gerente ⎰ Delegado adjunto",
+    "general_manager": "Manager ⎰ Deputy Delegate",
     "visitor": "Visitor",
-    "elite": "Elite ⎰ Ag. Especial",
-    "novato": "Novato ⎰ Agente",
-    "member": "Membro ⎰ Recruta",
+    "elite": "Elite ⎰ Special Agent",
+    "novato": "Rookie ⎰ Agent",
+    "member": "Member ⎰ Recruit",
     "technical": "Dev",
     "a_is": "AIs",
     "not_verified": NOT_VERIFIED_ROLE_NAME,
@@ -97,13 +97,18 @@ ROLE_NAMES = {
 
 ROLE_RENAMES = {
     "Staff Peace": "Staff",
-    "Novato Peace": "Novato ⎰ Agente",
-    "Membro Peace": "Membro ⎰ Recruta",
-    "Elite Peace": "Elite ⎰ Ag. Especial",
+    "Novato Peace": "Rookie ⎰ Agent",
+    "Novato ⎰ Agente": "Rookie ⎰ Agent",
+    "Membro Peace": "Member ⎰ Recruit",
+    "Membro ⎰ Recruta": "Member ⎰ Recruit",
+    "Elite Peace": "Elite ⎰ Special Agent",
+    "Elite ⎰ Ag. Especial": "Elite ⎰ Special Agent",
     "Gerência": "Management",
     "Gerencia": "Management",
-    "Gerente geral": "Gerente ⎰ Delegado adjunto",
-    "Gerente Geral": "Gerente ⎰ Delegado adjunto",
+    "Gerente geral": "Manager ⎰ Deputy Delegate",
+    "Gerente Geral": "Manager ⎰ Deputy Delegate",
+    "Gerente ⎰ Delegado adjunto": "Manager ⎰ Deputy Delegate",
+    "Estagiário": "Intern",
     "Visitante": "Visitor",
 }
 
@@ -623,7 +628,7 @@ async def apply_structure(
         guild,
         ROLE_NAMES["intern"],
         discord.Colour.teal(),
-        aliases=("Intern", "Estagiario"),
+        aliases=("Estagiário", "Estagiario"),
     )
     await remove_obsolete_named_roles(guild, snapshot=False)
 

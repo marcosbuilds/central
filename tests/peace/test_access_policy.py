@@ -175,7 +175,7 @@ def test_reconcile_removes_not_verified_after_visitor_or_peace(tmp_path):
     )
     peace_member.remove_roles.assert_awaited_once_with(
         not_verified,
-        reason="Membro Peace não é visitante nem Not Verified",
+        reason="Peace member não é visitante nem Not Verified",
     )
 
 
@@ -197,7 +197,7 @@ def test_approved_set_assigns_peace_and_intern_without_requiring_novato(tmp_path
     peace = SimpleNamespace(id=200, name="Peace")
     visitor = SimpleNamespace(id=400, name="Visitor")
     not_verified = SimpleNamespace(id=500, name="Not Verified")
-    intern = SimpleNamespace(id=600, name="Estagiário")
+    intern = SimpleNamespace(id=600, name="Intern")
     guild = SimpleNamespace(
         get_role=lambda role_id: {
             200: peace,

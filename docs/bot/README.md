@@ -41,7 +41,7 @@ Human members enter with the visual `Not Verified` role. The bot exposes one
 verification channel only to that role; its persistent panel starts a short
 CAPTCHA, and only a correct selection grants `Visitor` while removing `Not
 Verified`. Bots and members with `Peace` never receive `Visitor` from this
-flow. A manually approved set grants `Peace` and the visual `Estagiário` role,
+flow. A manually approved set grants `Peace` and the visual `Intern` role,
 with no global permissions on the latter.
 
 The structural migration can create the verification surface, normalize role

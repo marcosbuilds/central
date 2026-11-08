@@ -25,7 +25,7 @@ must never appear in an authorization rule.
 - Verification is a separate status-gated surface. A human member enters with
   `Not Verified`, must complete the bot's CAPTCHA, and receives `Visitor` only
   after the correct selection; `Not Verified` is then removed.
-- An approved player set grants `Peace` and the visual `Estagiário` label. The
+- An approved player set grants `Peace` and the visual `Intern` label. The
   label has no global or channel permissions.
 
 ## Technical access

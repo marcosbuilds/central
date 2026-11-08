@@ -55,7 +55,7 @@ VERIFICATION_CHANNEL_NAME = "verificar"
 VERIFICATION_PANEL_MARKER = "verification:panel"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
-INTERN_ROLE_NAME = "Estagiário"
+INTERN_ROLE_NAME = "Intern"
 
 
 def asset(name: str) -> discord.File:
@@ -528,7 +528,7 @@ class DeveloperAreaSelect(discord.ui.Select):
                 discord.SelectOption(label="Frontend", value="Frontend"),
                 discord.SelectOption(label="Backend", value="Backend"),
                 discord.SelectOption(label="Documentation", value="Documentation"),
-                discord.SelectOption(label="AI & Bots", value="AI & Bots"),
+                discord.SelectOption(label="AIs", value="AIs"),
             ],
         )
 
@@ -1418,7 +1418,7 @@ class AbsenceModal(discord.ui.Modal, title="Solicitar ausência"):
             end_date=end,
             reason=str(self.reason.value).strip(),
         )
-        manager = f"<@&{self.bot.settings.manager_role_id}>" if self.bot.settings.manager_role_id else "Gerência"
+        manager = f"<@&{self.bot.settings.manager_role_id}>" if self.bot.settings.manager_role_id else "Management"
         channel = self.bot.guild.get_channel(self.bot.settings.absence_channel_id or 0) if self.bot.guild else None
         if isinstance(channel, discord.TextChannel):
             await channel.send(
@@ -1505,7 +1505,7 @@ class PeaceBot(commands.Bot):
             ),
             (
                 INTERN_ROLE_NAME,
-                ("Intern", "Estagiario"),
+                ("Estagiário", "Estagiario"),
                 discord.Colour.teal(),
             ),
         )
@@ -2991,7 +2991,7 @@ class PeaceBot(commands.Bot):
                 if status_roles:
                     await member.remove_roles(
                         *status_roles,
-                        reason="Membro Peace não é visitante nem Not Verified",
+                        reason="Peace member não é visitante nem Not Verified",
                     )
             elif visitor is not None and visitor in member.roles:
                 if not_verified is not None and not_verified in member.roles:
