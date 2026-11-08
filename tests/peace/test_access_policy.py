@@ -94,3 +94,154 @@ def test_reconcile_never_grants_visitor_without_captcha(tmp_path):
 
     human.add_roles.assert_not_awaited()
     human.remove_roles.assert_not_awaited()
+
+
+def test_reconcile_assigns_not_verified_to_a_new_human(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+    visitor = SimpleNamespace(id=400)
+    not_verified = SimpleNamespace(id=500)
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {400: visitor, 500: not_verified}.get(role_id),
+        roles=[visitor, not_verified],
+    )
+    human = SimpleNamespace(
+        id=10,
+        bot=False,
+        roles=[],
+        guild=guild,
+        add_roles=AsyncMock(),
+        remove_roles=AsyncMock(),
+    )
+
+    asyncio.run(bot.reconcile_visitor_role(human))
+
+    human.add_roles.assert_awaited_once_with(
+        not_verified,
+        reason="Entrada exige verificação antes de Visitor",
+    )
+    human.remove_roles.assert_not_awaited()
+
+
+def test_reconcile_removes_not_verified_after_visitor_or_peace(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+    visitor = SimpleNamespace(id=400)
+    not_verified = SimpleNamespace(id=500)
+    peace = SimpleNamespace(id=200)
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {200: peace, 400: visitor, 500: not_verified}.get(role_id),
+        roles=[peace, visitor, not_verified],
+    )
+    verified = SimpleNamespace(
+        id=10,
+        bot=False,
+        roles=[visitor, not_verified],
+        guild=guild,
+        add_roles=AsyncMock(),
+        remove_roles=AsyncMock(),
+    )
+    peace_member = SimpleNamespace(
+        id=11,
+        bot=False,
+        roles=[peace, not_verified],
+        guild=guild,
+        add_roles=AsyncMock(),
+        remove_roles=AsyncMock(),
+    )
+
+    asyncio.run(bot.reconcile_visitor_role(verified))
+    asyncio.run(bot.reconcile_visitor_role(peace_member))
+
+    verified.remove_roles.assert_awaited_once_with(
+        not_verified,
+        reason="Visitor já está verificado",
+    )
+    peace_member.remove_roles.assert_awaited_once_with(
+        not_verified,
+        reason="Membro Peace não é visitante nem Not Verified",
+    )
+
+
+def test_approved_set_assigns_peace_and_intern_without_requiring_novato(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        novato_role_id=300,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+        intern_role_id=600,
+        founder_user_id=1,
+    )
+    bot = PeaceBot(settings)
+    bot.database.initialize()
+    peace = SimpleNamespace(id=200, name="Peace")
+    visitor = SimpleNamespace(id=400, name="Visitor")
+    not_verified = SimpleNamespace(id=500, name="Not Verified")
+    intern = SimpleNamespace(id=600, name="Estagiário")
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {
+            200: peace,
+            400: visitor,
+            500: not_verified,
+            600: intern,
+        }.get(role_id),
+        roles=[peace, visitor, not_verified, intern],
+    )
+    target = SimpleNamespace(
+        id=10,
+        name="candidate",
+        nick=None,
+        mention="<@10>",
+        roles=[],
+        add_roles=AsyncMock(),
+        remove_roles=AsyncMock(),
+        edit=AsyncMock(),
+        send=AsyncMock(),
+    )
+    reviewer = SimpleNamespace(
+        id=20,
+        guild=guild,
+        mention="<@20>",
+        display_name="Staff",
+    )
+    bot.member = AsyncMock(return_value=target)
+
+    result = asyncio.run(
+        bot.approve_set_request(
+            {
+                "id": 1,
+                "discord_user_id": 10,
+                "in_game_username": "candidate",
+            },
+            reviewer,
+        )
+    )
+
+    assert "Set aprovado" in result
+    target.add_roles.assert_awaited_once_with(
+        peace,
+        intern,
+        reason="Set aprovado manualmente por Staff ou Management 20",
+    )
+    target.remove_roles.assert_any_await(visitor, reason="Set aprovado: visitante convertido em Peace")
+    target.remove_roles.assert_any_await(not_verified, reason="Set aprovado: membro convertido em Peace")

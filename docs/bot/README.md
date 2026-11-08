@@ -37,10 +37,12 @@ them. Developer and Staff applications remain closed unless their explicit
 flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
 Restart the bot after changing these values.
 
-Members without `Visitor` use the single verification channel created by the
-bot. Its persistent panel starts a short CAPTCHA; only a correct selection
-grants `Visitor`. Bots and members with `Peace` never receive `Visitor` from
-this flow, and joining the server alone never grants it.
+Human members enter with the visual `Not Verified` role. The bot exposes one
+verification channel only to that role; its persistent panel starts a short
+CAPTCHA, and only a correct selection grants `Visitor` while removing `Not
+Verified`. Bots and members with `Peace` never receive `Visitor` from this
+flow. A manually approved set grants `Peace` and the visual `Estagiário` role,
+with no global permissions on the latter.
 
 The structural migration can create the verification surface, normalize role
 names, save an ignored local role-membership snapshot, clear visual-role

@@ -46,6 +46,8 @@ AFK_CHANNEL_ID = 1466629495405543515
 AUTOMOD_CHANNEL_ID = 1555060813046226964
 VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
 VERIFICATION_CHANNEL_NAME = "verificar"
+NOT_VERIFIED_ROLE_NAME = "Not Verified"
+INTERN_ROLE_NAME = "Estagiário"
 
 CHANNEL_IDS = {
     "staff_only": 1491899123547242656,
@@ -89,6 +91,8 @@ ROLE_NAMES = {
     "member": "Membro ⎰ Recruta",
     "technical": "Dev",
     "a_is": "AIs",
+    "not_verified": NOT_VERIFIED_ROLE_NAME,
+    "intern": INTERN_ROLE_NAME,
 }
 
 ROLE_RENAMES = {
@@ -396,6 +400,7 @@ async def clear_non_bot_role_permissions(
 
 async def ensure_verification_surface(
     guild: discord.Guild,
+    not_verified: discord.Role | None = None,
 ) -> tuple[discord.CategoryChannel | None, discord.TextChannel | None]:
     category = discord.utils.find(
         lambda item: item.name.casefold() == VERIFICATION_CATEGORY_NAME.casefold(),
@@ -408,8 +413,8 @@ async def ensure_verification_surface(
         )
     await category.set_permissions(
         guild.default_role,
-        overwrite=perms(view_channel=True, read_message_history=True, send_messages=False),
-        reason="Verificação visível para membros sem Visitor",
+        overwrite=perms(view_channel=False, read_message_history=False, send_messages=False),
+        reason="Somente membros Not Verified visualizam a verificação",
     )
     channel = discord.utils.find(
         lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold()
@@ -437,10 +442,30 @@ async def ensure_verification_surface(
         )
     await channel.set_permissions(
         guild.default_role,
-        overwrite=perms(view_channel=True, read_message_history=True, send_messages=False),
-        reason="Membros sem Visitor precisam visualizar a verificação",
+        overwrite=perms(view_channel=False, read_message_history=False, send_messages=False),
+        reason="Somente membros Not Verified visualizam a verificação",
     )
+    if not_verified is not None:
+        access = perms(view_channel=True, read_message_history=True, send_messages=False)
+        await category.set_permissions(
+            not_verified,
+            overwrite=access,
+            reason="Not Verified precisa acessar a verificação",
+        )
+        await channel.set_permissions(
+            not_verified,
+            overwrite=access,
+            reason="Not Verified precisa acessar a verificação",
+        )
     if guild.me is not None:
+        await category.set_permissions(
+            guild.me,
+            view_channel=True,
+            read_message_history=True,
+            send_messages=True,
+            manage_messages=True,
+            reason="Peace Tools precisa manter a categoria de verificação",
+        )
         await channel.set_permissions(
             guild.me,
             view_channel=True,
@@ -543,7 +568,15 @@ def validate_preflight(guild: discord.Guild) -> None:
     permissions = guild.me.guild_permissions
     if not permissions.manage_roles or not permissions.manage_channels:
         raise RuntimeError("O bot precisa de Gerenciar cargos e Gerenciar canais para a migração")
-    target_names = {name.casefold() for name in (*ROLE_RENAMES.keys(), *OBSOLETE_ROLE_NAMES)}
+    target_names = {
+        name.casefold()
+        for name in (
+            *ROLE_RENAMES.keys(),
+            *OBSOLETE_ROLE_NAMES,
+            NOT_VERIFIED_ROLE_NAME,
+            INTERN_ROLE_NAME,
+        )
+    }
     target_ids = (set(ROLE_IDS.values()) - {ROLE_IDS["founder"]}) | set(DEPRECATED_ROLE_IDS)
     target_ids |= {
         role.id for role in guild.roles if role.name.casefold() in target_names
@@ -579,6 +612,18 @@ async def apply_structure(
         ROLE_NAMES["a_is"],
         discord.Colour.purple(),
         aliases=("AI & Bots", "IA & Bots", "IA & Bots Peace"),
+    )
+    not_verified = await ensure_visual_role(
+        guild,
+        ROLE_NAMES["not_verified"],
+        discord.Colour.dark_grey(),
+        aliases=("Não verificado", "Nao verificado"),
+    )
+    intern = await ensure_visual_role(
+        guild,
+        ROLE_NAMES["intern"],
+        discord.Colour.teal(),
+        aliases=("Intern", "Estagiario"),
     )
     await remove_obsolete_named_roles(guild, snapshot=False)
 
@@ -710,7 +755,7 @@ async def apply_structure(
         await configure_voice(waiting_voice, guild, allowed=support_roles, move_members=False)
         await set_role_access(waiting_voice, staff, view=True, connect=True, speak=True, move_members=True)
 
-    await ensure_verification_surface(guild)
+    await ensure_verification_surface(guild, not_verified)
 
     registros = guild.get_channel(REGISTROS_CATEGORY_ID)
     registration_roles = [peace, technical, staff, manager, founder]

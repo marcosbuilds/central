@@ -26,8 +26,10 @@ credentials are intentionally omitted.
 - closed tickets remain hidden from ordinary members;
 - structural changes are idempotent and require a recoverable snapshot;
 - visual roles do not participate in authorization;
-- Visitor is granted only by the verification CAPTCHA; it is never granted on
-  member join;
+- Human members receive `Not Verified` on join; `Visitor` is granted only by
+  the verification CAPTCHA and is never granted on member join;
+- approved sets receive `Peace` and the visual `Estagiário` label, which has no
+  permission authority;
 - role migration snapshots affected members before deleting obsolete roles;
 - provider credentials remain in protected environment configuration.
 - the Central bridge stores only challenge and session hashes; the Discord

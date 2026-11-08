@@ -117,6 +117,8 @@ class Settings:
     staff_control_channel_id: int | None
     manager_role_id: int | None
     visitor_role_id: int | None
+    not_verified_role_id: int | None
+    intern_role_id: int | None
     booster_role_id: int | None
     central_access_role_id: int | None
     central_auth_code_ttl_seconds: int
@@ -170,6 +172,8 @@ class Settings:
             staff_control_channel_id=_int_env("DISCORD_STAFF_CONTROL_CHANNEL_ID", None),
             manager_role_id=_int_env("DISCORD_MANAGER_ROLE_ID", None),
             visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
+            not_verified_role_id=_int_env("DISCORD_NOT_VERIFIED_ROLE_ID", None),
+            intern_role_id=_int_env("DISCORD_INTERN_ROLE_ID", None),
             booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
             central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID", None),
             central_auth_code_ttl_seconds=_int_env("CENTRAL_AUTH_CODE_TTL_SECONDS", 600),

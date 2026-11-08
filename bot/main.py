@@ -54,6 +54,8 @@ VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
 VERIFICATION_CHANNEL_NAME = "verificar"
 VERIFICATION_PANEL_MARKER = "verification:panel"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+NOT_VERIFIED_ROLE_NAME = "Not Verified"
+INTERN_ROLE_NAME = "Estagiário"
 
 
 def asset(name: str) -> discord.File:
@@ -81,6 +83,21 @@ def duration_text(seconds: int) -> str:
 
 def role_member(member: discord.Member, role_id: int | None) -> bool:
     return role_id is not None and any(role.id == role_id for role in member.roles)
+
+
+def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
+    """Resolve configured roles while keeping local development configuration optional."""
+    if role_id is not None:
+        role = guild.get_role(role_id)
+        if role is not None:
+            return role
+    normalized = {name.casefold() for name in names if name}
+    if not normalized:
+        return None
+    return discord.utils.find(
+        lambda role: role.name.casefold() in normalized,
+        getattr(guild, "roles", ()),
+    )
 
 
 def needs_visitor(
@@ -215,7 +232,26 @@ class VerificationCaptchaSelect(discord.ui.Select):
             return
 
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        visitor = interaction.guild.get_role(self.bot.settings.visitor_role_id or 0) if interaction.guild else None
+        visitor = (
+            role_named(
+                interaction.guild,
+                getattr(self.bot.settings, "visitor_role_id", None),
+                "Visitor",
+            )
+            if interaction.guild
+            else None
+        )
+        not_verified = (
+            role_named(
+                interaction.guild,
+                getattr(self.bot.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            if interaction.guild
+            else None
+        )
         self.bot.verification_challenges.pop(self.member_id, None)
         if member is None or member.bot or visitor is None:
             await interaction.response.edit_message(
@@ -230,12 +266,30 @@ class VerificationCaptchaSelect(discord.ui.Select):
             )
             return
         if visitor in member.roles:
+            if not_verified is not None and not_verified in member.roles:
+                try:
+                    await member.remove_roles(not_verified, reason="Visitor já verificado pelo CAPTCHA")
+                except (discord.Forbidden, discord.HTTPException):
+                    await interaction.response.edit_message(
+                        content="Eu confirmei sua conta, mas não consegui remover o cargo Not Verified. A staff precisa corrigir isso.",
+                        view=None,
+                    )
+                    return
             await interaction.response.edit_message(
                 content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
                 view=None,
             )
             return
-        if interaction.guild.me is None or visitor.managed or visitor >= interaction.guild.me.top_role:
+        bot_member = getattr(interaction.guild, "me", None)
+        if (
+            bot_member is None
+            or visitor.managed
+            or visitor >= bot_member.top_role
+            or (
+                not_verified is not None
+                and (not_verified.managed or not_verified >= bot_member.top_role)
+            )
+        ):
             await interaction.response.edit_message(
                 content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitor. A staff precisa corrigir isso.",
                 view=None,
@@ -243,6 +297,8 @@ class VerificationCaptchaSelect(discord.ui.Select):
             return
         try:
             await member.add_roles(visitor, reason="CAPTCHA de verificação concluído")
+            if not_verified is not None and not_verified in member.roles:
+                await member.remove_roles(not_verified, reason="CAPTCHA de verificação concluído")
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao aplicar Visitor após verificação para %s", member.id)
             await interaction.response.edit_message(
@@ -271,7 +327,11 @@ class VerificationStartView(discord.ui.View):
         if member is None or member.bot:
             await respond(interaction, "Eu não libero o cargo Visitor para contas de bot.")
             return
-        visitor = member.guild.get_role(self.bot.settings.visitor_role_id or 0)
+        visitor = role_named(
+            member.guild,
+            getattr(self.bot.settings, "visitor_role_id", None),
+            "Visitor",
+        )
         if visitor is not None and visitor in member.roles:
             await respond(interaction, "Eu já confirmei sua conta e o cargo Visitor já está liberado.")
             return
@@ -1433,6 +1493,42 @@ class PeaceBot(commands.Bot):
         self.verification_challenges[member_id] = (answer, time.monotonic() + 180)
         return choices
 
+    async def ensure_flow_roles(self) -> None:
+        """Create the status and onboarding labels used by the member flow."""
+        if self.guild is None:
+            return
+        specs = (
+            (
+                NOT_VERIFIED_ROLE_NAME,
+                ("Não verificado", "Nao verificado"),
+                discord.Colour.dark_grey(),
+            ),
+            (
+                INTERN_ROLE_NAME,
+                ("Intern", "Estagiario"),
+                discord.Colour.teal(),
+            ),
+        )
+        for name, aliases, colour in specs:
+            role = role_named(self.guild, None, name, *aliases)
+            if role is None:
+                await self.guild.create_role(
+                    name=name,
+                    colour=colour,
+                    permissions=discord.Permissions.none(),
+                    hoist=False,
+                    mentionable=False,
+                    reason="Criar cargo do fluxo de entrada da Peace",
+                )
+                continue
+            if role.name != name or role.permissions != discord.Permissions.none():
+                await role.edit(
+                    name=name,
+                    colour=colour,
+                    permissions=discord.Permissions.none(),
+                    reason="Padronizar cargo do fluxo de entrada da Peace",
+                )
+
     async def start_central_bridge(self) -> None:
         if not is_valid_central_bridge_key(self.settings.central_bridge_key):
             log.warning("Ponte local da Central desativada: CENTRAL_BRIDGE_KEY inválida")
@@ -1714,6 +1810,7 @@ class PeaceBot(commands.Bot):
         if not self.panels_synced:
             completed, result = await self.run_startup_step("painéis", self.sync_panels)
             self.panels_synced = completed and result is True
+        await self.run_startup_step("cargos do fluxo de entrada", self.ensure_flow_roles)
         await self.run_startup_step("painel de verificação", self.sync_verification_panel)
         if not self.reception_visibility_synced:
             completed, _ = await self.run_startup_step("visibilidade da recepção", self.sync_reception_visibility)
@@ -1914,15 +2011,22 @@ class PeaceBot(commands.Bot):
                     reason="Padronizar área única de verificação da Peace",
                 )
 
-            public_category = discord.PermissionOverwrite(
-                view_channel=True,
-                read_message_history=True,
+            not_verified = role_named(
+                self.guild,
+                getattr(self.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            private_category = discord.PermissionOverwrite(
+                view_channel=False,
+                read_message_history=False,
                 send_messages=False,
             )
             await category.set_permissions(
                 self.guild.default_role,
-                overwrite=public_category,
-                reason="Verificação visível para membros sem Visitor",
+                overwrite=private_category,
+                reason="Somente membros Not Verified visualizam a verificação",
             )
 
             channel = (
@@ -1952,8 +2056,8 @@ class PeaceBot(commands.Bot):
                 )
             await channel.set_permissions(
                 self.guild.default_role,
-                overwrite=public_category,
-                reason="Membros sem Visitor precisam visualizar a verificação",
+                overwrite=private_category,
+                reason="Somente membros Not Verified visualizam a verificação",
             )
             await channel.set_permissions(
                 self.guild.me,
@@ -2003,6 +2107,38 @@ class PeaceBot(commands.Bot):
                             overwrite=None,
                             reason="Canal de verificação público para membros sem Visitor",
                         )
+            if not_verified is not None:
+                verification_access = discord.PermissionOverwrite(
+                    view_channel=True,
+                    read_message_history=True,
+                    send_messages=False,
+                )
+                await category.set_permissions(
+                    not_verified,
+                    overwrite=verification_access,
+                    reason="Not Verified precisa acessar a verificação",
+                )
+                await channel.set_permissions(
+                    not_verified,
+                    overwrite=verification_access,
+                    reason="Not Verified precisa acessar a verificação",
+                )
+            await category.set_permissions(
+                self.guild.me,
+                view_channel=True,
+                read_message_history=True,
+                send_messages=True,
+                manage_messages=True,
+                reason="Peace Tools precisa manter a categoria de verificação",
+            )
+            await channel.set_permissions(
+                self.guild.me,
+                view_channel=True,
+                read_message_history=True,
+                send_messages=True,
+                manage_messages=True,
+                reason="Peace Tools precisa manter o painel de verificação",
+            )
             return True
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao sincronizar a área de verificação")
@@ -2824,15 +2960,49 @@ class PeaceBot(commands.Bot):
         return private_role, voice
 
     async def reconcile_visitor_role(self, member: discord.Member) -> None:
-        visitor = member.guild.get_role(self.settings.visitor_role_id or 0)
-        if visitor is None or member.bot:
+        visitor = role_named(
+            member.guild,
+            getattr(self.settings, "visitor_role_id", None),
+            "Visitor",
+        )
+        not_verified = role_named(
+            member.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if visitor is None and not_verified is None:
             return
-        has_peace = role_member(member, self.settings.peace_role_id)
         try:
-            if has_peace and visitor in member.roles:
-                await member.remove_roles(visitor, reason="Membro Peace não é visitante")
+            status_roles = [
+                role for role in (visitor, not_verified)
+                if role is not None and role in member.roles
+            ]
+            if member.bot:
+                if status_roles:
+                    await member.remove_roles(
+                        *status_roles,
+                        reason="Contas de bot não usam Visitor ou Not Verified",
+                    )
+                return
+            has_peace = role_member(member, self.settings.peace_role_id)
+            if has_peace:
+                if status_roles:
+                    await member.remove_roles(
+                        *status_roles,
+                        reason="Membro Peace não é visitante nem Not Verified",
+                    )
+            elif visitor is not None and visitor in member.roles:
+                if not_verified is not None and not_verified in member.roles:
+                    await member.remove_roles(not_verified, reason="Visitor já está verificado")
+            elif not_verified is not None and not_verified not in member.roles:
+                await member.add_roles(
+                    not_verified,
+                    reason="Entrada exige verificação antes de Visitor",
+                )
         except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível sincronizar Visitante para %s", member.id)
+            log.info("Não foi possível sincronizar os cargos de entrada para %s", member.id)
 
     async def sync_visitor_roles(self) -> None:
         if self.guild is None:
@@ -3618,8 +3788,7 @@ class PeaceBot(commands.Bot):
             await respond(interaction, "Não consegui localizar seu membro no servidor.")
             return
         peace_role = guild.get_role(self.settings.peace_role_id)
-        novato_role = guild.get_role(self.settings.novato_role_id)
-        if peace_role is None or novato_role is None:
+        if peace_role is None:
             await respond(interaction, "A configuração de cargos Peace está incompleta; procure a staff.")
             return
         if self.database.pending_set_request_for_user(member.id) is not None:
@@ -3658,9 +3827,26 @@ class PeaceBot(commands.Bot):
         guild = recruiter.guild
         member = await self.member(guild, int(request["discord_user_id"]))
         peace_role = guild.get_role(self.settings.peace_role_id)
-        novato_role = guild.get_role(self.settings.novato_role_id)
-        visitor_role = guild.get_role(self.settings.visitor_role_id or 0)
-        if member is None or peace_role is None or novato_role is None:
+        intern_role = role_named(
+            guild,
+            getattr(self.settings, "intern_role_id", None),
+            INTERN_ROLE_NAME,
+            "Intern",
+            "Estagiario",
+        )
+        visitor_role = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            "Visitor",
+        )
+        not_verified_role = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if member is None or peace_role is None or intern_role is None:
             return "Não consegui localizar o membro ou os cargos do set."
         existing = self.database.get_member(member.id)
         peace_id = int(existing["peace_id"]) if existing else self.database.ensure_runtime_member(
@@ -3675,15 +3861,17 @@ class PeaceBot(commands.Bot):
         try:
             await member.add_roles(
                 peace_role,
-                novato_role,
+                intern_role,
                 reason=f"Set aprovado manualmente por Staff ou Management {recruiter.id}",
             )
             if visitor_role is not None:
                 await member.remove_roles(visitor_role, reason="Set aprovado: visitante convertido em Peace")
+            if not_verified_role is not None:
+                await member.remove_roles(not_verified_role, reason="Set aprovado: membro convertido em Peace")
             await member.edit(nick=nickname, reason="Set aprovado manualmente por Staff ou Management")
             member_roles = {role.id: role.name for role in member.roles}
             member_roles[peace_role.id] = peace_role.name
-            member_roles[novato_role.id] = novato_role.name
+            member_roles[intern_role.id] = intern_role.name
             self.database.ensure_runtime_member(
                 discord_user_id=member.id,
                 username=member.name,
