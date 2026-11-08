@@ -22,6 +22,8 @@ must never appear in an authorization rule.
 - Closed tickets remain unavailable to ordinary members.
 - Structural changes are applied idempotently and require a snapshot, a dry
   run, and a reviewable record.
+- Verification is a separate public surface. A human member without `Visitor`
+  or `Peace` must complete the bot's CAPTCHA before receiving `Visitor`.
 
 ## Technical access
 
@@ -46,6 +48,11 @@ a member and applies the technical role. After that final decision, the Central
 desktop can use the local Peace bridge described in
 [`../integration/peace-central.md`](../integration/peace-central.md). The bridge
 issues a short, project-scoped session only after the current role is confirmed.
+
+`Peace`, `Visitor`, `Dev`, `Staff`, and `Management` are access roles whose
+channel overwrites are explicit; visual roles do not authorize applications,
+ticket review, channel visibility, or voice movement. Staff may move members
+only in support/waiting calls. Management may move members in normal calls.
 
 ## Moderation and support
 

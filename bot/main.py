@@ -50,6 +50,10 @@ WELCOME_ASSET = "welcome-halloween.png"
 SET_PANEL_ASSET = "set-halloween.png"
 TICKET_PANEL_ASSET = "ticket-halloween.png"
 OPERATIONS_PANEL_ASSET = "ops-halloween.png"
+VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
+VERIFICATION_CHANNEL_NAME = "verificar"
+VERIFICATION_PANEL_MARKER = "verification:panel"
+VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 def asset(name: str) -> discord.File:
@@ -79,9 +83,17 @@ def role_member(member: discord.Member, role_id: int | None) -> bool:
     return role_id is not None and any(role.id == role_id for role in member.roles)
 
 
-def needs_visitor(member: discord.Member, peace_role_id: int | None) -> bool:
-    """Return whether a human member needs the automatic Visitor role."""
-    return not member.bot and not role_member(member, peace_role_id)
+def needs_visitor(
+    member: discord.Member,
+    peace_role_id: int | None,
+    visitor_role_id: int | None = None,
+) -> bool:
+    """Return whether a human member needs to complete Visitor verification."""
+    return (
+        not member.bot
+        and not role_member(member, peace_role_id)
+        and (visitor_role_id is None or not role_member(member, visitor_role_id))
+    )
 
 
 def staff_member(member: discord.Member, settings: Settings) -> bool:
@@ -89,6 +101,32 @@ def staff_member(member: discord.Member, settings: Settings) -> bool:
         member.id == settings.founder_user_id
         or role_member(member, settings.staff_role_id)
     )
+
+
+def reviewer_member(member: discord.Member, settings: Settings) -> bool:
+    """Return whether a member may review an application or return request."""
+    return (
+        staff_member(member, settings)
+        or role_member(member, settings.manager_role_id)
+    )
+
+
+def application_path_open(path: str, settings: Settings) -> bool:
+    """Keep vacancy gates explicit and testable for the three entry paths."""
+    return {
+        "player": bool(getattr(settings, "set_vagas_abertas", False)),
+        "developer": bool(getattr(settings, "developer_vagas_abertas", False)),
+        "staff": bool(getattr(settings, "staff_vagas_abertas", False)),
+    }.get(path, False)
+
+
+def verification_eligible(
+    member: discord.Member,
+    peace_role_id: int | None,
+    visitor_role_id: int | None,
+) -> bool:
+    """Return whether this member may start the Visitor CAPTCHA."""
+    return needs_visitor(member, peace_role_id, visitor_role_id)
 
 
 async def respond(interaction: discord.Interaction, content: str, *, ephemeral: bool = True, view: discord.ui.View | None = None) -> None:
@@ -128,6 +166,132 @@ class DeveloperDraft:
     nickname: str
     motivation: str
     area: str = ""
+
+
+class VerificationCaptchaView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", member_id: int, options: list[str]):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.member_id = member_id
+        self.add_item(VerificationCaptchaSelect(bot, member_id, options))
+
+    async def on_timeout(self) -> None:
+        self.bot.verification_challenges.pop(self.member_id, None)
+
+
+class VerificationCaptchaSelect(discord.ui.Select):
+    def __init__(self, bot: "PeaceBot", member_id: int, options: list[str]):
+        self.bot = bot
+        self.member_id = member_id
+        super().__init__(
+            placeholder="Selecione o CAPTCHA que eu mostrei",
+            custom_id="peace_verification_captcha",
+            options=[
+                discord.SelectOption(label=value, value=value)
+                for value in options
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.member_id:
+            await respond(interaction, "Eu gerei este CAPTCHA para outro membro.")
+            return
+        challenge = self.bot.verification_challenges.get(self.member_id)
+        selected = self.values[0]
+        if challenge is None or challenge[1] <= time.monotonic():
+            self.bot.verification_challenges.pop(self.member_id, None)
+            await interaction.response.edit_message(
+                content="Eu encerrei este CAPTCHA por tempo limite. Volte ao canal #verificar e inicie uma nova verificação.",
+                view=VerificationStartView(self.bot),
+            )
+            return
+        answer, _ = challenge
+        if selected != answer:
+            self.bot.verification_challenges.pop(self.member_id, None)
+            await interaction.response.edit_message(
+                content="Eu não liberei o cargo Visitor porque a resposta do CAPTCHA está incorreta. Inicie a verificação novamente.",
+                view=VerificationStartView(self.bot),
+            )
+            return
+
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        visitor = interaction.guild.get_role(self.bot.settings.visitor_role_id or 0) if interaction.guild else None
+        self.bot.verification_challenges.pop(self.member_id, None)
+        if member is None or member.bot or visitor is None:
+            await interaction.response.edit_message(
+                content="Eu não consegui liberar o cargo Visitor. Procure a staff.",
+                view=None,
+            )
+            return
+        if role_member(member, self.bot.settings.peace_role_id):
+            await interaction.response.edit_message(
+                content="Eu confirmei sua conta, mas não apliquei Visitor porque você já possui o cargo Peace.",
+                view=None,
+            )
+            return
+        if visitor in member.roles:
+            await interaction.response.edit_message(
+                content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
+                view=None,
+            )
+            return
+        if interaction.guild.me is None or visitor.managed or visitor >= interaction.guild.me.top_role:
+            await interaction.response.edit_message(
+                content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitor. A staff precisa corrigir isso.",
+                view=None,
+            )
+            return
+        try:
+            await member.add_roles(visitor, reason="CAPTCHA de verificação concluído")
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao aplicar Visitor após verificação para %s", member.id)
+            await interaction.response.edit_message(
+                content="Eu confirmei sua conta, mas não consegui aplicar Visitor. A staff precisa verificar minhas permissões.",
+                view=None,
+            )
+            return
+        await interaction.response.edit_message(
+            content="Eu confirmei que você não é um bot e liberei o cargo Visitor. Agora você pode acessar as áreas de visitante.",
+            view=None,
+        )
+
+
+class VerificationStartView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot"):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(
+        label="Iniciar verificação",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_verification_start",
+    )
+    async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        if member is None or member.bot:
+            await respond(interaction, "Eu não libero o cargo Visitor para contas de bot.")
+            return
+        visitor = member.guild.get_role(self.bot.settings.visitor_role_id or 0)
+        if visitor is not None and visitor in member.roles:
+            await respond(interaction, "Eu já confirmei sua conta e o cargo Visitor já está liberado.")
+            return
+        if role_member(member, self.bot.settings.peace_role_id):
+            await respond(interaction, "Eu não preciso verificar novamente uma conta que já possui o cargo Peace.")
+            return
+        if not verification_eligible(
+            member,
+            self.bot.settings.peace_role_id,
+            self.bot.settings.visitor_role_id,
+        ):
+            await respond(interaction, "Eu não posso iniciar esta verificação para sua conta.")
+            return
+        options = self.bot.create_verification_challenge(member.id)
+        answer = self.bot.verification_challenges[member.id][0]
+        await interaction.response.send_message(
+            f"Eu gerei o CAPTCHA `{answer}`. Eu peço que você selecione exatamente esse código entre as opções abaixo. Eu libero Visitor somente se a escolha estiver correta.",
+            view=VerificationCaptchaView(self.bot, member.id, options),
+            ephemeral=True,
+        )
 
 
 class SetModal(discord.ui.Modal, title="Pedir set · entrevista inicial"):
@@ -188,7 +352,7 @@ class SetView(discord.ui.View):
     @discord.ui.button(label="◈ Iniciar entrevista", style=discord.ButtonStyle.secondary, custom_id="peace_pedir_set_open")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         await interaction.response.send_message(
-            "Escolha o tipo de entrevista. A opção de staff está indisponível por enquanto.",
+            "Eu peço que você escolha um caminho de entrada. As opções com **sem vagas** estão fechadas.",
             view=EntryTypeView(self.bot),
             ephemeral=True,
         )
@@ -202,19 +366,19 @@ class EntryTypeSelect(discord.ui.Select):
             custom_id="peace_entry_type",
             options=[
                 discord.SelectOption(
-                    label="Sou player",
+                    label="Player set · vagas abertas",
                     value="player",
-                    description="Entrevista inicial para entrar na Peace",
+                    description="Player applications are open",
                 ),
                 discord.SelectOption(
-                    label="Join Developers",
+                    label="Join Developers · sem vagas",
                     value="developer",
-                    description="Entrevista real para entrar no time",
+                    description="Developer applications are closed",
                 ),
                 discord.SelectOption(
-                    label="Staff (indisponível)",
+                    label="Join Staff · sem vagas",
                     value="staff",
-                    description="Indisponível por hora",
+                    description="Staff applications are closed",
                 ),
             ],
         )
@@ -225,20 +389,26 @@ class EntryTypeSelect(discord.ui.Select):
             if member is not None and role_member(member, self.bot.settings.peace_role_id):
                 await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
                 return
-            if not self.bot.settings.set_vagas_abertas:
-                await respond(interaction, "No momento não há vagas abertas para player. A entrevista de desenvolvimento continua disponível.")
+            if not application_path_open("player", self.bot.settings):
+                await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
                 return
             await interaction.response.send_modal(SetModal(self.bot))
             await dismiss_component_message(interaction)
             return
         if self.values[0] == "developer":
+            if not application_path_open("developer", self.bot.settings):
+                await respond(interaction, "Eu mantive as vagas de Developers fechadas no momento.")
+                return
             if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
                 await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
                 return
             await interaction.response.send_modal(DeveloperIdentityModal(self.bot))
             await dismiss_component_message(interaction)
             return
-        await respond(interaction, "A seleção para staff está indisponível por hora.")
+        if not application_path_open("staff", self.bot.settings):
+            await respond(interaction, "Eu mantive as vagas de Staff fechadas no momento.")
+            return
+        await respond(interaction, "Eu ainda não configurei a entrevista de Staff.")
 
 
 class EntryTypeView(discord.ui.View):
@@ -415,9 +585,9 @@ class DeveloperApprovalView(discord.ui.View):
             await respond(interaction, "Esta candidatura já foi processada.")
             return None
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        allowed = member is not None and role_member(member, self.bot.settings.recruiter_role_id)
+        allowed = member is not None and reviewer_member(member, self.bot.settings)
         if not allowed:
-            await respond(interaction, "Somente um recrutador autorizado pode analisar candidaturas Dev.")
+            await respond(interaction, "Somente Staff ou Management autorizado pode analisar candidaturas Dev.")
             return None
         return request
 
@@ -465,7 +635,7 @@ class DeveloperApprovalView(discord.ui.View):
             if developer_role not in member.roles:
                 await member.add_roles(
                     developer_role,
-                    reason=f"Candidatura Dev aprovada por recrutador {interaction.user.id}",
+                    reason=f"Candidatura Dev aprovada por Staff ou Management {interaction.user.id}",
                 )
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao aplicar o cargo Dev ao candidato %s", member.id)
@@ -584,7 +754,7 @@ class RecruiterView(discord.ui.View):
             self.add_item(RecruiterSelect(bot, draft, recruiters))
         else:
             unavailable = discord.ui.Button(
-                label="Nenhum recrutador disponível agora",
+                label="Nenhum reviewer disponível agora",
                 style=discord.ButtonStyle.secondary,
                 disabled=True,
             )
@@ -621,7 +791,7 @@ class SetApprovalView(discord.ui.View):
             await respond(interaction, "Este pedido já foi processado.")
             return None
         if not isinstance(interaction.user, discord.Member) or not self.bot.can_approve_set_request(request, interaction.user):
-            await respond(interaction, "Somente um recrutador autorizado pode aprovar este pedido.")
+            await respond(interaction, "Somente Staff ou Management autorizado pode aprovar este pedido.")
             return None
         return request
 
@@ -666,8 +836,8 @@ class ReturnApprovalView(discord.ui.View):
 
     async def release_id(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        if member is None or not role_member(member, self.bot.settings.recruiter_role_id):
-            await respond(interaction, "Somente um recrutador autorizado pode liberar este retorno.")
+        if member is None or not reviewer_member(member, self.bot.settings):
+            await respond(interaction, "Somente Staff ou Management autorizado pode liberar este retorno.")
             return
         request = self.bot.database.return_request(self.request_id)
         if request is None or request["status"] != "pending":
@@ -1212,6 +1382,7 @@ class PeaceBot(commands.Bot):
         self.database = PeaceDatabase(settings.database_path)
         self.drafts: dict[int, SetDraft] = {}
         self.developer_drafts: dict[int, DeveloperDraft] = {}
+        self.verification_challenges: dict[int, tuple[str, float]] = {}
         self.guild: discord.Guild | None = None
         self.panels_synced = False
         self.iris = Iris(settings.iris_url, settings.iris_model) if settings.iris_enabled else None
@@ -1234,6 +1405,7 @@ class PeaceBot(commands.Bot):
         self.database.initialize()
         await self.start_central_bridge()
         self.add_view(SetView(self))
+        self.add_view(VerificationStartView(self))
         self.add_view(SupportView(self))
         self.add_view(OperationsView(self))
         self.add_view(ClockEndView(self))
@@ -1249,6 +1421,17 @@ class PeaceBot(commands.Bot):
             await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         except discord.HTTPException:
             log.exception("Falha ao sincronizar comandos slash")
+
+    def create_verification_challenge(self, member_id: int) -> list[str]:
+        """Create a short-lived CAPTCHA and return its shuffled choices."""
+        answer = "".join(secrets.choice(VERIFICATION_ALPHABET) for _ in range(6))
+        options = {answer}
+        while len(options) < 5:
+            options.add("".join(secrets.choice(VERIFICATION_ALPHABET) for _ in range(6)))
+        choices = list(options)
+        secrets.SystemRandom().shuffle(choices)
+        self.verification_challenges[member_id] = (answer, time.monotonic() + 180)
+        return choices
 
     async def start_central_bridge(self) -> None:
         if not is_valid_central_bridge_key(self.settings.central_bridge_key):
@@ -1531,6 +1714,7 @@ class PeaceBot(commands.Bot):
         if not self.panels_synced:
             completed, result = await self.run_startup_step("painéis", self.sync_panels)
             self.panels_synced = completed and result is True
+        await self.run_startup_step("painel de verificação", self.sync_verification_panel)
         if not self.reception_visibility_synced:
             completed, _ = await self.run_startup_step("visibilidade da recepção", self.sync_reception_visibility)
             self.reception_visibility_synced = completed
@@ -1704,34 +1888,149 @@ class PeaceBot(commands.Bot):
         )
         return all(results)
 
+    async def sync_verification_panel(self) -> bool:
+        """Ensure the public CAPTCHA surface and its single fixed bot panel."""
+        if self.guild is None or self.user is None:
+            return False
+        try:
+            category = (
+                self.guild.get_channel(self.settings.verification_category_id)
+                if self.settings.verification_category_id is not None
+                else None
+            )
+            if not isinstance(category, discord.CategoryChannel):
+                category = discord.utils.find(
+                    lambda item: item.name.casefold() == VERIFICATION_CATEGORY_NAME.casefold(),
+                    self.guild.categories,
+                )
+            if category is None:
+                category = await self.guild.create_category(
+                    VERIFICATION_CATEGORY_NAME,
+                    reason="Criar área única de verificação da Peace",
+                )
+            elif category.name != VERIFICATION_CATEGORY_NAME:
+                await category.edit(
+                    name=VERIFICATION_CATEGORY_NAME,
+                    reason="Padronizar área única de verificação da Peace",
+                )
+
+            public_category = discord.PermissionOverwrite(
+                view_channel=True,
+                read_message_history=True,
+                send_messages=False,
+            )
+            await category.set_permissions(
+                self.guild.default_role,
+                overwrite=public_category,
+                reason="Verificação visível para membros sem Visitor",
+            )
+
+            channel = (
+                self.guild.get_channel(self.settings.verification_channel_id)
+                if self.settings.verification_channel_id is not None
+                else None
+            )
+            if not isinstance(channel, discord.TextChannel):
+                channel = discord.utils.find(
+                    lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold()
+                    and item.category_id == category.id,
+                    self.guild.text_channels,
+                )
+            if channel is None:
+                channel = await self.guild.create_text_channel(
+                    VERIFICATION_CHANNEL_NAME,
+                    category=category,
+                    topic="Eu uso este canal somente para verificar membros.",
+                    reason="Criar canal único de verificação da Peace",
+                )
+            else:
+                await channel.edit(
+                    name=VERIFICATION_CHANNEL_NAME,
+                    category=category,
+                    topic="Eu uso este canal somente para verificar membros.",
+                    reason="Padronizar canal único de verificação da Peace",
+                )
+            await channel.set_permissions(
+                self.guild.default_role,
+                overwrite=public_category,
+                reason="Membros sem Visitor precisam visualizar a verificação",
+            )
+            await channel.set_permissions(
+                self.guild.me,
+                view_channel=True,
+                read_message_history=True,
+                send_messages=True,
+                manage_messages=True,
+                reason="Peace Tools precisa manter o painel de verificação",
+            )
+
+            embed = discord.Embed(
+                title="Eu faço a sua verificação",
+                description=(
+                    "Eu uso este canal apenas para confirmar que você não é um bot como eu.\n\n"
+                    "Eu peço que você clique em **Iniciar verificação**, resolva o CAPTCHA e selecione a opção correta. "
+                    "Se a resposta estiver certa, eu libero o cargo **Visitor**.\n\n"
+                    "Eu não aceito mensagens neste canal."
+                ),
+                color=0x5865F2,
+            )
+            embed.set_footer(text=VERIFICATION_PANEL_MARKER)
+            matches: list[discord.Message] = []
+            async for message in channel.history(limit=100):
+                if message.author.id != self.user.id:
+                    continue
+                if message.embeds and (message.embeds[0].footer.text or "") == VERIFICATION_PANEL_MARKER:
+                    matches.append(message)
+            if matches:
+                await matches[0].edit(
+                    content=None,
+                    embed=embed,
+                    view=VerificationStartView(self),
+                )
+                for duplicate in matches[1:]:
+                    await duplicate.delete()
+            else:
+                await channel.send(
+                    embed=embed,
+                    view=VerificationStartView(self),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            for target in (category, channel):
+                for subject in list(target.overwrites):
+                    if isinstance(subject, discord.Role) and not subject.is_default():
+                        await target.set_permissions(
+                            subject,
+                            overwrite=None,
+                            reason="Canal de verificação público para membros sem Visitor",
+                        )
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao sincronizar a área de verificação")
+            return False
+
     @staticmethod
     def automod_embed() -> discord.Embed:
         embed = discord.Embed(
             title="PEACE // SPAM CONTROL",
             description=(
-                "Este canal existe somente para controlar spam.\n"
-                "Ele não é chat, suporte, ticket ou canal de divulgação."
+                "Eu apago toda mensagem enviada aqui e aplico timeout automático de 7 dias.\n"
+                "Este canal não é chat, suporte, ticket ou divulgação."
             ),
             color=0xE74C3C,
         )
         embed.add_field(
-            name="ESCOPO",
-            value="Use este canal apenas como barreira automática contra mensagens repetidas, links em massa e divulgação abusiva.",
+            name="REGRA",
+            value="Não envie mensagens, links ou divulgação.",
             inline=False,
         )
         embed.add_field(
-            name="AÇÃO AUTOMÁTICA",
-            value="Qualquer mensagem enviada aqui é apagada e gera timeout automático de 7 dias.",
+            name="AÇÃO",
+            value="Mensagem removida e timeout de 7 dias aplicado.",
             inline=False,
         )
         embed.add_field(
-            name="LIMITE DA PUNIÇÃO",
-            value="Este sistema não bane e não expulsa. A punição é aplicada sem revisão manual neste canal.",
-            inline=False,
-        )
-        embed.add_field(
-            name="STATUS",
-            value="PROTEÇÃO ATIVA · SPAM CONTROL ONLY",
+            name="LIMITE",
+            value="Eu não bano nem expulso por este canal.",
             inline=False,
         )
         embed.set_image(url=f"attachment://{AUTOMOD_ASSET}")
@@ -2086,16 +2385,15 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível limpar os painéis antigos do staff-only")
 
-    @staticmethod
-    def set_panel_embed() -> discord.Embed:
+    def set_panel_embed(self) -> discord.Embed:
         return discord.Embed(
-            title="◈ Pedir set",
+            title="◈ Request a Peace set",
             description=(
-                "Escolha uma entrevista e preencha tudo com dados corretos.\n\n"
-                "Player: apelido, RG e telefone in-game.\n"
-                "Developers: nome real, área e experiência.\n"
-                "Staff: indisponível por enquanto.\n\n"
-                "Se você já possui Peace, não solicite uma nova entrada como player."
+                "Eu peço que você escolha uma entrevista e preencha tudo com dados corretos.\n\n"
+                f"Player set: {'OPEN' if application_path_open('player', self.settings) else 'CLOSED'}\n"
+                f"Join Developers: {'OPEN' if application_path_open('developer', self.settings) else 'CLOSED'}\n"
+                f"Join Staff: {'OPEN' if application_path_open('staff', self.settings) else 'CLOSED'}\n\n"
+                "Eu não aceito uma nova entrada de Player para quem já possui Peace."
             ),
         )
 
@@ -2310,6 +2608,7 @@ class PeaceBot(commands.Bot):
                     "documentation",
                     "documentação",
                     "documentacao",
+                    "ais",
                     "ai & bots",
                     "ia & bots",
                 )
@@ -2319,8 +2618,6 @@ class PeaceBot(commands.Bot):
             return "D"
         if any("streamer" in name for name in names):
             return "S"
-        if any("recrutador" in name for name in names):
-            return "R"
         if any("gerente" in name or "gerência" in name or "gerencia" in name for name in names):
             return "G"
         if role_member(member, settings.peace_role_id):
@@ -2534,8 +2831,6 @@ class PeaceBot(commands.Bot):
         try:
             if has_peace and visitor in member.roles:
                 await member.remove_roles(visitor, reason="Membro Peace não é visitante")
-            elif needs_visitor(member, self.settings.peace_role_id) and visitor not in member.roles:
-                await member.add_roles(visitor, reason="Visitante automático para membro sem Peace")
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível sincronizar Visitante para %s", member.id)
 
@@ -2546,14 +2841,14 @@ class PeaceBot(commands.Bot):
             await self.reconcile_visitor_role(member)
 
     def set_approval_embed(self, request) -> discord.Embed:
-        selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer recrutador"
+        selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer Staff ou Management"
         embed = discord.Embed(
             title="Set pendente de aprovação",
             description=(
                 f"**Membro:** {mention(request['discord_user_id'])}\n"
                 f"**Apelido in-game:** `{redact(str(request['in_game_username']), limit=80)}`\n"
                 f"**Onde conheceu:** {redact(str(request['source']), limit=40)}\n"
-                f"**Recrutador selecionado:** {selected}\n\n"
+                f"**Reviewer selecionado:** {selected}\n\n"
                 "Confira os dados e aprove somente se o recrutamento estiver confirmado."
             ),
             color=0x5865F2,
@@ -2818,8 +3113,7 @@ class PeaceBot(commands.Bot):
             return []
         recruiters = [
             member for member in self.guild.members
-            if role_member(member, self.settings.recruiter_role_id)
-            or any("recrutador" in role.name.casefold() for role in member.roles)
+            if reviewer_member(member, self.settings)
         ]
         if recruiters:
             return recruiters
@@ -2829,8 +3123,7 @@ class PeaceBot(commands.Bot):
             return []
         return [
             member for member in fetched
-            if role_member(member, self.settings.recruiter_role_id)
-            or any("recrutador" in role.name.casefold() for role in member.roles)
+            if reviewer_member(member, self.settings)
         ]
 
     async def notify_claim(self, ticket, staff: discord.Member) -> None:
@@ -3330,7 +3623,7 @@ class PeaceBot(commands.Bot):
             await respond(interaction, "A configuração de cargos Peace está incompleta; procure a staff.")
             return
         if self.database.pending_set_request_for_user(member.id) is not None:
-            await respond(interaction, "Seu pedido já está aguardando aprovação de um recrutador.")
+            await respond(interaction, "Seu pedido já está aguardando aprovação de Staff ou Management.")
             return
         if len(f"N ⎰ {draft.in_game_username} 99999") > 32:
             await respond(interaction, "Esse apelido ultrapassa o limite de 32 caracteres.")
@@ -3354,13 +3647,12 @@ class PeaceBot(commands.Bot):
             view=self.set_approval_view(request_id),
         )
         self.drafts.pop(interaction.user.id, None)
-        await respond(interaction, "Pedido enviado ao scan-only. Um recrutador precisa aprovar o set manualmente antes da liberação.")
+        await respond(interaction, "Pedido enviado ao scan-only. Staff ou Management precisa aprovar o set manualmente antes da liberação.")
 
     def can_approve_set_request(self, request, member: discord.Member) -> bool:
-        selected = request["recruiter_user_id"]
-        return (
-            selected is not None and member.id == int(selected)
-        ) or role_member(member, self.settings.recruiter_role_id)
+        # Historical requests may contain a former recruiter ID, but that ID
+        # never bypasses the current Staff/Management authorization boundary.
+        return reviewer_member(member, self.settings)
 
     async def approve_set_request(self, request, recruiter: discord.Member) -> str:
         guild = recruiter.guild
@@ -3384,11 +3676,11 @@ class PeaceBot(commands.Bot):
             await member.add_roles(
                 peace_role,
                 novato_role,
-                reason=f"Set aprovado manualmente por recrutador {recruiter.id}",
+                reason=f"Set aprovado manualmente por Staff ou Management {recruiter.id}",
             )
             if visitor_role is not None:
                 await member.remove_roles(visitor_role, reason="Set aprovado: visitante convertido em Peace")
-            await member.edit(nick=nickname, reason="Set aprovado manualmente por recrutador")
+            await member.edit(nick=nickname, reason="Set aprovado manualmente por Staff ou Management")
             member_roles = {role.id: role.name for role in member.roles}
             member_roles[peace_role.id] = peace_role.name
             member_roles[novato_role.id] = novato_role.name
@@ -3415,7 +3707,7 @@ class PeaceBot(commands.Bot):
         member = await self.member(recruiter.guild, int(request["discord_user_id"]))
         if member is not None:
             try:
-                await member.send("Seu pedido de set foi recusado por um recrutador. Se precisar, abra um ticket para revisar os dados.")
+                await member.send("Seu pedido de set foi recusado por Staff ou Management. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
 

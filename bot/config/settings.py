@@ -104,6 +104,8 @@ class Settings:
     set_channel_id: int
     welcome_channel_id: int | None
     rules_channel_id: int | None
+    verification_category_id: int | None
+    verification_channel_id: int | None
     log_channel_id: int | None
     ticket_panel_channel_id: int | None
     operations_channel_id: int | None
@@ -114,7 +116,6 @@ class Settings:
     staff_role_id: int | None
     staff_control_channel_id: int | None
     manager_role_id: int | None
-    recruiter_role_id: int | None
     visitor_role_id: int | None
     booster_role_id: int | None
     central_access_role_id: int | None
@@ -137,6 +138,8 @@ class Settings:
     bot_user_id: int | None
     database_path: Path
     set_vagas_abertas: bool
+    developer_vagas_abertas: bool
+    staff_vagas_abertas: bool
     username_min_length: int
     username_max_length: int
 
@@ -154,6 +157,8 @@ class Settings:
             set_channel_id=_int_env("DISCORD_SET_CHANNEL_ID"),
             welcome_channel_id=_int_env("DISCORD_WELCOME_CHANNEL_ID", None),
             rules_channel_id=_int_env("DISCORD_RULES_CHANNEL_ID", None),
+            verification_category_id=_int_env("DISCORD_VERIFICATION_CATEGORY_ID", None),
+            verification_channel_id=_int_env("DISCORD_VERIFICATION_CHANNEL_ID", None),
             log_channel_id=_int_env("DISCORD_LOG_CHANNEL_ID", None),
             ticket_panel_channel_id=_int_env("DISCORD_TICKET_PANEL_CHANNEL_ID", None),
             operations_channel_id=_int_env("DISCORD_OPERATIONS_CHANNEL_ID", None),
@@ -164,7 +169,6 @@ class Settings:
             staff_role_id=_int_env("DISCORD_STAFF_ROLE_ID", None),
             staff_control_channel_id=_int_env("DISCORD_STAFF_CONTROL_CHANNEL_ID", None),
             manager_role_id=_int_env("DISCORD_MANAGER_ROLE_ID", None),
-            recruiter_role_id=_int_env("DISCORD_RECRUITER_ROLE_ID", None),
             visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
             booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
             central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID", None),
@@ -190,7 +194,9 @@ class Settings:
             founder_user_id=_int_env("DISCORD_FOUNDER_USER_ID"),
             bot_user_id=_int_env("DISCORD_BOT_USER_ID", None),
             database_path=database_path,
-            set_vagas_abertas=_bool_env("SET_VAGAS_ABERTAS"),
+            set_vagas_abertas=_bool_env("SET_VAGAS_ABERTAS", True),
+            developer_vagas_abertas=_bool_env("SET_DEVELOPER_VAGAS_ABERTAS"),
+            staff_vagas_abertas=_bool_env("SET_STAFF_VAGAS_ABERTAS"),
             username_min_length=_int_env("SET_USERNAME_MIN_LENGTH", 3),
             username_max_length=_int_env("SET_USERNAME_MAX_LENGTH", 20),
         )

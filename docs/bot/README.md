@@ -4,7 +4,7 @@ First slice of the Real Peace bot in Python:
 
 - captures members with the `Peace` role, complete role data, and bot messages;
 - persistently assigns Peace IDs in SQLite, reserving `0` for the founder;
-- `Request set` flow with nickname, national ID, phone, source, and recruiter modal fields;
+- `Request set` flow with nickname, national ID, phone, source, and reviewer selection fields;
 - private tickets with `Poke`, closing, renaming, and claiming;
 - ticket category selection, private calls, DM notices, and action blocking after closing;
 - time tracking, farming logs, and absence requests;
@@ -32,8 +32,22 @@ responsibility under `config/`, `core/`, `integrations/`, `persistence/`,
 modify roles. The bot applies a role and nickname only after a candidate
 completes the set flow and the panel is open.
 
-To open applications, set `SET_VAGAS_ABERTAS=true` in `.env` and restart the
-bot. The existing server panel remains closed while the value is `false`.
+Player applications are open by default. Set `SET_VAGAS_ABERTAS=false` to close
+them. Developer and Staff applications remain closed unless their explicit
+flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
+Restart the bot after changing these values.
+
+Members without `Visitor` use the single verification channel created by the
+bot. Its persistent panel starts a short CAPTCHA; only a correct selection
+grants `Visitor`. Bots and members with `Peace` never receive `Visitor` from
+this flow, and joining the server alone never grants it.
+
+The structural migration can create the verification surface, normalize role
+names, save an ignored local role-membership snapshot, clear visual-role
+permissions, and remove the requested legacy roles. Use
+`python -m bot.operations.maintenance --apply --remove-chat-elite` only after
+reviewing the dry run. The `--remove-chat-elite` flag is intentionally explicit
+because channel deletion is irreversible.
 
 The Central bridge is optional at startup but, when enabled, requires an
 explicit `DISCORD_CENTRAL_ACCESS_ROLE_ID`, a loopback-only
