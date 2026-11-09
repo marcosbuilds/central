@@ -77,6 +77,16 @@ def _central_bridge_key_env() -> str:
     return value
 
 
+def _discord_invite_env() -> str:
+    value = os.getenv("PEACE_DISCORD_INVITE_URL", "https://discord.gg/replace-with-invite").strip()
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or parsed.hostname not in {"discord.gg", "discord.com", "www.discord.com"}:
+        raise RuntimeError("PEACE_DISCORD_INVITE_URL precisa apontar para um convite HTTPS do Discord")
+    if not parsed.path.strip("/"):
+        raise RuntimeError("PEACE_DISCORD_INVITE_URL precisa conter o código do convite")
+    return value
+
+
 def parse_central_bridge_url(value: str) -> tuple[str, int, str]:
     """Return a safe loopback binding; the bridge never binds a remote host."""
     parsed = urlsplit(value.strip())
@@ -128,6 +138,10 @@ class Settings:
     private_call_category_id: int | None
     automod_channel_id: int | None
     website_url: str
+    site_enabled: bool
+    site_host: str
+    site_port: int
+    discord_invite_url: str
     iris_enabled: bool
     iris_model: str
     iris_url: str
@@ -187,6 +201,10 @@ class Settings:
             private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
+            site_enabled=_bool_env("PEACE_SITE_ENABLED", True),
+            site_host=os.getenv("PEACE_SITE_HOST", "0.0.0.0").strip() or "0.0.0.0",
+            site_port=_int_env("PEACE_SITE_PORT", _int_env("PORT", 8080)),
+            discord_invite_url=_discord_invite_env(),
             iris_enabled=_bool_env("IRIS_ENABLED", False),
             iris_model=os.getenv("IRIS_MODEL", "iris-peace-micro").strip(),
             iris_url=os.getenv("IRIS_URL", "http://127.0.0.1:11435").rstrip("/"),

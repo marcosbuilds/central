@@ -1624,10 +1624,12 @@ class PeaceBot(commands.Bot):
         self.iris_context_cache_at = 0.0
         self.iris_context_lock = asyncio.Lock()
         self.iris_context_task: asyncio.Task | None = None
+        self.public_site_runner: web.AppRunner | None = None
         self.central_bridge_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
         self.database.initialize()
+        await self.start_public_site()
         await self.start_central_bridge()
         self.add_view(SetView(self))
         self.add_view(VerificationStartView(self))
@@ -1697,6 +1699,68 @@ class PeaceBot(commands.Bot):
                     permissions=discord.Permissions.none(),
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
+
+    async def public_site_index(self, request: web.Request) -> web.StreamResponse:
+        index_path = self.public_site_root() / "index.html"
+        if not index_path.is_file():
+            return web.Response(status=503, text="Peace site indisponível.")
+        return web.FileResponse(index_path)
+
+    async def public_site_redirect(self, request: web.Request) -> web.StreamResponse:
+        response = web.HTTPFound(self.settings.discord_invite_url)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    async def public_site_health(self, request: web.Request) -> web.Response:
+        return web.json_response({"ok": True, "service": "peace-site"})
+
+    @staticmethod
+    def public_site_root() -> Path:
+        """Resolve the site in both the repository and flattened provider layouts."""
+        candidates = (ROOT / "site", ROOT / "bot" / "site")
+        for candidate in candidates:
+            if (candidate / "index.html").is_file():
+                return candidate
+        return candidates[0]
+
+    async def start_public_site(self) -> None:
+        if not self.settings.site_enabled:
+            log.info("Site público da Peace desativado por configuração")
+            return
+        site_root = self.public_site_root()
+        if not (site_root / "index.html").is_file():
+            log.error("Site público da Peace não iniciado: %s não existe", site_root / "index.html")
+            return
+        app = web.Application()
+        app.router.add_get("/", self.public_site_index)
+        app.router.add_get("/discord", self.public_site_redirect)
+        app.router.add_get("/discord/", self.public_site_redirect)
+        app.router.add_get("/healthz", self.public_site_health)
+        app.router.add_static("/", str(site_root), show_index=False)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            site = web.TCPSite(runner, self.settings.site_host, self.settings.site_port)
+            await site.start()
+        except OSError:
+            await runner.cleanup()
+            log.exception(
+                "Não consegui abrir o site público da Peace em %s:%s",
+                self.settings.site_host,
+                self.settings.site_port,
+            )
+            return
+        self.public_site_runner = runner
+        log.info(
+            "Site público da Peace ativo em http://%s:%s",
+            self.settings.site_host,
+            self.settings.site_port,
+        )
+
+    async def stop_public_site(self) -> None:
+        if self.public_site_runner is not None:
+            await self.public_site_runner.cleanup()
+            self.public_site_runner = None
 
     async def start_central_bridge(self) -> None:
         if not is_valid_central_bridge_key(self.settings.central_bridge_key):
@@ -1935,6 +1999,7 @@ class PeaceBot(commands.Bot):
         return web.json_response({"ok": True, "message": "Sessão encerrada."})
 
     async def close(self) -> None:
+        await self.stop_public_site()
         await self.stop_central_bridge()
         await super().close()
 

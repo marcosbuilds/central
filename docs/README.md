@@ -23,9 +23,11 @@ responsibility, not by implementation history.
    recorded technical decisions.
 6. [`integration/`](integration/) and [`operations/`](operations/) — public
    contracts and deployment boundaries.
-7. [`guide/maintenance.md`](guide/maintenance.md) — documentation ownership and
+7. [`bot/site.md`](bot/site.md) — the public Peace home, routes, and asset
+   boundary.
+8. [`guide/maintenance.md`](guide/maintenance.md) — documentation ownership and
    maintenance rules.
-8. [`plan/`](plan/) — public product and development planning.
+9. [`plan/`](plan/) — public product and development planning.
 
 ## Document groups
 
@@ -35,7 +37,7 @@ responsibility, not by implementation history.
 | Architecture | `architecture/` | runtime, design, server, and decisions |
 | Integration | `integration/` | public contracts between components |
 | Operations | `operations/` | deployment boundaries and smoke checks |
-| Bot | `bot/` | companion bot behavior, operations, and source rules |
+| Bot | `bot/` | companion bot behavior, operations, source rules, and the public Peace site |
 | Planning | `plan/` | product, security, roadmap, and acceptance planning |
 | Template | `template/` | reusable project-delivery structure |
 

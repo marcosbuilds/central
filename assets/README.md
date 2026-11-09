@@ -26,6 +26,11 @@ spam-control artwork is a strict panel contract. The legacy
 `welcome-halloween.png` file remains available as migration history but is no
 longer selected for new welcome messages.
 
+The public Peace home consumes `bot/site/assets/peace-bird.png`, a transparent
+RGBA cutout of the official bird mark. It is site runtime artwork rather than a
+documentation visual, and its source image is intentionally excluded from the
+repository.
+
 ## Change rules
 
 - Give every asset one documented purpose and a stable filename.
