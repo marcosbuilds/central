@@ -43,6 +43,9 @@ buttons keep the existing styles and stable component IDs. Availability is
 enforced by the configured application paths and select options, while each
 card explains what the panel does and why it exists. The set card also keeps
 its existing Peace rule, and the verification card explains the CAPTCHA flow.
+If `Not Verified` is manually reapplied to an existing `Visitor`, the bot
+removes `Visitor`, restores the verification panel, and requires the CAPTCHA
+again.
 
 Operational action records are sent as embeds to the channel configured by
 `DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use

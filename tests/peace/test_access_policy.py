@@ -496,6 +496,46 @@ def test_reconcile_removes_not_verified_after_visitor_or_peace(tmp_path):
     )
 
 
+def test_readding_not_verified_requests_reverification_and_restores_panel(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+    visitor = SimpleNamespace(id=400, name="Visitor")
+    not_verified = SimpleNamespace(id=500, name="Not Verified")
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {400: visitor, 500: not_verified}.get(role_id),
+        roles=[visitor, not_verified],
+    )
+    before = SimpleNamespace(id=10, bot=False, roles=[visitor], guild=guild)
+    after = SimpleNamespace(
+        id=10,
+        bot=False,
+        roles=[visitor, not_verified],
+        guild=guild,
+        add_roles=AsyncMock(),
+        remove_roles=AsyncMock(),
+    )
+    bot.ensure_return_request = AsyncMock(return_value=True)
+    bot.sync_member_tag = AsyncMock()
+    bot.ensure_booster_space = AsyncMock()
+    bot.sync_verification_panel = AsyncMock(return_value=True)
+
+    asyncio.run(bot.on_member_update(before, after))
+
+    after.remove_roles.assert_awaited_once_with(
+        visitor,
+        reason="Not Verified reaplicado para exigir nova verificação",
+    )
+    bot.sync_verification_panel.assert_awaited_once()
+
+
 def test_approved_set_assigns_peace_and_intern_without_requiring_novato(tmp_path):
     settings = SimpleNamespace(
         database_path=tmp_path / "peace.sqlite3",

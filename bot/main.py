@@ -2025,7 +2025,34 @@ class PeaceBot(commands.Bot):
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         if before.roles != after.roles:
-            await self.reconcile_visitor_role(after)
+            before_role_ids = {role.id for role in before.roles}
+            after_role_ids = {role.id for role in after.roles}
+            visitor = role_named(
+                after.guild,
+                getattr(self.settings, "visitor_role_id", None),
+                "Visitor",
+            )
+            not_verified = role_named(
+                after.guild,
+                getattr(self.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            prefer_reverification = (
+                visitor is not None
+                and not_verified is not None
+                and visitor.id in before_role_ids
+                and visitor.id in after_role_ids
+                and not_verified.id not in before_role_ids
+                and not_verified.id in after_role_ids
+            )
+            await self.reconcile_visitor_role(
+                after,
+                prefer_reverification=prefer_reverification,
+            )
+            if prefer_reverification:
+                await self.sync_verification_panel()
             if not await self.ensure_return_request(after):
                 await self.sync_member_tag(after)
             await self.ensure_booster_space(after)
@@ -3122,8 +3149,13 @@ class PeaceBot(commands.Bot):
             voice = None
         return private_role, voice
 
-    async def reconcile_visitor_role(self, member: discord.Member) -> None:
-        """Keep every human without Peace or Visitor behind Not Verified."""
+    async def reconcile_visitor_role(
+        self,
+        member: discord.Member,
+        *,
+        prefer_reverification: bool = False,
+    ) -> None:
+        """Keep entry roles consistent and allow an explicit reverification reset."""
         visitor = role_named(
             member.guild,
             getattr(self.settings, "visitor_role_id", None),
@@ -3159,7 +3191,13 @@ class PeaceBot(commands.Bot):
                     )
             elif visitor is not None and visitor in member.roles:
                 if not_verified is not None and not_verified in member.roles:
-                    await member.remove_roles(not_verified, reason="Visitor já está verificado")
+                    if prefer_reverification:
+                        await member.remove_roles(
+                            visitor,
+                            reason="Not Verified reaplicado para exigir nova verificação",
+                        )
+                    else:
+                        await member.remove_roles(not_verified, reason="Visitor já está verificado")
             elif not_verified is not None and not_verified not in member.roles:
                 await member.add_roles(
                     not_verified,
