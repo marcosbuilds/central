@@ -1,14 +1,24 @@
 # Public Peace site
 
-Status: Implemented in the repository; production availability is verified
-only by the deployment smoke check recorded for the current release.
+Status: Implemented and deployed. Netlify serves the public static front,
+while ACLClouds remains the runtime for the Discord bot and the backend HTTP
+process.
 
-The public Peace home is a static single-page experience served by the same
-`aiohttp` process as the companion bot. It keeps the first view within the
-viewport, uses the official Peace bird as a transparent PNG, and provides a
-short public history based on verified community announcements. It does not
-read Discord at request time and does not expose member data or operational
-logs.
+The public Peace home is a static single-page experience. It keeps the first
+view within the viewport, uses the official Peace bird as a transparent PNG,
+and provides a short public history based on verified community announcements.
+It does not read Discord at request time and does not expose member data or
+operational logs.
+
+Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
+file owns the short `/discord` and `/discord/` routes and sends them directly
+to the public Discord invite with a temporary redirect. The invite is public
+by design; bot credentials and provider settings remain outside the
+repository.
+
+The repository-level `netlify.toml` publishes `bot/site` without a build step,
+so a linked Netlify project can reproduce the same artifact from the source
+tree. Production visibility is public; deploy previews remain private.
 
 ## Runtime contract
 
@@ -18,14 +28,17 @@ the sibling `site/` directory in that deployment payload.
 
 | Route | Behavior |
 |---|---|
-| `/` | serves `site/index.html` |
-| `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
-| `/discord` | redirects to `PEACE_DISCORD_INVITE_URL` with `Cache-Control: no-store` |
-| `/healthz` | returns a small JSON health response for provider checks |
+| Netlify `/` | serves `bot/site/index.html` with HTTPS |
+| Netlify `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
+| Netlify `/discord` and `/discord/` | redirects to the public Discord invite via `_redirects` |
+| ACLClouds `/` | keeps the backend process route available on the provider port |
+| ACLClouds `/healthz` | returns a small JSON health response for provider checks |
+| ACLClouds `/discord` | keeps the backend redirect for direct provider checks |
 
-The server binds to `PEACE_SITE_HOST` and `PEACE_SITE_PORT`; when the provider
-sets `PORT`, the site uses it as the default. `PEACE_SITE_ENABLED=false`
-disables the listener without changing the bot's other services.
+The ACLClouds process binds to `PEACE_SITE_HOST` and `PEACE_SITE_PORT`; when
+the provider sets `PORT`, the site uses it as the default.
+`PEACE_SITE_ENABLED=false` disables the listener without changing the bot's
+other services. The public domain does not depend on the ACLClouds bot port.
 
 ## Configuration boundary
 
@@ -59,4 +72,7 @@ git diff --check
 ```
 
 The public route tests exercise the home, redirect, health response, and
-required static files without contacting Discord or a production provider.
+required static files without contacting Discord or a production provider. A
+production smoke check can be run with `curl -I` against the public Netlify
+subdomain and `/discord` redirect; custom-domain TLS remains controlled by
+Netlify after DNS propagation.

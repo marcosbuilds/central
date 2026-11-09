@@ -71,3 +71,12 @@ def test_public_site_files_are_complete():
     assert (site_root / "styles.css").is_file()
     assert (site_root / "script.js").is_file()
     assert (site_root / "assets" / "peace-bird.png").is_file()
+
+
+def test_netlify_redirects_keep_the_short_discord_route():
+    from pathlib import Path
+
+    redirects = (Path(__file__).parents[2] / "bot" / "site" / "_redirects").read_text(encoding="utf-8")
+
+    assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
