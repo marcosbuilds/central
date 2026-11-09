@@ -18,10 +18,13 @@ Bot artwork may contain product-specific text or seasonal styling. Keep it in
 `assets/bot/` and load it through the bot entry point. Do not reuse it in public
 architecture diagrams.
 
-The current `assets/bot/set.png` and `assets/bot/verification.png` are reviewed,
-text-free 2:1 banner assets generated from consolidated visual briefs for the
-bot panels. `assets/bot/automod.png` remains unchanged because spam-control
-artwork is a strict panel contract.
+The current `assets/bot/set.png`, `assets/bot/verification.png`,
+`assets/bot/ops.png`, `assets/bot/support.png`, and `assets/bot/welcome.png` are
+reviewed, text-free 2:1 banner assets generated from consolidated visual briefs
+for the bot panels. `assets/bot/automod.png` remains unchanged because
+spam-control artwork is a strict panel contract. The legacy
+`welcome-halloween.png` file remains available as migration history but is no
+longer selected for new welcome messages.
 
 ## Change rules
 

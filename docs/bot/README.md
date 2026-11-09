@@ -37,12 +37,12 @@ them. Developer and Staff applications remain closed unless their explicit
 flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
 Restart the bot after changing these values.
 
-The persistent set and verification panels use a banner embed followed by a
-short explanation card. Their buttons keep the existing secondary style and
-stable component IDs. Availability is enforced by the configured application
-paths and the select options, while the set card keeps its explanation focused
-on the flow and its existing Peace rule. The verification card explains what
-the CAPTCHA does and why it is required.
+The persistent welcome, set, verification, support, and operations panels use a
+wide banner embed followed by a short explanation card. Their interactive
+buttons keep the existing styles and stable component IDs. Availability is
+enforced by the configured application paths and select options, while each
+card explains what the panel does and why it exists. The set card also keeps
+its existing Peace rule, and the verification card explains the CAPTCHA flow.
 
 Operational action records are sent as embeds to the channel configured by
 `DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use

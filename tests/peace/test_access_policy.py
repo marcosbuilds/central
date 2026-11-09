@@ -141,6 +141,48 @@ def test_set_panel_keeps_explanation_below_the_banner_without_status_block(tmp_p
     assert "Uma nova entrada de Player" in details.fields[0].value
 
 
+def test_support_panel_uses_banner_and_explanation_card():
+    banner, details = PeaceBot.support_panel_embeds()
+
+    assert banner.title == "◈ Atendimento Peace"
+    assert banner.image.url == "attachment://support.png"
+    assert [field.name for field in banner.fields] == [
+        "1 · ESCOLHER",
+        "2 · DESCREVER",
+        "3 · ACOMPANHAR",
+    ]
+    assert details.title == "Como funciona"
+    assert [field.name for field in details.fields] == ["O que faz", "Por que existe"]
+
+
+def test_operations_panel_uses_banner_and_explanation_card():
+    banner, details = PeaceBot.operations_panel_embeds()
+
+    assert banner.title == "◷ Operações Peace"
+    assert banner.image.url == "attachment://ops.png"
+    assert [field.name for field in banner.fields] == [
+        "1 · INICIAR",
+        "2 · ACOMPANHAR",
+        "3 · FINALIZAR",
+    ]
+    assert details.title == "Como funciona"
+    assert [field.name for field in details.fields] == ["O que faz", "Por que existe"]
+
+
+def test_welcome_panel_uses_banner_and_explanation_card():
+    banner, details = PeaceBot.welcome_panel_embeds()
+
+    assert banner.title == "◈ Bem-vindo à Peace"
+    assert banner.image.url == "attachment://welcome.png"
+    assert [field.name for field in banner.fields] == [
+        "1 · LER",
+        "2 · ENTRAR",
+        "3 · FALAR",
+    ]
+    assert details.title == "Como funciona"
+    assert [field.name for field in details.fields] == ["O que faz", "Por que existe"]
+
+
 def test_log_card_uses_actor_thumbnail_and_vertical_fields():
     actor = SimpleNamespace(
         display_avatar=SimpleNamespace(url="https://cdn.example.test/avatar.png"),

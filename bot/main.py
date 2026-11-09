@@ -49,7 +49,8 @@ TICKET_CONTROL_PREFIXES = (
     "peace_ticket_owner_",
 )
 AUTOMOD_ASSET = "automod.png"
-WELCOME_ASSET = "welcome-halloween.png"
+WELCOME_ASSET = "welcome.png"
+WELCOME_LEGACY_ASSET = "welcome-halloween.png"
 SET_PANEL_ASSET = "set.png"
 TICKET_PANEL_ASSET = "support.png"
 OPERATIONS_PANEL_ASSET = "ops.png"
@@ -2152,8 +2153,8 @@ class PeaceBot(commands.Bot):
     async def sync_panels(self) -> bool:
         results = await asyncio.gather(
             self.sync_one_panel(self.settings.set_channel_id, "peace_pedir_set_open", self.set_panel_embeds(), SetView(self), SET_PANEL_ASSET),
-            self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embed(), SupportView(self), TICKET_PANEL_ASSET),
-            self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embed(), OperationsView(self), OPERATIONS_PANEL_ASSET),
+            self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embeds(), SupportView(self), TICKET_PANEL_ASSET),
+            self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embeds(), OperationsView(self), OPERATIONS_PANEL_ASSET),
         )
         return all(results)
 
@@ -2677,24 +2678,153 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def support_panel_embed() -> discord.Embed:
-        return discord.Embed(
-            title="🎫 Atendimento Peace",
-            description="Escolha o assunto e descreva o caso. A equipe assume o atendimento quando necessário.",
-        )
-
-    def operations_panel_embed(self) -> discord.Embed:
-        return discord.Embed(
-            title="⚙ Operações Peace",
-            description="Registre seu ponto e acesse os recursos internos da Peace Tools.",
-        )
-
-    def welcome_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="BEM-VINDO À PEACE",
-            description="Leia as regras e use os botões para entrar, pedir suporte ou iniciar uma entrevista.",
+            title="◈ Atendimento Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · ESCOLHER",
+            value="Selecione o assunto do atendimento.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · DESCREVER",
+            value="Explique o caso com os dados necessários.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · ACOMPANHAR",
+            value="A equipe assume o ticket quando necessário.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{TICKET_PANEL_ASSET}")
+        return embed
+
+    @staticmethod
+    def support_panel_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Abra um ticket, escolha a categoria correta e descreva o que precisa. "
+                "A conversa fica organizada em um atendimento próprio."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Cria um espaço privado para a equipe acompanhar e resolver seu caso.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Evita pedidos espalhados e mantém cada atendimento com seu contexto.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def support_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.support_panel_embed(), cls.support_panel_details_embed()]
+
+    @staticmethod
+    def operations_panel_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="◷ Operações Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · INICIAR",
+            value="Use ◷ Ponto ao começar suas atividades.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · ACOMPANHAR",
+            value="Acesse os recursos internos da Peace Tools.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · FINALIZAR",
+            value="Encerre o ponto ao terminar.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{OPERATIONS_PANEL_ASSET}")
+        return embed
+
+    @staticmethod
+    def operations_panel_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Registre o início do trabalho com ◷ Ponto e use × Encerrar ponto "
+                "quando sair. O site continua disponível pelo botão ao lado."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Registra o período ativo e envia os marcos operacionais para os logs.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Mantém o histórico da equipe organizado e auditável.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def operations_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.operations_panel_embed(), cls.operations_panel_details_embed()]
+
+    @staticmethod
+    def welcome_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="◈ Bem-vindo à Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · LER",
+            value="Comece pelas regras do servidor.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · ENTRAR",
+            value="Peça seu set quando estiver pronto.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · FALAR",
+            value="Abra um atendimento se precisar de ajuda.",
+            inline=True,
         )
         embed.set_image(url=f"attachment://{WELCOME_ASSET}")
         return embed
+
+    @staticmethod
+    def welcome_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Use os botões para seguir o primeiro acesso na ordem certa: leia as regras, "
+                "faça sua entrevista e procure a equipe quando precisar."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Reúne em um só lugar os caminhos principais para começar na comunidade.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Deixa o acesso inicial claro e reduz dúvidas antes da entrada.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def welcome_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.welcome_embed(), cls.welcome_details_embed()]
 
     async def sync_welcome_panel(self) -> None:
         if self.guild is None or self.user is None or self.settings.welcome_channel_id is None:
@@ -2710,22 +2840,26 @@ class PeaceBot(commands.Bot):
                 if message.author.id != self.user.id:
                     continue
                 bot_messages.append(message)
-                if any(attachment.filename in {WELCOME_ASSET, "welcome.png"} for attachment in message.attachments):
+                if any(
+                    attachment.filename in {WELCOME_ASSET, WELCOME_LEGACY_ASSET}
+                    for attachment in message.attachments
+                ):
                     matches.append(message)
             if not matches:
                 for old_message in bot_messages:
                     await old_message.delete()
                 await channel.send(
-                    embed=self.welcome_embed(),
+                    embeds=self.welcome_panel_embeds(),
                     view=view,
                     file=asset(WELCOME_ASSET),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             else:
                 bot_message = matches[0]
+                payload = self.panel_embed_payload(self.welcome_panel_embeds())
                 await bot_message.edit(
                     content=None,
-                    embed=self.welcome_embed(),
+                    **payload,
                     view=view,
                     attachments=[asset(WELCOME_ASSET)],
                 )
