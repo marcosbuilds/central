@@ -1,8 +1,21 @@
 import asyncio
+import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from bot.main import PeaceBot, needs_visitor, reviewer_member, role_member, staff_member, verification_eligible
+import discord
+
+from bot.main import (
+    PeaceBot,
+    VerificationCaptchaSelect,
+    VerificationStartView,
+    needs_visitor,
+    render_captcha_png,
+    reviewer_member,
+    role_member,
+    staff_member,
+    verification_eligible,
+)
 
 
 def member(member_id, roles=(), *, bot=False):
@@ -46,6 +59,8 @@ def test_reviewers_are_staff_or_management_not_recruiter_labels():
 
 def test_verification_eligibility_excludes_bots_peace_and_existing_visitor():
     assert verification_eligible(member(10), 200, 400)
+    assert verification_eligible(member(10, [500]), 200, 400, 500)
+    assert not verification_eligible(member(10), 200, 400, 500)
     assert not verification_eligible(member(11, [200]), 200, 400)
     assert not verification_eligible(member(12, [400]), 200, 400)
     assert not verification_eligible(member(13, bot=True), 200, 400)
@@ -69,6 +84,186 @@ def test_verification_challenge_contains_one_answer_and_expires(tmp_path):
     assert expires_at > 0
 
 
+def test_captcha_is_rendered_as_a_png_without_plain_text_answer():
+    image = render_captcha_png("ABC234")
+
+    assert image.startswith(b"\x89PNG\r\n\x1a\n")
+    assert b"ABC234" not in image
+
+
+def test_verification_panel_has_compact_side_by_side_steps_and_image():
+    embed = PeaceBot.verification_panel_embed()
+
+    assert embed.title == "VERIFICAÇÃO"
+    assert embed.description == "Complete as etapas para liberar o acesso."
+    assert [field.name for field in embed.fields] == [
+        "🖱️ INICIAR",
+        "🖼️ LER",
+        "✅ SELECIONAR",
+    ]
+    assert all(field.inline for field in embed.fields)
+    assert embed.image.url == "attachment://verification.png"
+
+
+def test_spam_control_panel_has_no_legacy_branding_or_markup():
+    embed = PeaceBot.automod_embed()
+    rendered = " ".join(
+        [
+            embed.title or "",
+            embed.description or "",
+            *(field.name for field in embed.fields),
+            *(field.value for field in embed.fields),
+        ]
+    ).casefold()
+
+    assert "peace // spam control" not in rendered
+    assert "contenção automática" not in rendered
+    assert PeaceBot.is_automod_panel_message(
+        SimpleNamespace(content="**PEACE // SPAM CONTROL**", embeds=[], attachments=[])
+    )
+    assert PeaceBot.is_automod_panel_message(
+        SimpleNamespace(content="", embeds=[embed], attachments=[])
+    )
+
+
+def test_verification_button_defers_and_returns_ephemeral_captcha_image(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+    visitor = SimpleNamespace(id=400, name="Visitor")
+    not_verified = SimpleNamespace(id=500, name="Not Verified")
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {visitor.id: visitor, not_verified.id: not_verified}.get(role_id),
+        roles=[visitor, not_verified],
+    )
+    member = MagicMock(spec=discord.Member)
+    member.id = 10
+    member.bot = False
+    member.roles = [not_verified]
+    member.guild = guild
+    interaction = SimpleNamespace(
+        user=member,
+        response=SimpleNamespace(defer=AsyncMock()),
+        edit_original_response=AsyncMock(),
+    )
+    view = VerificationStartView(bot)
+
+    asyncio.run(view.children[0].callback(interaction))
+
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    kwargs = interaction.edit_original_response.await_args.kwargs
+    answer = bot.verification_challenges[member.id][0]
+    captcha_file = kwargs["attachments"][0]
+    captcha_file.fp.seek(0)
+    assert captcha_file.filename == "captcha.png"
+    assert captcha_file.fp.read(8) == b"\x89PNG\r\n\x1a\n"
+    assert answer not in kwargs["content"]
+    assert kwargs["embed"].image.url == "attachment://captcha.png"
+
+
+def test_wrong_captcha_keeps_visitor_unassigned_and_offers_retry(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+    visitor = SimpleNamespace(id=400, name="Visitor", managed=False)
+    not_verified = SimpleNamespace(id=500, name="Not Verified", managed=False)
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {400: visitor, 500: not_verified}.get(role_id),
+        roles=[visitor, not_verified],
+    )
+    member = MagicMock(spec=discord.Member)
+    member.id = 10
+    member.bot = False
+    member.roles = [not_verified]
+    member.guild = guild
+    interaction = SimpleNamespace(
+        user=member,
+        guild=guild,
+        response=SimpleNamespace(defer=AsyncMock()),
+        edit_original_response=AsyncMock(),
+    )
+    bot.verification_challenges[member.id] = ("ABC234", time.monotonic() + 180)
+    select = VerificationCaptchaSelect(bot, member.id, ["ABC234", "WRONG"])
+    select._values = ["WRONG"]
+
+    asyncio.run(select.callback(interaction))
+
+    interaction.response.defer.assert_awaited_once_with()
+    assert member.id not in bot.verification_challenges
+    member.add_roles.assert_not_awaited()
+    member.remove_roles.assert_not_awaited()
+    kwargs = interaction.edit_original_response.await_args.kwargs
+    assert "tentar novamente" in kwargs["content"]
+    assert isinstance(kwargs["view"], VerificationStartView)
+
+
+def test_correct_captcha_grants_visitor_and_removes_not_verified(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        peace_role_id=200,
+        visitor_role_id=400,
+        not_verified_role_id=500,
+    )
+    bot = PeaceBot(settings)
+
+    class FakeRole:
+        def __init__(self, role_id, name):
+            self.id = role_id
+            self.name = name
+            self.managed = False
+
+        def __ge__(self, other):
+            return False
+
+    visitor = FakeRole(400, "Visitor")
+    not_verified = FakeRole(500, "Not Verified")
+    bot_role = FakeRole(900, "PeaceBot")
+    guild = SimpleNamespace(
+        get_role=lambda role_id: {400: visitor, 500: not_verified}.get(role_id),
+        roles=[visitor, not_verified, bot_role],
+        me=SimpleNamespace(top_role=bot_role),
+    )
+    member = MagicMock(spec=discord.Member)
+    member.id = 10
+    member.bot = False
+    member.roles = [not_verified]
+    member.guild = guild
+    member.add_roles = AsyncMock()
+    member.remove_roles = AsyncMock()
+    interaction = SimpleNamespace(
+        user=member,
+        guild=guild,
+        response=SimpleNamespace(defer=AsyncMock()),
+        edit_original_response=AsyncMock(),
+    )
+    bot.verification_challenges[member.id] = ("ABC234", time.monotonic() + 180)
+    select = VerificationCaptchaSelect(bot, member.id, ["ABC234", "WRONG"])
+    select._values = ["ABC234"]
+
+    asyncio.run(select.callback(interaction))
+
+    member.add_roles.assert_awaited_once_with(visitor, reason="CAPTCHA de verificação concluído")
+    member.remove_roles.assert_awaited_once_with(not_verified, reason="CAPTCHA de verificação concluído")
+    assert "liberei o cargo Visitor" in interaction.edit_original_response.await_args.kwargs["content"]
+
+
 def test_reconcile_never_grants_visitor_without_captcha(tmp_path):
     settings = SimpleNamespace(
         database_path=tmp_path / "peace.sqlite3",
@@ -84,7 +279,7 @@ def test_reconcile_never_grants_visitor_without_captcha(tmp_path):
     human = SimpleNamespace(
         id=10,
         bot=False,
-        roles=[],
+        roles=[SimpleNamespace(id=700)],
         guild=guild,
         add_roles=AsyncMock(),
         remove_roles=AsyncMock(),
@@ -111,7 +306,7 @@ def test_reconcile_assigns_not_verified_to_a_new_human(tmp_path):
     not_verified = SimpleNamespace(id=500)
     guild = SimpleNamespace(
         get_role=lambda role_id: {400: visitor, 500: not_verified}.get(role_id),
-        roles=[visitor, not_verified],
+        roles=[visitor, not_verified, SimpleNamespace(id=700)],
     )
     human = SimpleNamespace(
         id=10,

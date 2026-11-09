@@ -25,6 +25,9 @@ must never appear in an authorization rule.
 - Verification is a separate status-gated surface. A human member enters with
   `Not Verified`, must complete the bot's CAPTCHA, and receives `Visitor` only
   after the correct selection; `Not Verified` is then removed.
+- `@everyone` and `Not Verified` cannot see ordinary categories. `Visitor` can
+  read `rules`, use `visitor-chat`, access `SUPPORT`, and see `AFK` without
+  connecting; `spam-control` remains private to the bot.
 - An approved player set grants `Peace` and the visual `Intern` label. The
   label has no global or channel permissions.
 

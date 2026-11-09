@@ -38,11 +38,27 @@ flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
 Restart the bot after changing these values.
 
 Human members enter with the visual `Not Verified` role. The bot exposes one
-verification channel only to that role; its persistent panel starts a short
-CAPTCHA, and only a correct selection grants `Visitor` while removing `Not
-Verified`. Bots and members with `Peace` never receive `Visitor` from this
-flow. A manually approved set grants `Peace` and the visual `Intern` role,
-with no global permissions on the latter.
+verification channel, `verify`, only to that role; its persistent panel starts
+a short CAPTCHA image, and only a correct selection grants `Visitor` while
+removing `Not Verified`. A wrong or expired selection does not grant access and
+returns the member to the start button for another attempt. Bots and members
+with `Peace` never receive `Visitor` from this flow. A manually approved set
+grants `Peace` and the visual `Intern` role, with no global permissions on the
+latter.
+
+The bot does not create or edit channel permission overwrites. Channel and
+category permissions are operator-managed; the verification panel only edits
+its own messages in the already configured channel.
+
+Members without an access role cannot see the server structure. After
+verification, `Visitor` can read `rules`, use `visitor-chat`, access `SUPPORT`,
+and see `AFK` without connecting. `spam-control` is private to the bot and is
+not a human-access channel.
+
+The visible Discord structure uses English names. The maintained categories
+are `RECEPTION`, `DEVELOPERS`, `RECORDS`, `SOCIAL LOUNGE`, `SUPPORT`, `CALLS`,
+`PRIVATE CALLS`, `STAFF`, `VERIFICATION`, and `CLOSED TICKETS`; visual role
+labels are also English and do not grant authorization.
 
 The structural migration can create the verification surface, normalize role
 names, save an ignored local role-membership snapshot, clear visual-role

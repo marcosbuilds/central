@@ -34,7 +34,6 @@ else:
 
 log = logging.getLogger("peace.maintenance")
 
-GUILD_ID = 1427129030427279503
 ACTION_CATEGORY_ID = 1466632839339577364
 OPEN_TICKET_CATEGORY_ID = 1495063893838532730
 CLOSED_TICKET_CATEGORY_ID = 1495064004194861137
@@ -45,9 +44,22 @@ CALLS_CATEGORY_ID = 1459444321425035386
 AFK_CHANNEL_ID = 1466629495405543515
 AUTOMOD_CHANNEL_ID = 1555060813046226964
 VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
-VERIFICATION_CHANNEL_NAME = "verificar"
+VERIFICATION_CHANNEL_NAME = "verify"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
 INTERN_ROLE_NAME = "Intern"
+
+CATEGORY_NAMES = {
+    "reception": "[🎫] RECEPTION",
+    "staff": "[🛡️] STAFF",
+    "development": "[💻] DEVELOPERS",
+    "records": "[ℹ️] RECORDS",
+    "social": "[🔔] SOCIAL LOUNGE",
+    "support": "[☎️] SUPPORT",
+    "calls": "[🎙️] CALLS",
+    "private_calls": "[🎙️] PRIVATE CALLS",
+    "verification": VERIFICATION_CATEGORY_NAME,
+    "closed_tickets": "[🎟️] CLOSED TICKETS",
+}
 
 CHANNEL_IDS = {
     "staff_only": 1491899123547242656,
@@ -108,8 +120,30 @@ ROLE_RENAMES = {
     "Gerente geral": "Manager ⎰ Deputy Delegate",
     "Gerente Geral": "Manager ⎰ Deputy Delegate",
     "Gerente ⎰ Delegado adjunto": "Manager ⎰ Deputy Delegate",
+    "Gerente": "Management",
+    "Elite": "Elite ⎰ Special Agent",
+    "Membro": "Member ⎰ Recruit",
+    "Novato": "Rookie ⎰ Agent",
     "Estagiário": "Intern",
+    "Estagiario": "Intern",
     "Visitante": "Visitor",
+}
+
+ROLE_COLOURS = {
+    "Peace": 0x2B2D42,
+    "Staff": 0x9B59B6,
+    "Management": 0xE67E22,
+    "Manager ⎰ Deputy Delegate": 0xF1C40F,
+    "Visitor": 0x95A5A6,
+    "Elite ⎰ Special Agent": 0xE74C3C,
+    "Rookie ⎰ Agent": 0x2ECC71,
+    "Member ⎰ Recruit": 0x3498DB,
+    "Dev": 0x5865F2,
+    "Intern": 0x1ABC9C,
+    "AIs": 0x8E44AD,
+    "Not Verified": 0x7F8C8D,
+    "General Director": 0xC27C0E,
+    "Superintendent": 0x8E44AD,
 }
 
 OBSOLETE_ROLE_NAMES = (
@@ -120,6 +154,7 @@ OBSOLETE_ROLE_NAMES = (
     "Recrutador",
     "IA & Bots",
     "AI & Bots",
+    "IA & Bots Peace",
 )
 
 DEPRECATED_ROLE_IDS = (
@@ -298,7 +333,11 @@ async def ensure_visual_role(
 ) -> discord.Role:
     existing = find_role(guild, name) or find_role(guild, *aliases)
     if existing is not None:
-        if existing.name != name or existing.permissions != discord.Permissions.none():
+        if (
+            existing.name != name
+            or existing.permissions != discord.Permissions.none()
+            or existing.colour.value != colour.value
+        ):
             await existing.edit(
                 name=name,
                 permissions=discord.Permissions.none(),
@@ -316,12 +355,65 @@ async def ensure_visual_role(
     )
 
 
+async def style_role(
+    role: discord.Role | None,
+    name: str,
+    colour_value: int,
+) -> discord.Role | None:
+    """Keep an existing role's public label and colour deterministic."""
+    if role is None:
+        return None
+    colour = discord.Colour(colour_value)
+    if role.name != name or role.colour.value != colour.value:
+        await role.edit(
+            name=name,
+            colour=colour,
+            reason="Padronização visual dos cargos Peace",
+        )
+    return role
+
+
 async def rename_roles(guild: discord.Guild) -> None:
     for old_name, new_name in ROLE_RENAMES.items():
         role = find_role(guild, old_name)
         if role is None or role.name == new_name:
             continue
         await role.edit(name=new_name, reason="Padronização dos nomes de cargos Peace")
+
+
+def find_channel(
+    guild: discord.Guild,
+    channel_id: int | None,
+    *aliases: str,
+    category_id: int | None = None,
+) -> discord.GuildChannel | None:
+    if channel_id is not None:
+        channel = guild.get_channel(channel_id)
+        if channel is not None:
+            return channel
+    normalized = {alias.casefold() for alias in aliases}
+    return discord.utils.find(
+        lambda channel: (
+            channel.name.casefold() in normalized
+            and (category_id is None or channel.category_id == category_id)
+        ),
+        guild.channels,
+    )
+
+
+async def rename_channel(
+    guild: discord.Guild,
+    desired_name: str,
+    channel_id: int | None = None,
+    *aliases: str,
+    category_id: int | None = None,
+) -> discord.GuildChannel | None:
+    channel = find_channel(guild, channel_id, *aliases, category_id=category_id)
+    if channel is None:
+        return None
+    if channel.name != desired_name:
+        await channel.edit(name=desired_name, reason="Padronização dos nomes de canais Peace")
+    return channel
 
 
 def obsolete_named_roles(guild: discord.Guild) -> list[discord.Role]:
@@ -412,9 +504,22 @@ async def ensure_verification_surface(
         guild.categories,
     )
     if category is None:
+        category = discord.utils.find(
+            lambda item: item.name.casefold() in {
+                "[🔐] verificação",
+                "[🔐] verificacao",
+            },
+            guild.categories,
+        )
+    if category is None:
         category = await guild.create_category(
             VERIFICATION_CATEGORY_NAME,
             reason="Criar área única de verificação da Peace",
+        )
+    elif category.name != VERIFICATION_CATEGORY_NAME:
+        await category.edit(
+            name=VERIFICATION_CATEGORY_NAME,
+            reason="Padronizar categoria única de verificação da Peace",
         )
     await category.set_permissions(
         guild.default_role,
@@ -429,6 +534,17 @@ async def ensure_verification_surface(
     if channel is None:
         channel = discord.utils.find(
             lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold(),
+            guild.text_channels,
+        )
+    if channel is None:
+        channel = discord.utils.find(
+            lambda item: item.name.casefold() == "verificar"
+            and item.category_id == category.id,
+            guild.text_channels,
+        )
+    if channel is None:
+        channel = discord.utils.find(
+            lambda item: item.name.casefold() == "verificar",
             guild.text_channels,
         )
     if channel is None:
@@ -450,6 +566,7 @@ async def ensure_verification_surface(
         overwrite=perms(view_channel=False, read_message_history=False, send_messages=False),
         reason="Somente membros Not Verified visualizam a verificação",
     )
+    allowed_subjects: set[discord.Role | discord.Member] = {guild.default_role}
     if not_verified is not None:
         access = perms(view_channel=True, read_message_history=True, send_messages=False)
         await category.set_permissions(
@@ -462,6 +579,7 @@ async def ensure_verification_surface(
             overwrite=access,
             reason="Not Verified precisa acessar a verificação",
         )
+        allowed_subjects.add(not_verified)
     if guild.me is not None:
         await category.set_permissions(
             guild.me,
@@ -479,6 +597,15 @@ async def ensure_verification_surface(
             manage_messages=True,
             reason="Peace Tools precisa manter o painel de verificação",
         )
+        allowed_subjects.add(guild.me)
+    for target in (category, channel):
+        for subject in list(target.overwrites):
+            if subject not in allowed_subjects:
+                await target.set_permissions(
+                    subject,
+                    overwrite=None,
+                    reason="Remover acesso legado da área de verificação",
+                )
     return category, channel
 
 
@@ -512,10 +639,10 @@ async def clean_dev_chat(guild: discord.Guild) -> None:
 
 
 async def remove_deprecated_roles(guild: discord.Guild) -> None:
-    for role_id in DEPRECATED_ROLE_IDS:
-        role = guild.get_role(role_id)
-        if role is None:
-            continue
+    roles = [role for role_id in DEPRECATED_ROLE_IDS if (role := guild.get_role(role_id)) is not None]
+    if roles:
+        await snapshot_obsolete_role_members(guild, roles)
+    for role in roles:
         try:
             await role.delete(reason="Remoção de cargos legados solicitada pela Peace")
             log.info("Cargo legado removido: %s", role.name)
@@ -602,6 +729,7 @@ async def apply_structure(
     database: PeaceDatabase,
     central_access_role_id: int | None = None,
     *,
+    private_call_category_id: int | None = None,
     remove_chat_elite_channel: bool = False,
 ) -> None:
     validate_preflight(guild)
@@ -615,19 +743,19 @@ async def apply_structure(
     ai_role = await ensure_visual_role(
         guild,
         ROLE_NAMES["a_is"],
-        discord.Colour.purple(),
+        discord.Colour(ROLE_COLOURS["AIs"]),
         aliases=("AI & Bots", "IA & Bots", "IA & Bots Peace"),
     )
     not_verified = await ensure_visual_role(
         guild,
         ROLE_NAMES["not_verified"],
-        discord.Colour.dark_grey(),
+        discord.Colour(ROLE_COLOURS["Not Verified"]),
         aliases=("Não verificado", "Nao verificado"),
     )
     intern = await ensure_visual_role(
         guild,
         ROLE_NAMES["intern"],
-        discord.Colour.teal(),
+        discord.Colour(ROLE_COLOURS["Intern"]),
         aliases=("Estagiário", "Estagiario"),
     )
     await remove_obsolete_named_roles(guild, snapshot=False)
@@ -642,30 +770,56 @@ async def apply_structure(
         technical = find_role(guild, ROLE_NAMES["technical"])
     legacy_florenza = guild.get_role(ROLE_IDS["florenza_legacy"])
 
+    await style_role(peace, ROLE_NAMES["peace"], ROLE_COLOURS["Peace"])
+    await style_role(staff, ROLE_NAMES["staff"], ROLE_COLOURS["Staff"])
+    await style_role(manager, ROLE_NAMES["manager"], ROLE_COLOURS["Management"])
+    await style_role(visitor, ROLE_NAMES["visitor"], ROLE_COLOURS["Visitor"])
+    await style_role(technical, ROLE_NAMES["technical"], ROLE_COLOURS["Dev"])
+    await style_role(
+        find_role(guild, ROLE_NAMES["general_manager"]),
+        ROLE_NAMES["general_manager"],
+        ROLE_COLOURS["Manager ⎰ Deputy Delegate"],
+    )
+    await style_role(
+        find_role(guild, ROLE_NAMES["elite"]),
+        ROLE_NAMES["elite"],
+        ROLE_COLOURS["Elite ⎰ Special Agent"],
+    )
+    await style_role(
+        find_role(guild, ROLE_NAMES["novato"]),
+        ROLE_NAMES["novato"],
+        ROLE_COLOURS["Rookie ⎰ Agent"],
+    )
+    await style_role(
+        find_role(guild, ROLE_NAMES["member"]),
+        ROLE_NAMES["member"],
+        ROLE_COLOURS["Member ⎰ Recruit"],
+    )
+
     await ensure_visual_role(
         guild,
         "Developer",
-        discord.Colour.blurple(),
+        discord.Colour(ROLE_COLOURS["Dev"]),
         aliases=("Desenvolvedor Peace", "Developer Peace"),
     )
-    await ensure_visual_role(guild, "Frontend", discord.Colour.teal(), aliases=("Frontend Peace",))
-    await ensure_visual_role(guild, "Backend", discord.Colour.dark_teal(), aliases=("Backend Peace",))
+    await ensure_visual_role(guild, "Frontend", discord.Colour(0x1ABC9C), aliases=("Frontend Peace",))
+    await ensure_visual_role(guild, "Backend", discord.Colour(0x2ECC71), aliases=("Backend Peace",))
     await ensure_visual_role(
         guild,
         "Documentation",
-        discord.Colour.gold(),
+        discord.Colour(0xF1C40F),
         aliases=("Documentação Peace", "Documentation Peace"),
     )
     await ensure_visual_role(
         guild,
         "General Director",
-        discord.Colour.dark_gold(),
+        discord.Colour(ROLE_COLOURS["General Director"]),
         aliases=("Diretor geral", "Diretor Geral"),
     )
     await ensure_visual_role(
         guild,
         "Superintendent",
-        discord.Colour.dark_purple(),
+        discord.Colour(ROLE_COLOURS["Superintendent"]),
         aliases=("Superintendente",),
     )
 
@@ -694,9 +848,9 @@ async def apply_structure(
         guild.categories,
     )
     if staff_category is None:
-        staff_category = await guild.create_category("[🛡️] STAFF", reason="Categoria interna de Staff Peace")
-    elif staff_category.name != "[🛡️] STAFF":
-        await staff_category.edit(name="[🛡️] STAFF", reason="Padronizar categoria Staff Peace")
+        staff_category = await guild.create_category(CATEGORY_NAMES["staff"], reason="Categoria interna de Staff Peace")
+    elif staff_category.name != CATEGORY_NAMES["staff"]:
+        await staff_category.edit(name=CATEGORY_NAMES["staff"], reason="Padronizar categoria Staff Peace")
     staff_roles = [staff, manager, founder]
     await configure_category(staff_category, guild, staff_roles)
     if guild.me is not None:
@@ -711,10 +865,94 @@ async def apply_structure(
         if guild.me is not None:
             await set_role_access(channel, guild.me.top_role, view=True, send=True, manage_messages=True)
 
+    # Keep the visible structure English while preserving every existing channel ID.
+    reception = discord.utils.find(
+        lambda item: isinstance(item, discord.CategoryChannel)
+        and item.name.casefold() in {
+            CATEGORY_NAMES["reception"].casefold(),
+            "[🎫] recepção",
+            "[🎫] recepcao",
+        },
+        guild.categories,
+    )
+    if reception is not None and reception.name != CATEGORY_NAMES["reception"]:
+        await reception.edit(
+            name=CATEGORY_NAMES["reception"],
+            reason="Padronizar categoria de recepção em inglês",
+        )
+    await rename_channel(
+        guild,
+        "├📕・rules",
+        None,
+        "├📕・regras",
+    )
+    await rename_channel(
+        guild,
+        "╰📝・request-set",
+        None,
+        "╰📝・pedir-set",
+    )
+    await rename_channel(
+        guild,
+        "╭📣・announcements",
+        CHANNEL_IDS["avisos"],
+        "╭📣・avisos",
+    )
+    await rename_channel(
+        guild,
+        "├🤝・partners",
+        CHANNEL_IDS["parceiros"],
+        "├🤝・parceiros",
+    )
+    await rename_channel(
+        guild,
+        "├📸・media",
+        CHANNEL_IDS["midias"],
+        "├📸・midias",
+    )
+    await rename_channel(
+        guild,
+        "├📹・clips",
+        CHANNEL_IDS["clipes"],
+        "├📹・clipes",
+    )
+    await rename_channel(
+        guild,
+        "╰🎯・dashboard",
+        CHANNEL_IDS["painel"],
+        "╰🎯・painel",
+    )
+    await rename_channel(
+        guild,
+        "╭💬・general-chat",
+        CHANNEL_IDS["chat_geral"],
+        "╭💬・chat-geral",
+    )
+    await rename_channel(
+        guild,
+        "├💬・management-chat",
+        CHANNEL_IDS["chat_gerencia"],
+        "├💬・chat-gerencia",
+    )
+    await rename_channel(
+        guild,
+        "├💬・visitor-chat",
+        CHANNEL_IDS["chat_visitante"],
+        "├💬・chat-visitante",
+    )
+    await rename_channel(
+        guild,
+        "╰🎵・music",
+        CHANNEL_IDS["musica"],
+        "╰🎵・música",
+        "╰🎵・musica",
+    )
+
     closed_category = guild.get_channel(CLOSED_TICKET_CATEGORY_ID)
     if isinstance(closed_category, discord.CategoryChannel):
         category_positions = [category.position for category in guild.categories]
         await closed_category.edit(
+            name=CATEGORY_NAMES["closed_tickets"],
             position=max(category_positions, default=closed_category.position) + 1,
             reason="TICKETS-FECHADOS deve permanecer como última categoria",
         )
@@ -727,7 +965,7 @@ async def apply_structure(
         dev_chat = guild.get_channel(CHANNEL_IDS["dev_chat"])
         dev_call = guild.get_channel(CHANNEL_IDS["dev_call"])
         if isinstance(dev_chat, discord.TextChannel):
-            await dev_chat.edit(name="╰💬・chat-dev", reason="Padronização do canal Developers")
+            await dev_chat.edit(name="╰💬・dev-chat", reason="Padronização do canal Developers")
             await configure_text(dev_chat, guild, allowed=development_roles, send=True)
         if isinstance(dev_call, discord.VoiceChannel):
             await dev_call.edit(name="╭💻・programming", reason="Padronização da call Developers")
@@ -738,17 +976,36 @@ async def apply_structure(
     calls = guild.get_channel(CALLS_CATEGORY_ID)
     call_roles = [peace, technical, staff, manager, founder]
     if isinstance(calls, discord.CategoryChannel):
-        await calls.edit(name="[🎙️] CALLS", reason="Padronização das calls normais Peace")
+        await calls.edit(name=CATEGORY_NAMES["calls"], reason="Padronização das calls normais Peace")
         await configure_category(calls, guild, call_roles)
         for channel in calls.voice_channels:
             await configure_voice(channel, guild, allowed=call_roles, move_members=False)
             await set_role_access(channel, manager, view=True, connect=True, speak=True, move_members=True)
 
+    private_calls = guild.get_channel(private_call_category_id) if private_call_category_id else None
+    if isinstance(private_calls, discord.CategoryChannel) and private_calls.id != CALLS_CATEGORY_ID:
+        await private_calls.edit(
+            name=CATEGORY_NAMES["private_calls"],
+            reason="Padronização da categoria de calls privadas Peace",
+        )
+        for channel in private_calls.voice_channels:
+            if "gerência" in channel.name.casefold() or "gerencia" in channel.name.casefold():
+                await channel.edit(
+                    name="╰🎧・Management",
+                    reason="Padronizar call de gerência em inglês",
+                )
+
     atendimento = guild.get_channel(ATENDIMENTO_CATEGORY_ID)
     support_roles = [peace, visitor, staff, manager, founder]
     if isinstance(atendimento, discord.CategoryChannel):
+        await atendimento.edit(name=CATEGORY_NAMES["support"], reason="Padronizar categoria de suporte Peace")
         await configure_category(atendimento, guild, support_roles)
         for channel in atendimento.voice_channels:
+            if "suporte" in channel.name.casefold():
+                await channel.edit(
+                    name=channel.name.replace("Suporte", "Support").replace("suporte", "Support"),
+                    reason="Padronizar calls de suporte em inglês",
+                )
             await configure_voice(channel, guild, allowed=support_roles, move_members=False)
             await set_role_access(channel, staff, view=True, connect=True, speak=True, move_members=True)
         for channel in atendimento.text_channels:
@@ -756,7 +1013,7 @@ async def apply_structure(
                 await configure_text(channel, guild, allowed=support_roles, send=True)
     waiting_voice = guild.get_channel(CHANNEL_IDS["waiting_voice"])
     if isinstance(waiting_voice, discord.VoiceChannel):
-        await waiting_voice.edit(name="╭📞・Aguardando suporte", reason="Padronização da espera de suporte")
+        await waiting_voice.edit(name="╰📞・Waiting for Support", reason="Padronização da espera de suporte")
         await configure_voice(waiting_voice, guild, allowed=support_roles, move_members=False)
         await set_role_access(waiting_voice, staff, view=True, connect=True, speak=True, move_members=True)
 
@@ -765,30 +1022,58 @@ async def apply_structure(
     registros = guild.get_channel(REGISTROS_CATEGORY_ID)
     registration_roles = [peace, technical, staff, manager, founder]
     if isinstance(registros, discord.CategoryChannel):
-        await registros.edit(name="[ℹ️] REGISTROS", reason="Padronizar categoria de registros")
+        await registros.edit(name=CATEGORY_NAMES["records"], reason="Padronizar categoria de registros")
         await configure_category(registros, guild, registration_roles)
     for key in ("avisos", "parceiros"):
         channel = guild.get_channel(CHANNEL_IDS[key])
         if isinstance(channel, discord.TextChannel):
             await configure_text(channel, guild, allowed=registration_roles, send=False)
+    # These channels belong to the records area; they are not public onboarding
+    # surfaces and must not leak to Not Verified or Visitor.
     for key, send in (("midias", True), ("clipes", True), ("painel", False)):
         channel = guild.get_channel(CHANNEL_IDS[key])
         if isinstance(channel, discord.TextChannel):
-            await configure_text(channel, guild, allowed=[], public=True, send=send)
+            await configure_text(channel, guild, allowed=registration_roles, send=send)
 
     rules = guild.get_channel(CHANNEL_IDS["rules"])
     if isinstance(rules, discord.TextChannel):
-        await configure_text(rules, guild, allowed=[], public=True, send=False)
+        # Rules are readable by verified visitors and internal access roles,
+        # but the server must remain invisible to @everyone until verification.
+        await configure_text(
+            rules,
+            guild,
+            allowed=[peace, visitor, staff, manager, founder],
+            send=False,
+        )
     automod = guild.get_channel(AUTOMOD_CHANNEL_ID)
     if isinstance(automod, discord.TextChannel):
         await automod.edit(
             name="spam-control",
             category=None,
             position=0,
-            topic="Spam control only. Do not send messages in this channel.",
-            reason="Honeypot público da moderação Peace",
+            topic="Private spam control. Do not send messages in this channel.",
+            reason="Canal privado de moderação Peace",
         )
-        await configure_text(automod, guild, allowed=[], public=True, send=True)
+        await configure_text(automod, guild, allowed=[], send=False)
+        if guild.me is not None:
+            for subject in list(automod.overwrites):
+                if subject in {guild.default_role, guild.me}:
+                    continue
+                await automod.set_permissions(
+                    subject,
+                    overwrite=None,
+                    reason="Remover acessos individuais do canal privado de spam",
+                )
+            await automod.set_permissions(
+                guild.me,
+                overwrite=perms(
+                    view_channel=True,
+                    read_message_history=True,
+                    send_messages=True,
+                    manage_messages=True,
+                ),
+                reason="Peace Tools precisa manter o canal privado de spam",
+            )
 
     social = discord.utils.find(
         lambda item: isinstance(item, discord.CategoryChannel)
@@ -797,7 +1082,7 @@ async def apply_structure(
     )
     social_roles = [peace, staff, manager, founder]
     if isinstance(social, discord.CategoryChannel):
-        await social.edit(name="[🔔] RESENHA & SOCIAL", reason="Padronizar categoria social Peace")
+        await social.edit(name=CATEGORY_NAMES["social"], reason="Padronizar categoria social Peace")
         await configure_category(social, guild, social_roles)
     chat_geral = guild.get_channel(CHANNEL_IDS["chat_geral"])
     if isinstance(chat_geral, discord.TextChannel):
@@ -818,14 +1103,20 @@ async def apply_structure(
 
     ticket_panel = guild.get_channel(CHANNEL_IDS["ticket_panel"])
     if isinstance(ticket_panel, discord.TextChannel):
-        await ticket_panel.edit(name="╰❗・ticket", reason="Padronização do último canal de atendimento")
-        await configure_text(ticket_panel, guild, allowed=support_roles, public=True, send=False)
+        await ticket_panel.edit(name="╭❗・ticket", reason="Padronização do último canal de atendimento")
+        await configure_text(ticket_panel, guild, allowed=support_roles, send=False)
 
     afk = guild.get_channel(AFK_CHANNEL_ID)
     if isinstance(afk, discord.VoiceChannel):
-        await afk.edit(category=None, position=1, name="AFK", reason="AFK público e visível da Peace")
-        await clear_role_overwrites(afk, guild, [])
-        await set_default_access(afk, guild, view=True, connect=False, speak=False)
+        await afk.edit(category=None, position=1, name="AFK", reason="AFK visível sem entrada da Peace")
+        await configure_voice(
+            afk,
+            guild,
+            allowed=[peace, visitor, staff, manager, founder],
+            connect=False,
+            speak=False,
+            move_members=False,
+        )
 
     if remove_chat_elite_channel:
         await remove_chat_elite(guild)
@@ -846,7 +1137,7 @@ def run_once(*, apply: bool, clean: bool, clean_dev: bool, remove_chat_elite_cha
 
     @client.event
     async def on_ready() -> None:
-        guild = client.get_guild(GUILD_ID or settings.guild_id)
+        guild = client.get_guild(settings.guild_id)
         if guild is None:
             log.error("Servidor Peace não está disponível no cache")
             await client.close()
@@ -862,6 +1153,7 @@ def run_once(*, apply: bool, clean: bool, clean_dev: bool, remove_chat_elite_cha
                 guild,
                 database,
                 settings.central_access_role_id,
+                private_call_category_id=settings.private_call_category_id,
                 remove_chat_elite_channel=remove_chat_elite_channel,
             )
         except Exception:

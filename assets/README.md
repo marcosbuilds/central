@@ -8,7 +8,7 @@ of the public repository contract, not a staging area.
 | Folder | Contents | Consumer |
 |---|---|---|
 | `docs/` | neutral, text-free visuals for public documentation | `README.md` and `docs/` |
-| `bot/` | panel, moderation, welcome, and seasonal artwork | `bot/main.py` and the bot package |
+| `bot/` | panel, moderation, welcome, seasonal, and compact neutral artwork | `bot/main.py` and the bot package |
 
 Documentation visuals are intentionally transparent PNGs with a restrained
 neutral palette. They explain relationships such as coordination and review;

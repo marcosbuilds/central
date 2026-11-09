@@ -4,8 +4,11 @@ import logging
 import json
 import re
 import asyncio
+import io
 import secrets
+import struct
 import time
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -47,19 +50,131 @@ TICKET_CONTROL_PREFIXES = (
 )
 AUTOMOD_ASSET = "automod.png"
 WELCOME_ASSET = "welcome-halloween.png"
-SET_PANEL_ASSET = "set-halloween.png"
-TICKET_PANEL_ASSET = "ticket-halloween.png"
-OPERATIONS_PANEL_ASSET = "ops-halloween.png"
+SET_PANEL_ASSET = "set.png"
+TICKET_PANEL_ASSET = "support.png"
+OPERATIONS_PANEL_ASSET = "ops.png"
 VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
-VERIFICATION_CHANNEL_NAME = "verificar"
+VERIFICATION_CHANNEL_NAME = "verify"
 VERIFICATION_PANEL_MARKER = "verification:panel"
+VERIFICATION_ASSET = "verification.png"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
 INTERN_ROLE_NAME = "Intern"
+CAPTCHA_FONT = {
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
+    "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "J": ("00111", "00010", "00010", "00010", "10010", "10010", "01100"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "V": ("10001", "10001", "10001", "10001", "01010", "01010", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "11011", "10001"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+    "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+    "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
+}
 
 
 def asset(name: str) -> discord.File:
     return discord.File(ROOT / "assets" / "bot" / name, filename=name)
+
+
+def _png_chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    body = chunk_type + payload
+    return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+
+def render_captcha_png(code: str) -> bytes:
+    """Render a short CAPTCHA as a self-contained PNG without exposing its text."""
+    width, height, scale = 300, 100, 8
+    background = (247, 249, 252)
+    rows = [bytearray(background * width) for _ in range(height)]
+
+    def pixel(x: int, y: int, colour: tuple[int, int, int]) -> None:
+        if 0 <= x < width and 0 <= y < height:
+            offset = x * 3
+            rows[y][offset : offset + 3] = bytes(colour)
+
+    def line(x1: int, y1: int, x2: int, y2: int, colour: tuple[int, int, int]) -> None:
+        dx = abs(x2 - x1)
+        sx = 1 if x1 < x2 else -1
+        dy = -abs(y2 - y1)
+        sy = 1 if y1 < y2 else -1
+        error = dx + dy
+        while True:
+            pixel(x1, y1, colour)
+            if x1 == x2 and y1 == y2:
+                return
+            twice = 2 * error
+            if twice >= dy:
+                error += dy
+                x1 += sx
+            if twice <= dx:
+                error += dx
+                y1 += sy
+
+    for _ in range(220):
+        shade = 180 + secrets.randbelow(45)
+        pixel(secrets.randbelow(width), secrets.randbelow(height), (shade, shade, shade))
+    for _ in range(5):
+        line(
+            secrets.randbelow(width // 3),
+            secrets.randbelow(height),
+            width - secrets.randbelow(width // 3) - 1,
+            secrets.randbelow(height),
+            (165, 180, 198),
+        )
+
+    colours = ((25, 73, 110), (120, 55, 104), (37, 104, 91), (135, 73, 35))
+    start_x = 18
+    for index, character in enumerate(code):
+        glyph = CAPTCHA_FONT.get(character, CAPTCHA_FONT["A"])
+        x = start_x + index * 45 + secrets.randbelow(5)
+        y = 18 + secrets.randbelow(9)
+        colour = colours[index % len(colours)]
+        for row_index, row in enumerate(glyph):
+            for column_index, filled in enumerate(row):
+                if filled == "1":
+                    for dy in range(scale):
+                        for dx in range(scale):
+                            pixel(x + column_index * scale + dx, y + row_index * scale + dy, colour)
+
+    border = (120, 135, 150)
+    for x in range(width):
+        pixel(x, 0, border)
+        pixel(x, height - 1, border)
+    for y in range(height):
+        pixel(0, y, border)
+        pixel(width - 1, y, border)
+    raw = b"".join(b"\x00" + bytes(row) for row in rows)
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(raw, level=9))
+        + _png_chunk(b"IEND", b"")
+    )
 
 
 def now_unix() -> int:
@@ -141,9 +256,16 @@ def verification_eligible(
     member: discord.Member,
     peace_role_id: int | None,
     visitor_role_id: int | None,
+    not_verified_role_id: int | None = None,
 ) -> bool:
     """Return whether this member may start the Visitor CAPTCHA."""
-    return needs_visitor(member, peace_role_id, visitor_role_id)
+    return (
+        needs_visitor(member, peace_role_id, visitor_role_id)
+        and (
+            not_verified_role_id is None
+            or role_member(member, not_verified_role_id)
+        )
+    )
 
 
 async def respond(interaction: discord.Interaction, content: str, *, ephemeral: bool = True, view: discord.ui.View | None = None) -> None:
@@ -210,23 +332,33 @@ class VerificationCaptchaSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
         if interaction.user.id != self.member_id:
-            await respond(interaction, "Eu gerei este CAPTCHA para outro membro.")
+            await interaction.edit_original_response(
+                content="Eu gerei este CAPTCHA para outro membro.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
             return
         challenge = self.bot.verification_challenges.get(self.member_id)
         selected = self.values[0]
         if challenge is None or challenge[1] <= time.monotonic():
             self.bot.verification_challenges.pop(self.member_id, None)
-            await interaction.response.edit_message(
-                content="Eu encerrei este CAPTCHA por tempo limite. Volte ao canal #verificar e inicie uma nova verificação.",
+            await interaction.edit_original_response(
+                content="Eu encerrei este CAPTCHA por tempo limite. Volte ao canal #verify e inicie uma nova verificação.",
+                embed=None,
+                attachments=[],
                 view=VerificationStartView(self.bot),
             )
             return
         answer, _ = challenge
         if selected != answer:
             self.bot.verification_challenges.pop(self.member_id, None)
-            await interaction.response.edit_message(
-                content="Eu não liberei o cargo Visitor porque a resposta do CAPTCHA está incorreta. Inicie a verificação novamente.",
+            await interaction.edit_original_response(
+                content="Código incorreto. O cargo Visitor não foi liberado. Clique em **Iniciar verificação** para tentar novamente.",
+                embed=None,
+                attachments=[],
                 view=VerificationStartView(self.bot),
             )
             return
@@ -254,14 +386,18 @@ class VerificationCaptchaSelect(discord.ui.Select):
         )
         self.bot.verification_challenges.pop(self.member_id, None)
         if member is None or member.bot or visitor is None:
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 content="Eu não consegui liberar o cargo Visitor. Procure a staff.",
+                embed=None,
+                attachments=[],
                 view=None,
             )
             return
         if role_member(member, self.bot.settings.peace_role_id):
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 content="Eu confirmei sua conta, mas não apliquei Visitor porque você já possui o cargo Peace.",
+                embed=None,
+                attachments=[],
                 view=None,
             )
             return
@@ -270,13 +406,17 @@ class VerificationCaptchaSelect(discord.ui.Select):
                 try:
                     await member.remove_roles(not_verified, reason="Visitor já verificado pelo CAPTCHA")
                 except (discord.Forbidden, discord.HTTPException):
-                    await interaction.response.edit_message(
+                    await interaction.edit_original_response(
                         content="Eu confirmei sua conta, mas não consegui remover o cargo Not Verified. A staff precisa corrigir isso.",
+                        embed=None,
+                        attachments=[],
                         view=None,
                     )
                     return
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
+                embed=None,
+                attachments=[],
                 view=None,
             )
             return
@@ -290,24 +430,37 @@ class VerificationCaptchaSelect(discord.ui.Select):
                 and (not_verified.managed or not_verified >= bot_member.top_role)
             )
         ):
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitor. A staff precisa corrigir isso.",
+                embed=None,
+                attachments=[],
                 view=None,
             )
             return
+        added_visitor = False
         try:
             await member.add_roles(visitor, reason="CAPTCHA de verificação concluído")
+            added_visitor = True
             if not_verified is not None and not_verified in member.roles:
                 await member.remove_roles(not_verified, reason="CAPTCHA de verificação concluído")
         except (discord.Forbidden, discord.HTTPException):
+            if added_visitor:
+                try:
+                    await member.remove_roles(visitor, reason="Rollback de verificação incompleta")
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception("Falha ao reverter Visitor após falha na remoção de Not Verified")
             log.exception("Falha ao aplicar Visitor após verificação para %s", member.id)
-            await interaction.response.edit_message(
-                content="Eu confirmei sua conta, mas não consegui aplicar Visitor. A staff precisa verificar minhas permissões.",
-                view=None,
+            await interaction.edit_original_response(
+                content="Não consegui concluir a verificação. Nenhum acesso foi liberado; clique em **Iniciar verificação** para tentar novamente.",
+                embed=None,
+                attachments=[],
+                view=VerificationStartView(self.bot),
             )
             return
-        await interaction.response.edit_message(
+        await interaction.edit_original_response(
             content="Eu confirmei que você não é um bot e liberei o cargo Visitor. Agora você pode acessar as áreas de visitante.",
+            embed=None,
+            attachments=[],
             view=None,
         )
 
@@ -323,9 +476,13 @@ class VerificationStartView(discord.ui.View):
         custom_id="peace_verification_start",
     )
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
         if member is None or member.bot:
-            await respond(interaction, "Eu não libero o cargo Visitor para contas de bot.")
+            await interaction.edit_original_response(
+                content="Eu não libero o cargo Visitor para contas de bot.",
+                view=None,
+            )
             return
         visitor = role_named(
             member.guild,
@@ -333,24 +490,43 @@ class VerificationStartView(discord.ui.View):
             "Visitor",
         )
         if visitor is not None and visitor in member.roles:
-            await respond(interaction, "Eu já confirmei sua conta e o cargo Visitor já está liberado.")
+            await interaction.edit_original_response(
+                content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
+                view=None,
+            )
             return
         if role_member(member, self.bot.settings.peace_role_id):
-            await respond(interaction, "Eu não preciso verificar novamente uma conta que já possui o cargo Peace.")
+            await interaction.edit_original_response(
+                content="Eu não preciso verificar novamente uma conta que já possui o cargo Peace.",
+                view=None,
+            )
             return
         if not verification_eligible(
             member,
             self.bot.settings.peace_role_id,
             self.bot.settings.visitor_role_id,
+            self.bot.settings.not_verified_role_id,
         ):
-            await respond(interaction, "Eu não posso iniciar esta verificação para sua conta.")
+            await interaction.edit_original_response(
+                content="Você precisa do cargo **Not Verified** para iniciar.",
+                view=None,
+            )
             return
         options = self.bot.create_verification_challenge(member.id)
         answer = self.bot.verification_challenges[member.id][0]
-        await interaction.response.send_message(
-            f"Eu gerei o CAPTCHA `{answer}`. Eu peço que você selecione exatamente esse código entre as opções abaixo. Eu libero Visitor somente se a escolha estiver correta.",
+        image_file = discord.File(io.BytesIO(render_captcha_png(answer)), filename="captcha.png")
+        embed = discord.Embed(
+            title="CAPTCHA de verificação",
+            description="Leia o código na imagem e selecione a opção correspondente no menu abaixo.",
+            color=0x5865F2,
+        )
+        embed.set_image(url="attachment://captcha.png")
+        embed.set_footer(text="Esta tentativa expira em 3 minutos.")
+        await interaction.edit_original_response(
+            content="Selecione no menu o código mostrado na imagem.",
+            embed=embed,
+            attachments=[image_file],
             view=VerificationCaptchaView(self.bot, member.id, options),
-            ephemeral=True,
         )
 
 
@@ -1114,21 +1290,10 @@ class TicketView(discord.ui.View):
         if guild is None:
             await respond(interaction, "Não consegui localizar o servidor.")
             return
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        }
-        owner = await self.bot.member(guild, int(ticket["owner_user_id"]))
-        if owner is not None:
-            overwrites[owner] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
-        if self.bot.settings.staff_role_id:
-            role = guild.get_role(self.bot.settings.staff_role_id)
-            if role is not None:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
         try:
             voice = await guild.create_voice_channel(
                 name=f"call-{clean_name(interaction.channel.name)}"[:90],
                 category=interaction.channel.category,
-                overwrites=overwrites,
                 reason="Call criada para ticket",
             )
             self.bot.database.set_ticket_voice(interaction.channel.id, voice.id)
@@ -1287,21 +1452,10 @@ class StaffTicketView(discord.ui.View):
             if guild is None:
                 await respond(interaction, "Não consegui localizar o servidor.")
                 return
-            overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-                guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            }
-            owner = await self.bot.member(guild, int(ticket["owner_user_id"]))
-            if owner is not None:
-                overwrites[owner] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
-            if self.bot.settings.staff_role_id:
-                role = guild.get_role(self.bot.settings.staff_role_id)
-                if role is not None:
-                    overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
             try:
                 voice = await guild.create_voice_channel(
                     name=f"call-{clean_name(channel.name)}"[:90],
                     category=channel.category,
-                    overwrites=overwrites,
                     reason="Call criada pela staff para ticket",
                 )
                 self.bot.database.set_ticket_voice(self.ticket_channel_id, voice.id)
@@ -1501,12 +1655,12 @@ class PeaceBot(commands.Bot):
             (
                 NOT_VERIFIED_ROLE_NAME,
                 ("Não verificado", "Nao verificado"),
-                discord.Colour.dark_grey(),
+                discord.Colour(0x7F8C8D),
             ),
             (
                 INTERN_ROLE_NAME,
                 ("Estagiário", "Estagiario"),
-                discord.Colour.teal(),
+                discord.Colour(0x1ABC9C),
             ),
         )
         for name, aliases, colour in specs:
@@ -1521,7 +1675,11 @@ class PeaceBot(commands.Bot):
                     reason="Criar cargo do fluxo de entrada da Peace",
                 )
                 continue
-            if role.name != name or role.permissions != discord.Permissions.none():
+            if (
+                role.name != name
+                or role.permissions != discord.Permissions.none()
+                or role.colour.value != colour.value
+            ):
                 await role.edit(
                     name=name,
                     colour=colour,
@@ -1812,13 +1970,9 @@ class PeaceBot(commands.Bot):
             self.panels_synced = completed and result is True
         await self.run_startup_step("cargos do fluxo de entrada", self.ensure_flow_roles)
         await self.run_startup_step("painel de verificação", self.sync_verification_panel)
-        if not self.reception_visibility_synced:
-            completed, _ = await self.run_startup_step("visibilidade da recepção", self.sync_reception_visibility)
-            self.reception_visibility_synced = completed
         for label, operation in (
-            ("visibilidade dos tickets fechados", self.sync_closed_ticket_visibility),
             ("painel de boas-vindas", self.sync_welcome_panel),
-            ("canal de spam-control", self.sync_automod_channel),
+            ("painel anti-spam", self.sync_automod_channel),
             ("auditoria dos tickets fechados", self.audit_closed_tickets),
             ("auditoria dos tickets abertos", self.audit_open_ticket_controls),
         ):
@@ -1834,8 +1988,6 @@ class PeaceBot(commands.Bot):
             ("painéis de developers pendentes", self.sync_pending_developer_panels),
             ("cargos de visitante", self.sync_visitor_roles),
             ("tags Peace", self.sync_peace_tags),
-            ("nomes dos tickets", self.sync_ticket_names),
-            ("áreas de booster", self.sync_booster_spaces),
         ):
             await self.run_startup_step(label, operation)
         if self.iris is not None:
@@ -1985,50 +2137,37 @@ class PeaceBot(commands.Bot):
         )
         return all(results)
 
+    @staticmethod
+    def verification_panel_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="VERIFICAÇÃO",
+            description="Complete as etapas para liberar o acesso.",
+            color=0x5865F2,
+        )
+        embed.add_field(
+            name="🖱️ INICIAR",
+            value="Clique no botão.",
+            inline=True,
+        )
+        embed.add_field(
+            name="🖼️ LER",
+            value="Leia a imagem.",
+            inline=True,
+        )
+        embed.add_field(
+            name="✅ SELECIONAR",
+            value="Escolha o código.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{VERIFICATION_ASSET}")
+        embed.set_footer(text=VERIFICATION_PANEL_MARKER)
+        return embed
+
     async def sync_verification_panel(self) -> bool:
-        """Ensure the public CAPTCHA surface and its single fixed bot panel."""
+        """Publish the CAPTCHA panel without changing channel structure or permissions."""
         if self.guild is None or self.user is None:
             return False
         try:
-            category = (
-                self.guild.get_channel(self.settings.verification_category_id)
-                if self.settings.verification_category_id is not None
-                else None
-            )
-            if not isinstance(category, discord.CategoryChannel):
-                category = discord.utils.find(
-                    lambda item: item.name.casefold() == VERIFICATION_CATEGORY_NAME.casefold(),
-                    self.guild.categories,
-                )
-            if category is None:
-                category = await self.guild.create_category(
-                    VERIFICATION_CATEGORY_NAME,
-                    reason="Criar área única de verificação da Peace",
-                )
-            elif category.name != VERIFICATION_CATEGORY_NAME:
-                await category.edit(
-                    name=VERIFICATION_CATEGORY_NAME,
-                    reason="Padronizar área única de verificação da Peace",
-                )
-
-            not_verified = role_named(
-                self.guild,
-                getattr(self.settings, "not_verified_role_id", None),
-                NOT_VERIFIED_ROLE_NAME,
-                "Não verificado",
-                "Nao verificado",
-            )
-            private_category = discord.PermissionOverwrite(
-                view_channel=False,
-                read_message_history=False,
-                send_messages=False,
-            )
-            await category.set_permissions(
-                self.guild.default_role,
-                overwrite=private_category,
-                reason="Somente membros Not Verified visualizam a verificação",
-            )
-
             channel = (
                 self.guild.get_channel(self.settings.verification_channel_id)
                 if self.settings.verification_channel_id is not None
@@ -2036,49 +2175,14 @@ class PeaceBot(commands.Bot):
             )
             if not isinstance(channel, discord.TextChannel):
                 channel = discord.utils.find(
-                    lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold()
-                    and item.category_id == category.id,
+                    lambda item: item.name.casefold() in {VERIFICATION_CHANNEL_NAME.casefold(), "verificar"},
                     self.guild.text_channels,
                 )
             if channel is None:
-                channel = await self.guild.create_text_channel(
-                    VERIFICATION_CHANNEL_NAME,
-                    category=category,
-                    topic="Eu uso este canal somente para verificar membros.",
-                    reason="Criar canal único de verificação da Peace",
-                )
-            else:
-                await channel.edit(
-                    name=VERIFICATION_CHANNEL_NAME,
-                    category=category,
-                    topic="Eu uso este canal somente para verificar membros.",
-                    reason="Padronizar canal único de verificação da Peace",
-                )
-            await channel.set_permissions(
-                self.guild.default_role,
-                overwrite=private_category,
-                reason="Somente membros Not Verified visualizam a verificação",
-            )
-            await channel.set_permissions(
-                self.guild.me,
-                view_channel=True,
-                read_message_history=True,
-                send_messages=True,
-                manage_messages=True,
-                reason="Peace Tools precisa manter o painel de verificação",
-            )
+                log.warning("Canal de verificação não encontrado; permissões não serão alteradas")
+                return False
 
-            embed = discord.Embed(
-                title="Eu faço a sua verificação",
-                description=(
-                    "Eu uso este canal apenas para confirmar que você não é um bot como eu.\n\n"
-                    "Eu peço que você clique em **Iniciar verificação**, resolva o CAPTCHA e selecione a opção correta. "
-                    "Se a resposta estiver certa, eu libero o cargo **Visitor**.\n\n"
-                    "Eu não aceito mensagens neste canal."
-                ),
-                color=0x5865F2,
-            )
-            embed.set_footer(text=VERIFICATION_PANEL_MARKER)
+            embed = self.verification_panel_embed()
             matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
                 if message.author.id != self.user.id:
@@ -2090,6 +2194,7 @@ class PeaceBot(commands.Bot):
                     content=None,
                     embed=embed,
                     view=VerificationStartView(self),
+                    attachments=[asset(VERIFICATION_ASSET)],
                 )
                 for duplicate in matches[1:]:
                     await duplicate.delete()
@@ -2097,48 +2202,9 @@ class PeaceBot(commands.Bot):
                 await channel.send(
                     embed=embed,
                     view=VerificationStartView(self),
+                    file=asset(VERIFICATION_ASSET),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
-            for target in (category, channel):
-                for subject in list(target.overwrites):
-                    if isinstance(subject, discord.Role) and not subject.is_default():
-                        await target.set_permissions(
-                            subject,
-                            overwrite=None,
-                            reason="Canal de verificação público para membros sem Visitor",
-                        )
-            if not_verified is not None:
-                verification_access = discord.PermissionOverwrite(
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=False,
-                )
-                await category.set_permissions(
-                    not_verified,
-                    overwrite=verification_access,
-                    reason="Not Verified precisa acessar a verificação",
-                )
-                await channel.set_permissions(
-                    not_verified,
-                    overwrite=verification_access,
-                    reason="Not Verified precisa acessar a verificação",
-                )
-            await category.set_permissions(
-                self.guild.me,
-                view_channel=True,
-                read_message_history=True,
-                send_messages=True,
-                manage_messages=True,
-                reason="Peace Tools precisa manter a categoria de verificação",
-            )
-            await channel.set_permissions(
-                self.guild.me,
-                view_channel=True,
-                read_message_history=True,
-                send_messages=True,
-                manage_messages=True,
-                reason="Peace Tools precisa manter o painel de verificação",
-            )
             return True
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao sincronizar a área de verificação")
@@ -2147,93 +2213,85 @@ class PeaceBot(commands.Bot):
     @staticmethod
     def automod_embed() -> discord.Embed:
         embed = discord.Embed(
-            title="PEACE // SPAM CONTROL",
-            description=(
-                "Eu apago toda mensagem enviada aqui e aplico timeout automático de 7 dias.\n"
-                "Este canal não é chat, suporte, ticket ou divulgação."
-            ),
             color=0xE74C3C,
         )
         embed.add_field(
-            name="REGRA",
-            value="Não envie mensagens, links ou divulgação.",
-            inline=False,
+            name="🛡️ DETECT",
+            value="Mensagem identificada",
+            inline=True,
         )
         embed.add_field(
-            name="AÇÃO",
-            value="Mensagem removida e timeout de 7 dias aplicado.",
-            inline=False,
+            name="🧹 REMOVE",
+            value="Mensagem removida",
+            inline=True,
         )
         embed.add_field(
-            name="LIMITE",
-            value="Eu não bano nem expulso por este canal.",
-            inline=False,
+            name="⏱️ TIMEOUT",
+            value="7 dias",
+            inline=True,
         )
         embed.set_image(url=f"attachment://{AUTOMOD_ASSET}")
-        embed.set_footer(text="automod:spam-control")
         return embed
 
+    @staticmethod
+    def is_automod_panel_message(message: discord.Message) -> bool:
+        """Identify old or current bot-owned anti-spam panels without touching user messages."""
+        embed_text: list[str] = []
+        image_urls: list[str] = []
+        for embed in message.embeds:
+            embed_text.extend(
+                value
+                for value in (
+                    embed.title or "",
+                    embed.description or "",
+                    embed.footer.text or "",
+                    *(field.name for field in embed.fields),
+                    *(field.value for field in embed.fields),
+                )
+                if value
+            )
+            if embed.image.url:
+                image_urls.append(embed.image.url)
+        attachments = " ".join(attachment.filename for attachment in message.attachments)
+        searchable = "\n".join((message.content, *embed_text, attachments)).casefold()
+        return (
+            "peace // spam control" in searchable
+            or "contenção automática" in searchable
+            or "<svg" in searchable
+            or "automod.png" in " ".join(image_urls).casefold()
+            or "automod.svg" in searchable
+        )
+
     async def sync_automod_channel(self) -> None:
-        """Mantém o painel visual do canal público de contenção de spam."""
+        """Refresh only the bot-owned anti-spam message; never change channel permissions."""
         if self.guild is None or self.user is None or self.settings.automod_channel_id is None:
             return
         channel = self.guild.get_channel(self.settings.automod_channel_id)
         if not isinstance(channel, discord.TextChannel):
             return
         try:
-            if (
-                channel.name != "spam-control"
-                or channel.category is not None
-                or channel.position != 0
-                or channel.topic != "Spam control only. Do not send messages in this channel."
-            ):
-                await channel.edit(
-                    name="spam-control",
-                    category=None,
-                    position=0,
-                    topic="Spam control only. Do not send messages in this channel.",
-                    reason="Padronização do honeypot de spam",
-                )
-            await channel.set_permissions(
-                self.guild.default_role,
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                reason="Canal público de detecção automática de spam",
-            )
-            bot_messages: list[discord.Message] = []
+            matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
-                if message.author.id == self.user.id:
-                    bot_messages.append(message)
-            panel = next((
-                message for message in bot_messages
-                if message.embeds and (message.embeds[0].footer.text or "") == "automod:spam-control"
-            ), None)
-            if panel is None:
-                panel = next(
-                    (message for message in bot_messages if message.content.startswith("Sistema de Moderação Automática")),
-                    None,
-                )
-            if panel is None:
-                for message in bot_messages:
-                    await message.delete()
-                await channel.send(
-                    embed=self.automod_embed(),
-                    file=asset(AUTOMOD_ASSET),
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-            else:
-                await panel.edit(
+                if message.author.id == self.user.id and self.is_automod_panel_message(message):
+                    matches.append(message)
+            embed = self.automod_embed()
+            if matches:
+                await matches[0].edit(
                     content=None,
-                    embed=self.automod_embed(),
+                    embed=embed,
                     view=None,
                     attachments=[asset(AUTOMOD_ASSET)],
                 )
-                for duplicate in bot_messages:
-                    if duplicate.id != panel.id:
-                        await duplicate.delete()
+                for duplicate in matches[1:]:
+                    await duplicate.delete()
+                return
+            await channel.send(
+                embed=embed,
+                file=asset(AUTOMOD_ASSET),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
         except (discord.Forbidden, discord.HTTPException):
-            log.exception("Falha ao sincronizar o canal de moderação automática")
+            log.exception("Falha ao sincronizar o painel anti-spam")
 
     async def handle_automod_message(self, message: discord.Message) -> None:
         """Apaga a mensagem do honeypot e aplica timeout, sem expulsar nem banir."""
@@ -2603,111 +2661,12 @@ class PeaceBot(commands.Bot):
             log.info("Não foi possível sincronizar o painel de boas-vindas")
 
     async def sync_reception_visibility(self) -> None:
-        if self.guild is None or self.settings.welcome_channel_id is None:
-            return
-        welcome = self.guild.get_channel(self.settings.welcome_channel_id)
-        category = welcome.category if isinstance(welcome, discord.TextChannel) else None
-        if not isinstance(category, discord.CategoryChannel):
-            return
-        visitor = self.guild.get_role(self.settings.visitor_role_id or 0)
-        if visitor is None:
-            log.warning("Cargo de visitante não encontrado para proteger a recepção")
-            return
-        hidden_roles = [role for role in self.guild.roles if not role.is_default() and role.id != visitor.id]
-        targets = [category, *category.channels]
-
-        async def set_if_needed(target, subject, **permissions) -> None:
-            current = target.overwrites_for(subject)
-            if all(getattr(current, key) == value for key, value in permissions.items()):
-                return
-            await target.set_permissions(subject, **permissions, reason="Recepção exclusiva para visitantes")
-
-        try:
-            for target in targets:
-                await set_if_needed(
-                    target,
-                    self.guild.default_role,
-                    view_channel=False,
-                    send_messages=False,
-                )
-                await set_if_needed(
-                    target,
-                    visitor,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=False,
-                )
-                for role in hidden_roles:
-                    await set_if_needed(
-                        target,
-                        role,
-                        view_channel=False,
-                    )
-                if self.guild.me is not None:
-                    await set_if_needed(
-                        target,
-                        self.guild.me,
-                        view_channel=True,
-                        read_message_history=True,
-                        send_messages=True,
-                        manage_messages=True,
-                    )
-        except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível ajustar a visibilidade da recepção")
+        """Channel visibility is operator-managed; the bot does not rewrite it."""
+        return
 
     async def sync_closed_ticket_visibility(self) -> None:
-        """Mantém tickets arquivados legíveis somente pela Íris/bot."""
-        if self.guild is None or self.settings.closed_ticket_category_id is None:
-            return
-        category = self.guild.get_channel(self.settings.closed_ticket_category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return
-        try:
-            async def set_if_needed(target, subject, **permissions) -> None:
-                current = target.overwrites_for(subject)
-                if all(getattr(current, key) == value for key, value in permissions.items()):
-                    return
-                await target.set_permissions(subject, **permissions, reason="Tickets fechados privados para a Íris")
-
-            await set_if_needed(
-                category,
-                self.guild.default_role,
-                view_channel=False,
-                read_message_history=False,
-                send_messages=False,
-            )
-            for role in self.guild.roles:
-                if role.is_default():
-                    continue
-                await set_if_needed(
-                    category,
-                    role,
-                    view_channel=False,
-                    read_message_history=False,
-                    send_messages=False,
-                )
-            if self.guild.me is not None:
-                await set_if_needed(
-                    category,
-                    self.guild.me,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    manage_messages=True,
-                )
-            desired = self.closed_ticket_overwrites()
-            desired_ids = {subject.id for subject in desired}
-            for channel in category.text_channels:
-                current_ids = {subject.id for subject in channel.overwrites}
-                if current_ids == desired_ids and all(
-                    channel.overwrites_for(subject) == overwrite
-                    for subject, overwrite in desired.items()
-                ):
-                    continue
-                await channel.edit(overwrites=desired, reason="Higienização de ticket fechado")
-        except (discord.Forbidden, discord.HTTPException):
-            log.exception("Não foi possível fechar a visibilidade dos tickets arquivados")
+        """Closed-ticket visibility is operator-managed; the bot does not rewrite it."""
+        return
 
     async def sync_ticket_names(self) -> None:
         """Corrige nomes antigos e usa o ID incremental do ticket, não o ID do usuário."""
@@ -2911,23 +2870,9 @@ class PeaceBot(commands.Bot):
                 mentionable=True,
                 reason="Área privada criada para booster Peace",
             )
-            overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-                self.guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
-                private_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-                member: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-            }
-            if self.guild.me is not None:
-                overwrites[self.guild.me] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    connect=True,
-                    speak=True,
-                    move_members=True,
-                    manage_channels=True,
-                )
             voice = await self.guild.create_voice_channel(
                 name=f"├🎧・{member.name}"[:100],
                 category=category,
-                overwrites=overwrites,
                 reason="Call privada automática de booster Peace",
             )
             ordered = sorted(category.voice_channels, key=lambda channel: channel.position)
@@ -2960,6 +2905,7 @@ class PeaceBot(commands.Bot):
         return private_role, voice
 
     async def reconcile_visitor_role(self, member: discord.Member) -> None:
+        """Keep every human without Peace or Visitor behind Not Verified."""
         visitor = role_named(
             member.guild,
             getattr(self.settings, "visitor_role_id", None),
@@ -3219,11 +3165,8 @@ class PeaceBot(commands.Bot):
         )
         self.stop_iris(channel.id)
         closed = self.guild.get_channel(self.settings.closed_ticket_category_id or 0) if self.guild else None
-        overwrites = self.closed_ticket_overwrites()
         if isinstance(closed, discord.CategoryChannel):
-            await channel.edit(category=closed, overwrites=overwrites, reason="Ticket encerrado")
-        else:
-            await channel.edit(overwrites=overwrites, reason="Ticket encerrado")
+            await channel.edit(category=closed, reason="Ticket encerrado")
         await self.disable_ticket_controls(channel)
         if ticket["voice_channel_id"]:
             voice = self.guild.get_channel(int(ticket["voice_channel_id"])) if self.guild else None
@@ -3240,34 +3183,6 @@ class PeaceBot(commands.Bot):
     def ticket_channel_name(self, owner: discord.Member | None, ticket_id: int) -> str:
         base = clean_name(owner.name if owner is not None else "ticket")
         return f"sup-{base}-t{ticket_id:04d}"[:90]
-
-    def closed_ticket_overwrites(self) -> dict[discord.Role | discord.Member, discord.PermissionOverwrite]:
-        if self.guild is None:
-            return {}
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            self.guild.default_role: discord.PermissionOverwrite(
-                view_channel=False,
-                read_message_history=False,
-                send_messages=False,
-            ),
-        }
-        if self.settings.staff_role_id:
-            staff = self.guild.get_role(self.settings.staff_role_id)
-            if staff is not None:
-                overwrites[staff] = discord.PermissionOverwrite(
-                    view_channel=False,
-                    read_message_history=False,
-                    send_messages=False,
-                )
-        if self.guild.me is not None:
-            overwrites[self.guild.me] = discord.PermissionOverwrite(
-                view_channel=True,
-                read_message_history=True,
-                send_messages=True,
-                manage_channels=True,
-                manage_messages=True,
-            )
-        return overwrites
 
     async def member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
         member = guild.get_member(user_id)
@@ -3381,17 +3296,6 @@ class PeaceBot(commands.Bot):
         ranked = await self.staff_support_scores(str(ticket["reason"]))
         if ranked:
             staff, score = ranked[0]
-            try:
-                await channel.set_permissions(
-                    staff,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=True,
-                    manage_messages=True,
-                    reason="Íris encaminhou atendimento por especialidade",
-                )
-            except (discord.Forbidden, discord.HTTPException):
-                log.info("Não consegui liberar o ticket %s para o staff %s", channel.id, staff.id)
             await channel.send(
                 f"{staff.mention}, a Íris encaminhou este atendimento para você por histórico de suporte compatível.",
                 allowed_mentions=discord.AllowedMentions(users=True),
@@ -3940,19 +3844,9 @@ class PeaceBot(commands.Bot):
         if not isinstance(category, discord.CategoryChannel):
             await respond(interaction, "A categoria de tickets não está configurada.")
             return
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-        }
-        if guild.me is not None:
-            overwrites[guild.me] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)
-        if self.settings.staff_role_id:
-            role = guild.get_role(self.settings.staff_role_id)
-            if role is not None:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
         channel: discord.TextChannel | None = None
         try:
-            channel = await guild.create_text_channel(name="sup-abrindo", category=category, overwrites=overwrites, reason="Novo ticket Peace")
+            channel = await guild.create_text_channel(name="sup-abrindo", category=category, reason="Novo ticket Peace")
             ticket_id = self.database.create_ticket(
                 channel_id=channel.id,
                 owner_user_id=interaction.user.id,
