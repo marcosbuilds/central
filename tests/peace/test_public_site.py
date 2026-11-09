@@ -18,18 +18,20 @@ def make_bot(tmp_path):
     return PeaceBot(settings)
 
 
-def run_public_site(tmp_path, request_path):
+def run_public_api(tmp_path, request_path, *, method="GET", headers=None):
     async def scenario():
         bot = make_bot(tmp_path)
-        app = web.Application()
-        app.router.add_get("/", bot.public_site_index)
-        app.router.add_get("/discord", bot.public_site_redirect)
-        app.router.add_get("/healthz", bot.public_site_health)
+        app = bot.public_api_app()
         server = TestServer(app)
         client = TestClient(server)
         await client.start_server()
         try:
-            response = await client.get(request_path, allow_redirects=False)
+            response = await client.request(
+                method,
+                request_path,
+                headers=headers,
+                allow_redirects=False,
+            )
             return response.status, response.headers, await response.text()
         finally:
             await client.close()
@@ -37,29 +39,70 @@ def run_public_site(tmp_path, request_path):
     return asyncio.run(scenario())
 
 
-def test_home_serves_the_public_site_and_logo(tmp_path):
-    status, headers, body = run_public_site(tmp_path, "/")
+def test_acl_does_not_serve_the_netlify_frontend(tmp_path):
+    for path in ("/", "/discord", "/styles.css", "/script.js", "/assets/peace-bird.png"):
+        status, _, _ = run_public_api(tmp_path, path)
 
-    assert status == 200
-    assert headers["Content-Type"].startswith("text/html")
-    assert "Um lugar para" in body
-    assert "/assets/peace-bird.png" in body
+        assert status == 404
 
 
-def test_discord_short_link_redirects_without_caching(tmp_path):
-    status, headers, _ = run_public_site(tmp_path, "/discord")
-
-    assert status == 302
-    assert headers["Location"] == "https://discord.gg/example"
-    assert headers["Cache-Control"] == "no-store"
-
-
-def test_public_site_health_is_machine_readable(tmp_path):
-    status, headers, body = run_public_site(tmp_path, "/healthz")
+def test_backend_health_is_machine_readable(tmp_path):
+    status, headers, body = run_public_api(tmp_path, "/healthz")
 
     assert status == 200
     assert headers["Content-Type"].startswith("application/json")
-    assert body == '{"ok": true, "service": "peace-site"}'
+    assert headers["Cache-Control"] == "no-store"
+    assert body == '{"ok": true, "service": "peace-backend"}'
+
+
+def test_public_api_status_is_bounded_and_tracks_discord_readiness(tmp_path):
+    status, headers, body = run_public_api(
+        tmp_path,
+        "/api/status",
+        headers={"Origin": "https://peacegg.com.br"},
+    )
+
+    assert status == 200
+    assert headers["Content-Type"].startswith("application/json")
+    assert headers["Cache-Control"] == "no-store"
+    assert headers["Access-Control-Allow-Origin"] == "https://peacegg.com.br"
+    assert headers["Vary"] == "Origin"
+    assert body == (
+        '{"service": "peace-backend", "status": "starting", '
+        '"frontend": "netlify", "discord": {"connected": false}}'
+    )
+
+
+def test_public_api_rejects_untrusted_origins_without_reflection(tmp_path):
+    status, headers, _ = run_public_api(
+        tmp_path,
+        "/api/status",
+        headers={"Origin": "https://evil.peacegg.com.br"},
+    )
+
+    assert status == 200
+    assert "Access-Control-Allow-Origin" not in headers
+    assert "Vary" not in headers
+
+
+def test_public_api_supports_only_status_preflight(tmp_path):
+    status, headers, body = run_public_api(
+        tmp_path,
+        "/api/status",
+        method="OPTIONS",
+        headers={"Origin": "https://www.peacegg.com.br"},
+    )
+
+    assert status == 204
+    assert body == ""
+    assert headers["Access-Control-Allow-Origin"] == "https://www.peacegg.com.br"
+    assert headers["Access-Control-Allow-Methods"] == "GET, OPTIONS"
+
+
+def test_public_api_does_not_expose_central_bridge_routes(tmp_path):
+    status, _, _ = run_public_api(tmp_path, "/v1/central/auth/request")
+
+    assert status == 404
 
 
 def test_public_site_files_are_complete():
@@ -71,6 +114,8 @@ def test_public_site_files_are_complete():
     assert (site_root / "styles.css").is_file()
     assert (site_root / "script.js").is_file()
     assert (site_root / "assets" / "peace-bird.png").is_file()
+    assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "data-backend-status" in (site_root / "index.html").read_text(encoding="utf-8")
 
 
 def test_netlify_redirects_keep_the_short_discord_route():
@@ -80,3 +125,4 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/api/status http://api.peacegg.com.br:25072/api/status 200!" in redirects

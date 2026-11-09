@@ -6,7 +6,42 @@
   var menuButton = document.querySelector(".menu-toggle");
   var navigation = document.querySelector("#site-nav");
   var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
+  var backendStatus = document.querySelector("[data-backend-status]");
+  var backendStatusLabel = backendStatus && backendStatus.querySelector("[data-backend-status-label]");
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function setBackendStatus(state, label) {
+    if (!backendStatus || !backendStatusLabel) return;
+    backendStatus.dataset.state = state;
+    backendStatusLabel.textContent = label;
+  }
+
+  function refreshBackendStatus() {
+    if (!backendStatus || !backendStatusLabel || !window.fetch) return;
+
+    window.fetch("/api/status", {
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("status unavailable");
+      return response.json();
+    }).then(function (payload) {
+      var connected = Boolean(
+        payload &&
+        payload.discord &&
+        payload.discord.connected === true &&
+        payload.status === "ok"
+      );
+      setBackendStatus(
+        connected ? "online" : "checking",
+        connected ? "Peace Tools online" : "Sincronizando Peace Tools..."
+      );
+    }).catch(function () {
+      setBackendStatus("offline", "Peace Tools indisponível no momento");
+    });
+  }
+
+  refreshBackendStatus();
 
   function closeMenu() {
     if (!header || !menuButton) return;

@@ -36,6 +36,12 @@ log = logging.getLogger("peace")
 ROOT = Path(__file__).resolve().parent.parent if __package__ == "bot" else Path(__file__).resolve().parent
 CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
 CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
+PUBLIC_API_ORIGINS = frozenset(
+    {
+        "https://peacegg.com.br",
+        "https://www.peacegg.com.br",
+    }
+)
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -1624,12 +1630,12 @@ class PeaceBot(commands.Bot):
         self.iris_context_cache_at = 0.0
         self.iris_context_lock = asyncio.Lock()
         self.iris_context_task: asyncio.Task | None = None
-        self.public_site_runner: web.AppRunner | None = None
+        self.public_api_runner: web.AppRunner | None = None
         self.central_bridge_runner: web.AppRunner | None = None
 
     async def setup_hook(self) -> None:
         self.database.initialize()
-        await self.start_public_site()
+        await self.start_public_api()
         await self.start_central_bridge()
         self.add_view(SetView(self))
         self.add_view(VerificationStartView(self))
@@ -1700,67 +1706,78 @@ class PeaceBot(commands.Bot):
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
 
-    async def public_site_index(self, request: web.Request) -> web.StreamResponse:
-        index_path = self.public_site_root() / "index.html"
-        if not index_path.is_file():
-            return web.Response(status=503, text="Peace site indisponível.")
-        return web.FileResponse(index_path)
+    @staticmethod
+    @web.middleware
+    async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
+        response = await handler(request)
+        origin = request.headers.get("Origin")
+        if origin in PUBLIC_API_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Vary"] = "Origin"
+        return response
 
-    async def public_site_redirect(self, request: web.Request) -> web.StreamResponse:
-        response = web.HTTPFound(self.settings.discord_invite_url)
+    async def public_api_health(self, request: web.Request) -> web.Response:
+        response = web.json_response({"ok": True, "service": "peace-backend"})
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    async def public_site_health(self, request: web.Request) -> web.Response:
-        return web.json_response({"ok": True, "service": "peace-site"})
+    async def public_api_status(self, request: web.Request) -> web.Response:
+        discord_connected = self.is_ready() and not self.is_closed()
+        response = web.json_response(
+            {
+                "service": "peace-backend",
+                "status": "ok" if discord_connected else "starting",
+                "frontend": "netlify",
+                "discord": {"connected": discord_connected},
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
-    @staticmethod
-    def public_site_root() -> Path:
-        """Resolve the site in both the repository and flattened provider layouts."""
-        candidates = (ROOT / "site", ROOT / "bot" / "site")
-        for candidate in candidates:
-            if (candidate / "index.html").is_file():
-                return candidate
-        return candidates[0]
+    async def public_api_options(self, request: web.Request) -> web.Response:
+        response = web.Response(status=204)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
-    async def start_public_site(self) -> None:
-        if not self.settings.site_enabled:
-            log.info("Site público da Peace desativado por configuração")
+    def public_api_app(self) -> web.Application:
+        """Build the intentionally small public API surface used by Netlify."""
+        app = web.Application(middlewares=(self.public_api_cors,))
+        app.router.add_get("/healthz", self.public_api_health)
+        app.router.add_get("/api/status", self.public_api_status)
+        app.router.add_route("OPTIONS", "/api/status", self.public_api_options)
+        return app
+
+    async def start_public_api(self) -> None:
+        if not self.settings.api_enabled:
+            log.info("API pública da Peace desativada por configuração")
             return
-        site_root = self.public_site_root()
-        if not (site_root / "index.html").is_file():
-            log.error("Site público da Peace não iniciado: %s não existe", site_root / "index.html")
-            return
-        app = web.Application()
-        app.router.add_get("/", self.public_site_index)
-        app.router.add_get("/discord", self.public_site_redirect)
-        app.router.add_get("/discord/", self.public_site_redirect)
-        app.router.add_get("/healthz", self.public_site_health)
-        app.router.add_static("/", str(site_root), show_index=False)
+        app = self.public_api_app()
         runner = web.AppRunner(app)
         await runner.setup()
         try:
-            site = web.TCPSite(runner, self.settings.site_host, self.settings.site_port)
+            site = web.TCPSite(runner, self.settings.api_host, self.settings.api_port)
             await site.start()
         except OSError:
             await runner.cleanup()
             log.exception(
-                "Não consegui abrir o site público da Peace em %s:%s",
-                self.settings.site_host,
-                self.settings.site_port,
+                "Não consegui abrir a API pública da Peace em %s:%s",
+                self.settings.api_host,
+                self.settings.api_port,
             )
             return
-        self.public_site_runner = runner
+        self.public_api_runner = runner
         log.info(
-            "Site público da Peace ativo em http://%s:%s",
-            self.settings.site_host,
-            self.settings.site_port,
+            "API pública da Peace ativa em http://%s:%s",
+            self.settings.api_host,
+            self.settings.api_port,
         )
 
-    async def stop_public_site(self) -> None:
-        if self.public_site_runner is not None:
-            await self.public_site_runner.cleanup()
-            self.public_site_runner = None
+    async def stop_public_api(self) -> None:
+        if self.public_api_runner is not None:
+            await self.public_api_runner.cleanup()
+            self.public_api_runner = None
 
     async def start_central_bridge(self) -> None:
         if not is_valid_central_bridge_key(self.settings.central_bridge_key):
@@ -1999,7 +2016,7 @@ class PeaceBot(commands.Bot):
         return web.json_response({"ok": True, "message": "Sessão encerrada."})
 
     async def close(self) -> None:
-        await self.stop_public_site()
+        await self.stop_public_api()
         await self.stop_central_bridge()
         await super().close()
 

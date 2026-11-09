@@ -424,6 +424,30 @@ h2 em {
   line-height: 1.55;
 }
 
+.hero-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  color: var(--quiet);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.hero-status .signal-dot {
+  margin-top: 0;
+}
+
+.hero-status[data-state="online"] .signal-dot {
+  background: #4a765f;
+  box-shadow: 0 0 0 0.28rem rgba(74, 118, 95, 0.14);
+}
+
+.hero-status[data-state="offline"] .signal-dot {
+  background: #9a665b;
+  box-shadow: 0 0 0 0.28rem rgba(154, 102, 91, 0.14);
+}
+
 .signal-dot {
   width: 0.5rem;
   height: 0.5rem;

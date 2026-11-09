@@ -12,9 +12,10 @@ operational logs.
 
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
-to the public Discord invite with a temporary redirect. The invite is public
-by design; bot credentials and provider settings remain outside the
-repository.
+to the public Discord invite with a temporary redirect. It also proxies the
+single read-only `/api/status` route to the fixed ACLClouds API origin, so the
+browser keeps a same-origin HTTPS request. The invite is public by design; bot
+credentials and provider settings remain outside the repository.
 
 The repository-level `netlify.toml` publishes `bot/site` without a build step,
 so a linked Netlify project can reproduce the same artifact from the source
@@ -22,29 +23,32 @@ tree. Production visibility is public; deploy previews remain private.
 
 ## Runtime contract
 
-The provider receives the contents of `bot/` as its runtime root. The startup
-command is therefore `python -u main.py`, and the public site is loaded from
-the sibling `site/` directory in that deployment payload.
+The provider receives the bot package as its runtime root. The startup command
+is therefore `python -u main.py`. `bot/site` remains in the repository because
+it is the Netlify publish directory, but it is not a runtime dependency of the
+ACL process and must not be copied into the ACL deployment as a served site.
 
 | Route | Behavior |
 |---|---|
 | Netlify `/` | serves `bot/site/index.html` with HTTPS |
 | Netlify `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
 | Netlify `/discord` and `/discord/` | redirects to the public Discord invite via `_redirects` |
-| ACLClouds `/` | keeps the backend process route available on the provider port |
-| ACLClouds `/healthz` | returns a small JSON health response for provider checks |
-| ACLClouds `/discord` | keeps the backend redirect for direct provider checks |
+| Netlify `/api/status` | proxies only the public backend status contract |
+| ACLClouds `/healthz` | returns a no-store JSON liveness response |
+| ACLClouds `/api/status` | returns bot readiness without member data or secrets |
+| ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
-The ACLClouds process binds to `PEACE_SITE_HOST` and `PEACE_SITE_PORT`; when
-the provider sets `PORT`, the site uses it as the default.
-`PEACE_SITE_ENABLED=false` disables the listener without changing the bot's
-other services. The public domain does not depend on the ACLClouds bot port.
+The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
+provider sets `PORT`, the API uses it as the default. `PEACE_API_ENABLED=false`
+disables this listener without changing the bot's other services. The public
+domain remains on Netlify; the API origin is used only by the explicit proxy
+rule.
 
 ## Configuration boundary
 
 Production values belong in the provider environment, never in the public
 repository. The committed `.env.example` contains placeholders only for the
-invite URL and site port. The canonical public URL is configured as
+ invite URL and API listener port. The canonical public URL is configured as
 `PEACE_SITE_URL` so Discord buttons and external documentation can reference it
 without coupling the code to a provider hostname.
 
@@ -71,8 +75,9 @@ python -m compileall bot
 git diff --check
 ```
 
-The public route tests exercise the home, redirect, health response, and
-required static files without contacting Discord or a production provider. A
-production smoke check can be run with `curl -I` against the public Netlify
-subdomain and `/discord` redirect; custom-domain TLS remains controlled by
-Netlify after DNS propagation.
+The public route tests exercise the Netlify artifact contract, the ACL API
+allowlist, CORS behavior, health response, and the fixed status proxy rule
+without contacting Discord or a production provider. A production smoke check
+should verify the Netlify homepage, `/discord`, and `/api/status`, followed by
+the direct ACL `/healthz` and `/api/status` routes. Custom-domain TLS remains
+controlled by Netlify after DNS propagation.
