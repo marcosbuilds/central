@@ -91,18 +91,92 @@ def test_captcha_is_rendered_as_a_png_without_plain_text_answer():
     assert b"ABC234" not in image
 
 
-def test_verification_panel_has_compact_side_by_side_steps_and_image():
-    embed = PeaceBot.verification_panel_embed()
+def test_verification_panel_has_banner_steps_and_explanation_card():
+    embeds = PeaceBot.verification_panel_embeds()
+    banner, explanation = embeds
 
-    assert embed.title == "VERIFICAÇÃO"
-    assert embed.description == "Complete as etapas para liberar o acesso."
-    assert [field.name for field in embed.fields] == [
-        "🖱️ INICIAR",
-        "🖼️ LER",
-        "✅ SELECIONAR",
+    assert banner.title == "◈ Verificação de acesso"
+    assert banner.description is None
+    assert [field.name for field in banner.fields] == [
+        "1 · INICIAR",
+        "2 · LER",
+        "3 · SELECIONAR",
     ]
-    assert all(field.inline for field in embed.fields)
-    assert embed.image.url == "attachment://verification.png"
+    assert all(field.inline for field in banner.fields)
+    assert banner.image.url == "attachment://verification.png"
+    assert explanation.title == "Como funciona"
+    assert "cargo **Visitor**" in explanation.description
+    assert {field.name for field in explanation.fields} == {"O que faz", "Por que existe"}
+
+
+def test_set_panel_keeps_status_lines_below_the_banner(tmp_path):
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        set_vagas_abertas=True,
+        developer_vagas_abertas=False,
+        staff_vagas_abertas=False,
+    )
+    bot = PeaceBot(settings)
+
+    banner, details = bot.set_panel_embeds()
+
+    assert banner.image.url == "attachment://set.png"
+    assert [field.name for field in banner.fields] == [
+        "1 · ESCOLHER",
+        "2 · PREENCHER",
+        "3 · ANALISAR",
+    ]
+    assert "Player set: OPEN" in details.fields[0].value
+    assert "Join Developers: CLOSED" in details.fields[0].value
+    assert "Join Staff: CLOSED" in details.fields[0].value
+    assert "Uma nova entrada de Player" in details.fields[1].value
+
+
+def test_log_card_uses_actor_thumbnail_and_vertical_fields():
+    actor = SimpleNamespace(
+        display_avatar=SimpleNamespace(url="https://cdn.example.test/avatar.png"),
+    )
+
+    embed = PeaceBot.log_card(
+        "Ponto iniciado",
+        actor=actor,
+        fields=(("Usuário", "@F⎰ Montenegro 0"), ("Horário", "quarta-feira")),
+    )
+
+    assert embed.title == "Ponto iniciado"
+    assert embed.thumbnail.url == "https://cdn.example.test/avatar.png"
+    assert [field.name for field in embed.fields] == ["Usuário", "Horário"]
+    assert all(not field.inline for field in embed.fields)
+    assert embed.footer.text == "Peace · logs"
+
+
+def test_send_log_routes_embed_to_configured_log_channel(tmp_path):
+    log_channel_id = 987654321012345678
+    settings = SimpleNamespace(
+        database_path=tmp_path / "peace.sqlite3",
+        iris_enabled=False,
+        iris_url="http://127.0.0.1:11435",
+        iris_model="iris-test",
+        log_channel_id=log_channel_id,
+    )
+    bot = PeaceBot(settings)
+    bot.send_to_channel = AsyncMock()
+
+    asyncio.run(
+        bot.send_log(
+            "Ponto iniciado",
+            fields=(("Usuário", "@member"),),
+        )
+    )
+
+    bot.send_to_channel.assert_awaited_once()
+    args, kwargs = bot.send_to_channel.await_args
+    assert args == (log_channel_id,)
+    assert "content" not in kwargs
+    assert kwargs["embed"].title == "Ponto iniciado"
 
 
 def test_spam_control_panel_has_no_legacy_branding_or_markup():

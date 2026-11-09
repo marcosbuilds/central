@@ -1513,8 +1513,13 @@ class ClockEndView(discord.ui.View):
                 return
             seconds = int(row["duration_seconds"] or 0)
             await self.bot.send_log(
-                f"**Ponto finalizado**\nUsuário: {interaction.user.mention}\n"
-                f"Tempo registrado: `{duration_text(seconds)}`\nHorário: <t:{now_unix()}:F>"
+                "Ponto finalizado",
+                actor=interaction.user,
+                fields=(
+                    ("Usuário", interaction.user.mention),
+                    ("Tempo registrado", duration_text(seconds)),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
             )
             await respond(interaction, f"Ponto finalizado: `{duration_text(seconds)}`.")
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
@@ -1538,7 +1543,12 @@ class OperationsView(discord.ui.View):
             if active is None:
                 self.bot.database.start_clock(interaction.user.id)
                 await self.bot.send_log(
-                    f"**Ponto iniciado**\nUsuário: {interaction.user.mention}\nHorário: <t:{now_unix()}:F>"
+                    "Ponto iniciado",
+                    actor=interaction.user,
+                    fields=(
+                        ("Usuário", interaction.user.mention),
+                        ("Horário", f"<t:{now_unix()}:F>"),
+                    ),
                 )
                 await respond(interaction, "Ponto iniciado. Use × Encerrar ponto quando sair.", view=ClockEndView(self.bot))
             else:
@@ -2088,7 +2098,7 @@ class PeaceBot(commands.Bot):
         self,
         channel_id: int | None,
         custom_id: str,
-        embed: discord.Embed,
+        embed: discord.Embed | list[discord.Embed],
         view: discord.ui.View,
         asset_name: str | None = None,
     ) -> bool:
@@ -2098,6 +2108,7 @@ class PeaceBot(commands.Bot):
         if not isinstance(channel, discord.TextChannel):
             log.warning("Canal de painel inválido ou ausente: %s", channel_id)
             return False
+        embeds = embed if isinstance(embed, list) else [embed]
         try:
             matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
@@ -2115,23 +2126,32 @@ class PeaceBot(commands.Bot):
                 message = matches[0]
                 attachments = [asset(asset_name)] if asset_name else []
                 if asset_name:
-                    embed.set_image(url=f"attachment://{asset_name}")
-                await message.edit(content=None, embed=embed, view=view, attachments=attachments)
+                    embeds[0].set_image(url=f"attachment://{asset_name}")
+                payload = self.panel_embed_payload(embeds)
+                await message.edit(content=None, **payload, view=view, attachments=attachments)
                 for duplicate in matches[1:]:
                     await duplicate.delete()
                 return True
             file = asset(asset_name) if asset_name else None
             if asset_name:
-                embed.set_image(url=f"attachment://{asset_name}")
-            await channel.send(embed=embed, view=view, file=file)
+                embeds[0].set_image(url=f"attachment://{asset_name}")
+            payload = self.panel_embed_payload(embeds)
+            await channel.send(**payload, view=view, file=file)
             return True
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao sincronizar painel no canal %s", channel_id)
             return False
 
+    @staticmethod
+    def panel_embed_payload(embeds: list[discord.Embed]) -> dict[str, object]:
+        """Use one or multiple embeds without changing the single-embed API."""
+        if len(embeds) == 1:
+            return {"embed": embeds[0]}
+        return {"embeds": embeds}
+
     async def sync_panels(self) -> bool:
         results = await asyncio.gather(
-            self.sync_one_panel(self.settings.set_channel_id, "peace_pedir_set_open", self.set_panel_embed(), SetView(self), SET_PANEL_ASSET),
+            self.sync_one_panel(self.settings.set_channel_id, "peace_pedir_set_open", self.set_panel_embeds(), SetView(self), SET_PANEL_ASSET),
             self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embed(), SupportView(self), TICKET_PANEL_ASSET),
             self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embed(), OperationsView(self), OPERATIONS_PANEL_ASSET),
         )
@@ -2140,28 +2160,53 @@ class PeaceBot(commands.Bot):
     @staticmethod
     def verification_panel_embed() -> discord.Embed:
         embed = discord.Embed(
-            title="VERIFICAÇÃO",
-            description="Complete as etapas para liberar o acesso.",
-            color=0x5865F2,
+            title="◈ Verificação de acesso",
+            color=0x101827,
         )
         embed.add_field(
-            name="🖱️ INICIAR",
-            value="Clique no botão.",
+            name="1 · INICIAR",
+            value="Use o botão abaixo.",
             inline=True,
         )
         embed.add_field(
-            name="🖼️ LER",
-            value="Leia a imagem.",
+            name="2 · LER",
+            value="Leia o código exibido.",
             inline=True,
         )
         embed.add_field(
-            name="✅ SELECIONAR",
-            value="Escolha o código.",
+            name="3 · SELECIONAR",
+            value="Escolha a opção correta.",
             inline=True,
         )
         embed.set_image(url=f"attachment://{VERIFICATION_ASSET}")
         embed.set_footer(text=VERIFICATION_PANEL_MARKER)
         return embed
+
+    @staticmethod
+    def verification_explanation_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Clique em **Iniciar verificação**, leia o código da imagem e selecione a resposta. "
+                "Quando a escolha estiver correta, eu libero o cargo **Visitor** para você."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Confirma que uma pessoa está controlando a conta antes de liberar o acesso inicial.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Reduz automações e mantém as áreas de visitante protegidas.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def verification_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.verification_panel_embed(), cls.verification_explanation_embed()]
 
     async def sync_verification_panel(self) -> bool:
         """Publish the CAPTCHA panel without changing channel structure or permissions."""
@@ -2182,7 +2227,7 @@ class PeaceBot(commands.Bot):
                 log.warning("Canal de verificação não encontrado; permissões não serão alteradas")
                 return False
 
-            embed = self.verification_panel_embed()
+            embeds = self.verification_panel_embeds()
             matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
                 if message.author.id != self.user.id:
@@ -2190,17 +2235,19 @@ class PeaceBot(commands.Bot):
                 if message.embeds and (message.embeds[0].footer.text or "") == VERIFICATION_PANEL_MARKER:
                     matches.append(message)
             if matches:
+                payload = self.panel_embed_payload(embeds)
                 await matches[0].edit(
                     content=None,
-                    embed=embed,
+                    **payload,
                     view=VerificationStartView(self),
                     attachments=[asset(VERIFICATION_ASSET)],
                 )
                 for duplicate in matches[1:]:
                     await duplicate.delete()
             else:
+                payload = self.panel_embed_payload(embeds)
                 await channel.send(
-                    embed=embed,
+                    **payload,
                     view=VerificationStartView(self),
                     file=asset(VERIFICATION_ASSET),
                     allowed_mentions=discord.AllowedMentions.none(),
@@ -2314,7 +2361,14 @@ class PeaceBot(commands.Bot):
                 actor_user_id=message.author.id,
             )
             await self.send_log(
-                f"Moderação automática: mensagem removida e timeout de 7 dias aplicado em {message.author.mention}."
+                "Moderação automática",
+                actor=message.author,
+                fields=(
+                    ("Usuário", message.author.mention),
+                    ("Ação", "Mensagem removida e timeout de 7 dias aplicado."),
+                    ("Canal", getattr(message.channel, "mention", f"#{message.channel.id}")),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
             )
 
     async def disable_ticket_controls(self, channel: discord.TextChannel) -> None:
@@ -2580,16 +2634,55 @@ class PeaceBot(commands.Bot):
             log.info("Não foi possível limpar os painéis antigos do staff-only")
 
     def set_panel_embed(self) -> discord.Embed:
-        return discord.Embed(
+        embed = discord.Embed(
             title="◈ Request a Peace set",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · ESCOLHER",
+            value="Selecione o caminho da entrevista.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · PREENCHER",
+            value="Informe dados corretos e completos.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · ANALISAR",
+            value="A equipe revisa o pedido.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{SET_PANEL_ASSET}")
+        return embed
+
+    def set_panel_details_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
             description=(
-                "Eu peço que você escolha uma entrevista e preencha tudo com dados corretos.\n\n"
+                "Escolha uma entrevista e preencha os dados solicitados com atenção. "
+                "A equipe usa essas informações para analisar a entrada correta em cada área."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="Disponibilidade",
+            value=(
                 f"Player set: {'OPEN' if application_path_open('player', self.settings) else 'CLOSED'}\n"
                 f"Join Developers: {'OPEN' if application_path_open('developer', self.settings) else 'CLOSED'}\n"
-                f"Join Staff: {'OPEN' if application_path_open('staff', self.settings) else 'CLOSED'}\n\n"
-                "Eu não aceito uma nova entrada de Player para quem já possui Peace."
+                f"Join Staff: {'OPEN' if application_path_open('staff', self.settings) else 'CLOSED'}"
             ),
+            inline=False,
         )
+        embed.add_field(
+            name="Regra",
+            value="Uma nova entrada de Player não é aceita para quem já possui Peace.",
+            inline=False,
+        )
+        return embed
+
+    def set_panel_embeds(self) -> list[discord.Embed]:
+        return [self.set_panel_embed(), self.set_panel_details_embed()]
 
     @staticmethod
     def support_panel_embed() -> discord.Embed:
@@ -3127,8 +3220,33 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível sincronizar entrevistas dev pendentes")
 
-    async def send_log(self, content: str) -> None:
-        await self.send_to_channel(self.settings.log_channel_id, content=content)
+    @staticmethod
+    def log_card(
+        title: str,
+        *,
+        fields: tuple[tuple[str, str], ...],
+        actor: discord.abc.User | None = None,
+    ) -> discord.Embed:
+        embed = discord.Embed(title=title, color=0x2B2D31)
+        for name, value in fields:
+            embed.add_field(name=name, value=value, inline=False)
+        avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
+        if avatar:
+            embed.set_thumbnail(url=str(avatar))
+        embed.set_footer(text="Peace · logs")
+        return embed
+
+    async def send_log(
+        self,
+        title: str,
+        *,
+        fields: tuple[tuple[str, str], ...],
+        actor: discord.abc.User | None = None,
+    ) -> None:
+        await self.send_to_channel(
+            self.settings.log_channel_id,
+            embed=self.log_card(title, fields=fields, actor=actor),
+        )
 
     async def send_to_channel(
         self,
@@ -3891,7 +4009,7 @@ async def panel_set(interaction: discord.Interaction) -> None:
         await respond(interaction, "Use este comando no canal de pedir set.")
         return
     await interaction.response.defer(ephemeral=True)
-    await bot.sync_one_panel(bot.settings.set_channel_id, "peace_pedir_set_open", bot.set_panel_embed(), SetView(bot), SET_PANEL_ASSET)
+    await bot.sync_one_panel(bot.settings.set_channel_id, "peace_pedir_set_open", bot.set_panel_embeds(), SetView(bot), SET_PANEL_ASSET)
     await interaction.followup.send("Painel de set sincronizado.", ephemeral=True)
 
 
@@ -4017,10 +4135,18 @@ async def farm(interaction: discord.Interaction, entregou: discord.Member, receb
     await interaction.response.defer(ephemeral=True)
     bot.database.save_farm(delivered_by=entregou.id, received_by=recebeu.id, delivered_value=valor_entregue, counted_value=valor_contado, goals_paid=metas, paid_days=dias, proof_url=prova, created_by=interaction.user.id)
     await bot.send_log(
-        f"**Farme confirmado**\nEntregou: {entregou.mention}\nRecebeu: {recebeu.mention}\n"
-        f"Valor entregue: `{valor_entregue}`\nValor contado: `{valor_contado}`\n"
-        f"Metas pagas: `{metas}`\nDias quitados: `{dias}`\nProva: {prova or 'não informada'}\n"
-        f"Horário: <t:{now_unix()}:F>"
+        "Farme confirmado",
+        actor=interaction.user,
+        fields=(
+            ("Entregou", entregou.mention),
+            ("Recebeu", recebeu.mention),
+            ("Valor entregue", str(valor_entregue)),
+            ("Valor contado", str(valor_contado)),
+            ("Metas pagas", str(metas)),
+            ("Dias quitados", dias),
+            ("Prova", prova or "não informada"),
+            ("Horário", f"<t:{now_unix()}:F>"),
+        ),
     )
     await interaction.followup.send("Farme registrado nos logs.", ephemeral=True)
 

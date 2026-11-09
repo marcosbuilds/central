@@ -37,6 +37,18 @@ them. Developer and Staff applications remain closed unless their explicit
 flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
 Restart the bot after changing these values.
 
+The persistent set and verification panels use a banner embed followed by a
+short explanation card. Their buttons keep the existing secondary style and
+stable component IDs. The set card shows `Player set`, `Join Developers`, and
+`Join Staff` availability as separate status lines; the verification card
+explains what the CAPTCHA does and why it is required.
+
+Operational action records are sent as embeds to the channel configured by
+`DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use
+vertical fields and include the actor's display avatar when Discord provides
+one. Runtime diagnostics remain application logs and are not copied into the
+server channel.
+
 Human members enter with the visual `Not Verified` role. The bot exposes one
 verification channel, `verify`, only to that role; its persistent panel starts
 a short CAPTCHA image, and only a correct selection grants `Visitor` while
