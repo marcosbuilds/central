@@ -2666,15 +2666,6 @@ class PeaceBot(commands.Bot):
             color=0x101827,
         )
         embed.add_field(
-            name="Disponibilidade",
-            value=(
-                f"Player set: {'OPEN' if application_path_open('player', self.settings) else 'CLOSED'}\n"
-                f"Join Developers: {'OPEN' if application_path_open('developer', self.settings) else 'CLOSED'}\n"
-                f"Join Staff: {'OPEN' if application_path_open('staff', self.settings) else 'CLOSED'}"
-            ),
-            inline=False,
-        )
-        embed.add_field(
             name="Regra",
             value="Uma nova entrada de Player não é aceita para quem já possui Peace.",
             inline=False,

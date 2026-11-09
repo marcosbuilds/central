@@ -39,9 +39,10 @@ Restart the bot after changing these values.
 
 The persistent set and verification panels use a banner embed followed by a
 short explanation card. Their buttons keep the existing secondary style and
-stable component IDs. The set card shows `Player set`, `Join Developers`, and
-`Join Staff` availability as separate status lines; the verification card
-explains what the CAPTCHA does and why it is required.
+stable component IDs. Availability is enforced by the configured application
+paths and the select options, while the set card keeps its explanation focused
+on the flow and its existing Peace rule. The verification card explains what
+the CAPTCHA does and why it is required.
 
 Operational action records are sent as embeds to the channel configured by
 `DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use

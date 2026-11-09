@@ -109,7 +109,7 @@ def test_verification_panel_has_banner_steps_and_explanation_card():
     assert {field.name for field in explanation.fields} == {"O que faz", "Por que existe"}
 
 
-def test_set_panel_keeps_status_lines_below_the_banner(tmp_path):
+def test_set_panel_keeps_explanation_below_the_banner_without_status_block(tmp_path):
     settings = SimpleNamespace(
         database_path=tmp_path / "peace.sqlite3",
         iris_enabled=False,
@@ -129,10 +129,16 @@ def test_set_panel_keeps_status_lines_below_the_banner(tmp_path):
         "2 · PREENCHER",
         "3 · ANALISAR",
     ]
-    assert "Player set: OPEN" in details.fields[0].value
-    assert "Join Developers: CLOSED" in details.fields[0].value
-    assert "Join Staff: CLOSED" in details.fields[0].value
-    assert "Uma nova entrada de Player" in details.fields[1].value
+    assert details.title == "Como funciona"
+    assert [field.name for field in details.fields] == ["Regra"]
+    rendered_details = " ".join(
+        [details.description or "", *(field.name for field in details.fields), *(field.value for field in details.fields)]
+    )
+    assert "Disponibilidade" not in rendered_details
+    assert "Player set: OPEN" not in rendered_details
+    assert "Join Developers: CLOSED" not in rendered_details
+    assert "Join Staff: CLOSED" not in rendered_details
+    assert "Uma nova entrada de Player" in details.fields[0].value
 
 
 def test_log_card_uses_actor_thumbnail_and_vertical_fields():
