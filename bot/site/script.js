@@ -87,6 +87,8 @@
   function refreshServiceStatus() {
     if (body.dataset.page !== "home" || !window.fetch) return;
 
+    var localPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+
     window.fetch("/api/status", {
       headers: { Accept: "application/json" },
       cache: "no-store"
@@ -105,7 +107,10 @@
         connected ? "Peace Tools conectado" : "Peace Tools iniciando"
       );
     }).catch(function () {
-      setServiceStatus("offline", "Peace Tools indisponível no momento");
+      setServiceStatus(
+        localPreview ? "preview" : "offline",
+        localPreview ? "Prévia local · API não conectada" : "Peace Tools indisponível no momento"
+      );
     });
   }
 
@@ -139,9 +144,11 @@
     var previewOpeners = document.querySelectorAll("[data-preview-toggle]");
     var previewCloser = document.querySelector("[data-preview-close]");
     var urlPreview = new URLSearchParams(window.location.search).get("preview") === "member";
+    var lastPreviewOpener = null;
 
-    function openPreview() {
+    function openPreview(event) {
       if (!preview) return;
+      lastPreviewOpener = event && event.currentTarget ? event.currentTarget : lastPreviewOpener;
       preview.hidden = false;
       preview.setAttribute("data-preview-state", "open");
       if (gate) gate.setAttribute("data-preview-state", "open");
@@ -156,6 +163,10 @@
       preview.hidden = true;
       preview.removeAttribute("data-preview-state");
       if (gate) gate.removeAttribute("data-preview-state");
+      if (lastPreviewOpener) {
+        lastPreviewOpener.focus();
+        lastPreviewOpener = null;
+      }
     }
 
     previewOpeners.forEach(function (opener) {

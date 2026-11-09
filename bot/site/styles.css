@@ -254,6 +254,7 @@ h1 { max-width: 72rem; margin-bottom: 1.7rem; font-size: clamp(3.55rem, 7.2vw, 7
 .service-line { max-width: 15rem; }
 .service-line[data-state="online"] .signal-dot { background: var(--positive); box-shadow: 0 0 0 0.28rem rgba(86, 131, 152, 0.14); }
 .service-line[data-state="offline"] .signal-dot { background: var(--warning); box-shadow: 0 0 0 0.28rem rgba(157, 122, 90, 0.14); }
+.service-line[data-state="preview"] .signal-dot { background: var(--brand-blue); box-shadow: 0 0 0 0.28rem rgba(120, 152, 172, 0.14); }
 .signal-dot { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; margin-top: 0.32rem; border-radius: 50%; background: var(--brand-blue-deep); box-shadow: 0 0 0 0.28rem rgba(79, 113, 135, 0.13); }
 
 .hero-art { position: relative; z-index: 1; width: min(100%, 37rem); justify-self: end; }
@@ -275,6 +276,7 @@ h1 { max-width: 72rem; margin-bottom: 1.7rem; font-size: clamp(3.55rem, 7.2vw, 7
 .scroll-cue-line { display: block; width: 4rem; height: 1px; background: var(--line); }
 
 .section { width: 100%; padding: clamp(6.5rem, 12vw, 11rem) max(1.25rem, calc((100vw - var(--content)) / 2)); }
+section[id] { scroll-margin-top: 6rem; }
 .entry { background: linear-gradient(180deg, var(--paper) 0%, #f2f8fb 100%); }
 .section-heading { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(16rem, 0.85fr); align-items: end; gap: 1.4rem 5rem; margin-bottom: 5rem; }
 .section-heading .eyebrow { grid-column: 1 / -1; margin-bottom: -0.75rem; }
@@ -447,6 +449,7 @@ h1 { max-width: 72rem; margin-bottom: 1.7rem; font-size: clamp(3.55rem, 7.2vw, 7
 
 @media (max-width: 760px) {
   html { scroll-behavior: auto; }
+  section[id] { scroll-margin-top: 5rem; }
   .site-header { top: 0.75rem; width: calc(100% - 1.25rem); gap: 0.65rem; padding-left: 0.55rem; }
   .brand-name { font-size: 0.98rem; }
   .header-cta { min-height: 2.7rem; margin-left: auto; padding-left: 0.95rem; font-size: 0.7rem; }
