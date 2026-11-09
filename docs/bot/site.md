@@ -1,14 +1,19 @@
 # Public Peace site
 
-Status: Implemented and deployed. Netlify serves the public static front,
-while ACLClouds remains the runtime for the Discord bot and the backend HTTP
-process.
+Status: tracked implementation; the current redesign is local-only until an
+explicit Netlify publication. Netlify serves the public static front, while
+ACLClouds remains the runtime for the Discord bot and the backend HTTP process.
 
 The public Peace home is a static single-page experience. It keeps the first
 view within the viewport, uses the official Peace bird as a transparent PNG,
-and provides a short public history based on verified community announcements.
-It does not read Discord at request time and does not expose member data or
-operational logs.
+and provides a short public history based on the three curated milestones
+already represented in the tracked site. It does not read Discord at request
+time and does not expose member data or operational logs.
+
+The `/area/` route is the member-area UI shell. Without a future authenticated
+session it shows an access gate. The query string `?preview=member` is a
+local-only visual preview populated with synthetic records; it is not a login,
+does not contact the bot, and must never be described as member data.
 
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
@@ -33,6 +38,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/` | serves `bot/site/index.html` with HTTPS |
 | Netlify `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
 | Netlify `/discord` and `/discord/` | redirects to the public Discord invite via `_redirects` |
+| Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
 | ACLClouds `/api/status` | returns bot readiness without member data or secrets |
@@ -54,16 +60,23 @@ without coupling the code to a provider hostname.
 
 ## Visual and accessibility contract
 
-The page uses a restrained neutral palette, visible focus states, semantic
-headings, a skip link, keyboard-accessible mobile navigation, and a
+The pages use a cool neutral palette derived from the official bird: an
+ice-blue canvas, feather-white surfaces, slate-blue editorial accents, and
+navy action/contrast surfaces. CSS-only radial and line textures echo the
+logo's wing geometry without introducing a second background asset. The pages
+also keep visible focus states, semantic headings, skip links,
+keyboard-accessible mobile navigation and member tabs, and a
 `prefers-reduced-motion` path. The reveal behavior uses `IntersectionObserver`
-with a GSAP enhancement when the CDN is available; it has no continuous scroll
-listener, ticker, or auto-scrolling content.
+without an external motion dependency, continuous scroll listener, ticker, or
+auto-scrolling content.
 
 `bot/site/assets/peace-bird.png` is the official logo extracted from the
 server's public `media` channel and processed into a transparent RGBA PNG. The
 source image is intentionally not committed: only the runtime asset with a
-stable purpose is part of the public tree.
+stable purpose is part of the public tree. The background treatment is
+project-owned CSS derived from the logo's blue-gray feathers and navy outline;
+it is not presented as an original Discord background or a separately sourced
+brand asset.
 
 ## Verification
 
@@ -78,6 +91,8 @@ git diff --check
 The public route tests exercise the Netlify artifact contract, the ACL API
 allowlist, CORS behavior, health response, and the fixed status proxy rule
 without contacting Discord or a production provider. A production smoke check
-should verify the Netlify homepage, `/discord`, and `/api/status`, followed by
-the direct ACL `/healthz` and `/api/status` routes. Custom-domain TLS remains
-controlled by Netlify after DNS propagation.
+should verify the Netlify homepage, `/discord`, `/area/`, and `/api/status`,
+followed by the direct ACL `/healthz` and `/api/status` routes. Custom-domain
+TLS remains controlled by Netlify after DNS propagation. The current redesign
+is not considered production-published until that smoke check is repeated
+after an explicitly authorized deploy.
