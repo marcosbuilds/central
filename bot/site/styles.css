@@ -1006,6 +1006,11 @@ h2 {
   font-weight: 700;
 }
 
+/* Keep the public surface branded by Peace; Netlify's injected badge is not part of the page. */
+#nl-badge-frame {
+  display: none !important;
+}
+
 .js [data-reveal] {
   opacity: 0;
   filter: blur(7px);

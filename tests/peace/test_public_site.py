@@ -116,6 +116,7 @@ def test_public_site_files_are_complete():
     assert (site_root / "assets" / "peace-bird.png").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-backend-status" in (site_root / "index.html").read_text(encoding="utf-8")
+    assert "#nl-badge-frame" in (site_root / "styles.css").read_text(encoding="utf-8")
 
 
 def test_netlify_redirects_keep_the_short_discord_route():
