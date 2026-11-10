@@ -54,6 +54,10 @@ def run() -> None:
         str(role.get("name", role["id"])): int(role.get("position", 0))
         for role in roles
     }
+    role_hoist = {
+        str(role.get("name", role["id"])): bool(role.get("hoist", False))
+        for role in roles
+    }
     guild = api.get(f"/guilds/{settings.guild_id}")
     owner_id = int(guild.get("owner_id", 0))
     bot_member = api.get(f"/guilds/{settings.guild_id}/members/{settings.bot_user_id}")
@@ -88,6 +92,7 @@ def run() -> None:
                 founder_role_names=("Founder Peace", "Founder"),
                 default=str(row["name_prefix"] or "N"),
                 role_positions=role_positions,
+                role_hoist=role_hoist,
             )
             or "N"
         )

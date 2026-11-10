@@ -225,6 +225,15 @@ def role_position_map(roles) -> dict[str, int]:
     }
 
 
+def role_hoist_map(roles) -> dict[str, bool]:
+    """Return Discord's live "display separately" flag by role name."""
+    return {
+        str(role.name): bool(getattr(role, "hoist", False))
+        for role in roles
+        if getattr(role, "name", None) is not None
+    }
+
+
 def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
     """Resolve configured roles while keeping local development configuration optional."""
     if role_id is not None:
@@ -1002,6 +1011,7 @@ class DeveloperApprovalView(discord.ui.View):
             role_names=list(member_roles.values()),
             founder_id=self.bot.settings.founder_user_id,
             role_positions=role_position_map(member_role_objects),
+            role_hoist=role_hoist_map(member_role_objects),
         )
         self.bot.database.update_developer_request(self.request_id, status="approved")
         sent = await self.bot.send_developer_decision_notice(request, peace_id=peace_id)
@@ -1268,7 +1278,8 @@ class ReturnApprovalView(discord.ui.View):
                         role_ids=list(return_roles),
                         role_names=list(return_roles.values()),
                         founder_id=self.bot.settings.founder_user_id,
-                        role_positions=role_position_map(target.roles),
+                        role_positions=role_position_map([*target.roles, peace_role]),
+                        role_hoist=role_hoist_map([*target.roles, peace_role]),
                     )
                 except sqlite3.Error:
                     log.exception("Falha ao registrar a aprovação do retorno Peace %s", self.request_id)
@@ -3757,6 +3768,7 @@ class PeaceBot(commands.Bot):
             founder_role_names=FOUNDER_ROLE_NAMES,
             default=None,
             role_positions=role_position_map(member.roles),
+            role_hoist=role_hoist_map(member.roles),
         )
         if visual_prefix is not None:
             return visual_prefix
@@ -3772,6 +3784,7 @@ class PeaceBot(commands.Bot):
         peace_id: int,
         settings: Settings,
         role_positions: dict[str, int] | None = None,
+        role_hoist: dict[str, bool] | None = None,
     ) -> str | None:
         visual_prefix = prefix_for_roles(
             user_id=member.id,
@@ -3780,6 +3793,7 @@ class PeaceBot(commands.Bot):
             founder_role_names=FOUNDER_ROLE_NAMES,
             default=None,
             role_positions=role_positions,
+            role_hoist=role_hoist,
         )
         has_peace = role_member(member, settings.peace_role_id) or any(
             str(name).casefold().strip() == "peace"
@@ -3806,6 +3820,7 @@ class PeaceBot(commands.Bot):
             return True
         effective_role_names = role_names or [role.name for role in member.roles]
         effective_role_positions = role_position_map(member.roles)
+        effective_role_hoist = role_hoist_map(member.roles)
         has_peace = role_member(member, self.settings.peace_role_id) or any(
             str(name).casefold().strip() == "peace"
             for name in effective_role_names
@@ -3820,6 +3835,7 @@ class PeaceBot(commands.Bot):
                 role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
                 role_positions=effective_role_positions,
+                role_hoist=effective_role_hoist,
             )
         elif peace_id is not None:
             resolved_peace_id = peace_id
@@ -3834,6 +3850,7 @@ class PeaceBot(commands.Bot):
                 role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
                 role_positions=effective_role_positions,
+                role_hoist=effective_role_hoist,
             )
         desired = self.peace_nickname(
             member,
@@ -3841,6 +3858,7 @@ class PeaceBot(commands.Bot):
             peace_id=resolved_peace_id,
             settings=self.settings,
             role_positions=effective_role_positions,
+            role_hoist=effective_role_hoist,
         )
         if desired is None:
             return True
@@ -4747,6 +4765,7 @@ class PeaceBot(commands.Bot):
             peace_id=peace_id,
             settings=self.settings,
             role_positions=role_position_map(desired_roles),
+            role_hoist=role_hoist_map(desired_roles),
         )
         if desired_nick is None:
             raise RuntimeError("não foi possível calcular o apelido Peace")
@@ -4763,6 +4782,7 @@ class PeaceBot(commands.Bot):
             role_names=desired_role_names,
             founder_id=self.settings.founder_user_id,
             role_positions=role_position_map(desired_roles),
+            role_hoist=role_hoist_map(desired_roles),
         )
         return desired_nick
 
@@ -5548,6 +5568,7 @@ class PeaceBot(commands.Bot):
             role_names=[role.name for role in member.roles],
             founder_id=self.settings.founder_user_id,
             role_positions=role_position_map(requested_role_objects),
+            role_hoist=role_hoist_map(requested_role_objects),
         )
         prefix = prefix_for_roles(
             user_id=member.id,
@@ -5556,6 +5577,7 @@ class PeaceBot(commands.Bot):
             founder_role_names=FOUNDER_ROLE_NAMES,
             default="N",
             role_positions=role_position_map(requested_role_objects),
+            role_hoist=role_hoist_map(requested_role_objects),
         ) or "N"
         nickname = f"{prefix} ⎰ {request['in_game_username']} {peace_id}"
         try:
@@ -5580,6 +5602,7 @@ class PeaceBot(commands.Bot):
                 role_names=list(member_roles.values()),
                 founder_id=self.settings.founder_user_id,
                 role_positions=role_position_map(requested_role_objects),
+                role_hoist=role_hoist_map(requested_role_objects),
             )
             self.database.update_set_request_status(request["id"], "approved")
             dm_sent = True

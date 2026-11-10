@@ -52,13 +52,15 @@ def prefix_for_roles(
     founder_role_names: Iterable[str] = (),
     default: str | None = None,
     role_positions: Mapping[str, int] | None = None,
+    role_hoist: Mapping[str, bool] | None = None,
 ) -> str | None:
     """Return the deterministic presentation prefix for a member.
 
     Founder is an explicit product rule. Every other prefix must come from the
-    allowlisted visual-role names above; permission roles are intentionally not
-    matched by substring so names such as ``Dev`` and ``Management`` cannot
-    acquire a prefix by accident.
+    allowlisted visual-role names above; when ``role_hoist`` is supplied by a
+    live Discord snapshot, the matching role must also be displayed separately.
+    Permission roles are intentionally not matched by substring so names such
+    as ``Dev`` and ``Management`` cannot acquire a prefix by accident.
     """
 
     names: set[str] = set()
@@ -79,16 +81,31 @@ def prefix_for_roles(
             positions[candidate] = max(positions.get(candidate, -1), numeric_position)
 
     matches: list[tuple[int, int, str]] = []
+    hoist_by_name: dict[str, bool] = {}
+    for role_name, is_hoisted in (role_hoist or {}).items():
+        for candidate in _role_name_candidates(str(role_name)):
+            hoist_by_name[candidate] = bool(is_hoisted)
+
     for precedence, (prefix, visual_names) in enumerate(VISUAL_ROLE_PREFIXES):
+        matched_names = names.intersection(visual_names)
+        if role_hoist is not None:
+            # Discord's ``hoist`` flag is the live source of truth for whether
+            # a role is presented separately. Access/status roles remain out
+            # of VISUAL_ROLE_PREFIXES, so a hoisted permission role cannot
+            # acquire a prefix by accident.
+            matched_names = {
+                name for name in matched_names if hoist_by_name.get(name, False)
+            }
+        if not matched_names:
+            continue
         matched_positions = [
             positions.get(name, -1)
-            for name in names.intersection(visual_names)
+            for name in matched_names
         ]
-        if matched_positions:
-            # Discord's role position is the source of truth. The explicit
-            # precedence keeps the name-only/database path deterministic when
-            # no live role positions are available.
-            matches.append((max(matched_positions), -precedence, prefix))
+        # Discord's role position is the source of truth. The explicit
+        # precedence keeps the name-only/database path deterministic when
+        # no live role positions are available.
+        matches.append((max(matched_positions), -precedence, prefix))
     if matches:
         return max(matches)[2]
     return default

@@ -245,6 +245,7 @@ def _role_prefix(
     role_names: Iterable[str],
     founder_id: int,
     role_positions: Mapping[str, int] | None = None,
+    role_hoist: Mapping[str, bool] | None = None,
 ) -> str:
     return str(
         prefix_for_roles(
@@ -254,6 +255,7 @@ def _role_prefix(
             founder_role_names=("Founder Peace", "Founder"),
             default="N",
             role_positions=role_positions,
+            role_hoist=role_hoist,
         )
     )
 
@@ -354,6 +356,11 @@ class PeaceDatabase:
                     for role_id, role in roles_by_id.items()
                     if isinstance(role, dict)
                 }
+                role_hoist = {
+                    str(role.get("name", role_id)): bool(role.get("hoist", False))
+                    for role_id, role in roles_by_id.items()
+                    if isinstance(role, dict)
+                }
                 previous = existing.get(user_id)
                 if previous is not None:
                     peace_id = int(previous["peace_id"])
@@ -365,7 +372,7 @@ class PeaceDatabase:
                     peace_id = next_id
                     next_id += 1
                     new_ids += 1
-                prefix = _role_prefix(member, role_names, founder_id, role_positions)
+                prefix = _role_prefix(member, role_names, founder_id, role_positions, role_hoist)
                 connection.execute(
                     """
                     INSERT INTO members (
@@ -1161,6 +1168,7 @@ class PeaceDatabase:
         role_names: list[str],
         founder_id: int,
         role_positions: Mapping[str, int] | None = None,
+        role_hoist: Mapping[str, bool] | None = None,
     ) -> tuple[sqlite3.Row, int, int] | None:
         """Libera o ID reservado e registra um novo ID para o retorno aprovado."""
         self.initialize()
@@ -1205,6 +1213,7 @@ class PeaceDatabase:
                 role_names,
                 founder_id,
                 role_positions,
+                role_hoist,
             )
             connection.execute(
                 """
@@ -1305,6 +1314,7 @@ class PeaceDatabase:
         role_names: list[str],
         founder_id: int,
         role_positions: Mapping[str, int] | None = None,
+        role_hoist: Mapping[str, bool] | None = None,
     ) -> int:
         self.initialize()
         existing = self.get_member(discord_user_id)
@@ -1316,6 +1326,7 @@ class PeaceDatabase:
                     role_names,
                     founder_id,
                     role_positions,
+                    role_hoist,
                 )
                 connection.execute(
                     """
@@ -1339,6 +1350,7 @@ class PeaceDatabase:
                 role_names,
                 founder_id,
                 role_positions,
+                role_hoist,
             )
             timestamp = now_iso()
             connection.execute(

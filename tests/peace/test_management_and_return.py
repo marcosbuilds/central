@@ -24,10 +24,11 @@ from bot.persistence.database import PeaceDatabase
 
 
 class FakeRole:
-    def __init__(self, role_id, name, position):
+    def __init__(self, role_id, name, position, hoist=True):
         self.id = role_id
         self.name = name
         self.position = position
+        self.hoist = hoist
         self.managed = False
 
     def is_default(self):
@@ -131,6 +132,31 @@ def test_highest_live_visual_role_wins_over_prefix_precedence():
         default="N",
         role_positions={"Peace": 20, "Developer": 30, "Streamer": 10, "Staff": 40},
     ) == "D"
+
+
+def test_live_display_separation_filters_visual_prefixes_but_not_founder():
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Developer", "Streamer", "Dev", "Staff"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 4, "Developer": 30, "Streamer": 22, "Dev": 40, "Staff": 50},
+        role_hoist={"Peace": False, "Developer": False, "Streamer": True, "Dev": True, "Staff": True},
+    ) == "S"
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Developer", "Streamer"),
+        founder_user_id=1,
+        role_positions={"Developer": 30, "Streamer": 22},
+        role_hoist={"Developer": True, "Streamer": True},
+    ) == "D"
+    assert prefix_for_roles(
+        user_id=1,
+        role_names=("Founder Peace",),
+        founder_user_id=1,
+        role_positions={"Founder Peace": 100},
+        role_hoist={"Founder Peace": False},
+    ) == "F"
 
 
 def test_member_role_update_rebuilds_nickname_from_live_visual_priority(tmp_path):
