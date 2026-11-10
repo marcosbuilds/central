@@ -42,8 +42,9 @@ command in the bot's direct messages. Founder sees the confirmed `Excluir
 usuário` flow; Management sees `Avisar`, which collects one follow-up DM and
 publishes its Markdown and attachments to the configured announcements channel.
 The two actions have independent role guards and never create or duplicate
-server roles. Founder authorization reuses the existing structural Founder
-role identity; it does not add a second Founder-role environment setting.
+server roles. Founder and Management authorization reuse the existing
+structural role identities; they do not add duplicate role environment
+settings.
 Founder deletion keeps the member in the server, applies or
 preserves `Not Verified`, removes only manageable roles, and releases a valid
 Peace ID only after the Discord changes succeed.

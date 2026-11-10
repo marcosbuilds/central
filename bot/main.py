@@ -245,16 +245,26 @@ def unique_role_named(guild: discord.Guild, role_id: int | None, *names: str) ->
     return matches[0] if len(matches) == 1 else None
 
 
-def canonical_founder_role_id() -> int | None:
-    """Reuse the structural migration's Founder role ID; do not add another env key."""
+def canonical_role_id(role_key: str) -> int | None:
+    """Reuse a structural role ID instead of introducing another environment key."""
     try:
         if __package__ == "bot":
             from .operations.maintenance import ROLE_IDS
         else:
             from operations.maintenance import ROLE_IDS
-        return int(ROLE_IDS["founder"])
+        return int(ROLE_IDS[role_key])
     except (ImportError, KeyError, TypeError, ValueError):
         return None
+
+
+def canonical_founder_role_id() -> int | None:
+    """Reuse the structural migration's Founder role ID; do not add another env key."""
+    return canonical_role_id("founder")
+
+
+def canonical_management_role_id() -> int | None:
+    """Reuse the structural migration's Management role ID when env is absent/stale."""
+    return canonical_role_id("manager")
 
 
 def role_is_manageable(role: discord.Role, bot_member: discord.Member | None) -> bool:
@@ -321,10 +331,11 @@ def founder_role_member(member: discord.Member, settings: Settings) -> bool:
 
 
 def management_role_member(member: discord.Member, settings: Settings) -> bool:
+    role_id = canonical_management_role_id() or getattr(settings, "manager_role_id", None)
     return configured_role_member(
         member,
         member.guild,
-        settings.manager_role_id,
+        role_id,
         *MANAGEMENT_ROLE_NAMES,
     )
 
@@ -2520,7 +2531,9 @@ class PeaceBot(commands.Bot):
             return
         try:
             if message.guild is None:
-                if (message.content or "").strip().casefold() in {"start", "/start"}:
+                dm_command = (message.content or "").strip().casefold()
+                if dm_command in {"start", "/start", "!start"}:
+                    log.info("Menu interno solicitado por DM (usuário %s)", message.author.id)
                     await self.send_dm_start_menu(message.author.id, message.channel)
                 return
             if self.settings.automod_channel_id and message.channel.id == self.settings.automod_channel_id:

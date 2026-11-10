@@ -11,6 +11,7 @@ from bot.main import (
     EntryTypeSelect,
     PeaceBot,
     StartActionView,
+    canonical_management_role_id,
     founder_role_member,
     management_role_member,
     start,
@@ -125,6 +126,33 @@ def test_start_menu_reuses_real_management_role_and_separates_actions(tmp_path):
     management_view = StartActionView(bot, management.id, ("announcement",))
     assert [option.value for option in founder_view.children[0].options] == ["delete_user"]
     assert [option.value for option in management_view.children[0].options] == ["announcement"]
+
+
+def test_management_role_uses_structural_id_when_env_is_not_set(tmp_path):
+    role = FakeRole(1471532522394615850, "Management", 10)
+    guild = SimpleNamespace(
+        roles=[role],
+        get_role=lambda role_id: role if role_id == role.id else None,
+    )
+    member = SimpleNamespace(id=11, roles=[role], guild=guild)
+    config = settings(tmp_path, manager_role_id=None)
+
+    assert canonical_management_role_id() == role.id
+    assert management_role_member(member, config)
+
+
+def test_start_actions_resolve_canonical_management_role_from_real_member(tmp_path):
+    role = FakeRole(1471532522394615850, "Management", 10)
+    guild = SimpleNamespace(
+        roles=[role],
+        get_role=lambda role_id: role if role_id == role.id else None,
+    )
+    member = SimpleNamespace(id=11, roles=[role], guild=guild)
+    bot = PeaceBot(settings(tmp_path, manager_role_id=None))
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=member)
+
+    assert asyncio.run(bot.start_actions_for(member.id)) == ("announcement",)
 
 
 def test_duplicate_role_ids_are_rejected_before_startup():
