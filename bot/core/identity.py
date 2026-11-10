@@ -20,6 +20,7 @@ VISUAL_ROLE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "documentação",
             "documentacao",
             "a is",
+            "ais",
             "ai & bots",
             "ia & bots",
             "general director",

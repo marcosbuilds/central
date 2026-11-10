@@ -85,6 +85,12 @@ def test_access_roles_do_not_create_prefixes_but_visual_roles_do(tmp_path):
     ) == "D"
     assert prefix_for_roles(
         user_id=10,
+        role_names=("AIs",),
+        founder_user_id=1,
+        default="N",
+    ) == "D"
+    assert prefix_for_roles(
+        user_id=10,
         role_names=("Peace", "Streamer"),
         founder_user_id=1,
         default="N",

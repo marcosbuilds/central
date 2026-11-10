@@ -1175,12 +1175,16 @@ class ReturnApprovalView(discord.ui.View):
             await respond(interaction, "O cargo Peace não está configurado; o retorno continua pendente.")
             return
         await interaction.response.defer()
+        return_roles = {role.id: getattr(role, "name", str(role.id)) for role in target.roles}
+        return_roles[peace_role.id] = peace_role.name
+        if visitor_role is not None:
+            return_roles.pop(visitor_role.id, None)
         result = self.bot.database.approve_return_request(
             self.request_id,
             username=target.name,
             nickname=target.nick,
-            role_ids=[role.id for role in target.roles],
-            role_names=[getattr(role, "name", str(role.id)) for role in target.roles],
+            role_ids=list(return_roles),
+            role_names=list(return_roles.values()),
             founder_id=self.bot.settings.founder_user_id,
         )
         if result is None:
@@ -1196,7 +1200,12 @@ class ReturnApprovalView(discord.ui.View):
             if visitor_role is not None and visitor_role in target.roles:
                 await target.remove_roles(visitor_role, reason="Retorno Peace aprovado")
                 removed_visitor = True
-            await self.bot.sync_member_tag(target)
+            await self.bot.sync_member_tag(
+                target,
+                role_names=list(return_roles.values()),
+                peace_id=new_id,
+                strict=True,
+            )
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
             if added_peace:
                 try:
@@ -3394,35 +3403,69 @@ class PeaceBot(commands.Bot):
             return "N"
         return None
 
-    async def sync_member_tag(self, member: discord.Member) -> None:
+    async def sync_member_tag(
+        self,
+        member: discord.Member,
+        *,
+        role_names: list[str] | None = None,
+        peace_id: int | None = None,
+        strict: bool = False,
+    ) -> bool:
         if member.bot:
-            return
-        prefix = self.tag_prefix(member, self.settings)
+            return True
+        effective_role_names = role_names or [role.name for role in member.roles]
+        visual_prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=effective_role_names,
+            founder_user_id=self.settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default=None,
+        )
+        has_peace = role_member(member, self.settings.peace_role_id) or any(
+            str(name).casefold().strip() == "peace"
+            for name in effective_role_names
+        )
+        prefix = visual_prefix or ("N" if has_peace else None)
         if prefix is None:
-            return
+            return True
         record = self.database.get_member(member.id)
-        if record is None and role_member(member, self.settings.peace_role_id):
-            peace_id = self.database.ensure_runtime_member(
+        if record is None and has_peace:
+            resolved_peace_id = self.database.ensure_runtime_member(
                 discord_user_id=member.id,
                 username=member.name,
                 nickname=member.nick,
                 role_ids=[role.id for role in member.roles],
-                role_names=[role.name for role in member.roles],
+                role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
             )
+        elif peace_id is not None:
+            resolved_peace_id = peace_id
         else:
-            peace_id = int(record["peace_id"]) if record is not None else int(str(member.id)[-4:])
+            resolved_peace_id = int(record["peace_id"]) if record is not None else int(str(member.id)[-4:])
+        if record is not None and role_names is None:
+            self.database.ensure_runtime_member(
+                discord_user_id=member.id,
+                username=member.name,
+                nickname=member.nick,
+                role_ids=[role.id for role in member.roles],
+                role_names=effective_role_names,
+                founder_id=self.settings.founder_user_id,
+            )
         current = member.nick or member.display_name or member.name
         match = re.match(r"^[A-Z]\s*⎰\s*(.+?)\s+(\d{1,8})$", current)
         base = match.group(1).strip() if match else current.strip()
         base = re.sub(r"\s+", " ", base)[:20].strip() or member.name[:20]
-        desired = f"{prefix} ⎰ {base} {peace_id}"[:32]
+        desired = f"{prefix} ⎰ {base} {resolved_peace_id}"[:32]
         if member.nick == desired:
-            return
+            return True
         try:
             await member.edit(nick=desired, reason="Padronização da tag Peace")
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível atualizar a tag de %s", member.id)
+            if strict:
+                raise
+            return False
+        return True
 
     async def sync_peace_tags(self) -> None:
         if self.guild is None:
