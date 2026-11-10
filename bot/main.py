@@ -1301,10 +1301,18 @@ class StartActionSelect(discord.ui.Select):
             if member is None:
                 await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
                 return
-            await interaction.response.send_message(
-                "Selecione um ou mais usuários para revisar. A remoção só acontece depois da confirmação final.",
-                view=DeleteUserSelectionView(self.bot, self.owner_id),
-                ephemeral=False,
+            await interaction.response.defer()
+            candidates = await self.bot.delete_peace_candidates()
+            if not candidates:
+                await interaction.edit_original_response(
+                    content="Não encontrei membros com vínculo Peace disponível para revisão no servidor.",
+                    view=None,
+                )
+                return
+            view = DeleteUserSelectionView(self.bot, self.owner_id, candidates)
+            await interaction.edit_original_response(
+                content=view.prompt(),
+                view=view,
             )
             return
         if action == "announcement":
@@ -1324,27 +1332,114 @@ class StartActionView(discord.ui.View):
 
 
 class DeleteUserSelectionView(discord.ui.View):
-    def __init__(self, bot: "PeaceBot", owner_id: int):
+    PAGE_SIZE = 25
+
+    def __init__(self, bot: "PeaceBot", owner_id: int, candidates: list[discord.Member]):
         super().__init__(timeout=300)
         self.bot = bot
         self.owner_id = owner_id
-        self.add_item(
-            DeleteUserSelect(
-                bot,
-                owner_id,
-                custom_id="peace_start_delete_users",
-                placeholder="Selecione usuários",
-                min_values=1,
-                max_values=25,
+        self.candidates = candidates
+        self.page = 0
+        self.select_item = self._build_select()
+        self.add_item(self.select_item)
+        self.previous_button: discord.ui.Button | None = None
+        self.next_button: discord.ui.Button | None = None
+        if self.total_pages > 1:
+            self.previous_button = discord.ui.Button(
+                label="← Anterior",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"peace_start_delete_prev_{owner_id}",
+                row=1,
             )
+            self.next_button = discord.ui.Button(
+                label="Próxima →",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"peace_start_delete_next_{owner_id}",
+                row=1,
+            )
+            self.previous_button.callback = self.previous_page
+            self.next_button.callback = self.next_page
+            self.add_item(self.previous_button)
+            self.add_item(self.next_button)
+            self._refresh_navigation()
+
+    @property
+    def total_pages(self) -> int:
+        return max(1, (len(self.candidates) + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+
+    def prompt(self) -> str:
+        return (
+            "Selecione um ou mais membros do servidor Peace para revisar. "
+            "A remoção só acontece depois da confirmação final.\n\n"
+            f"Página **{self.page + 1}/{self.total_pages}** · "
+            f"{len(self.candidates)} membros com vínculo Peace encontrados."
         )
 
+    def _page_candidates(self) -> list[discord.Member]:
+        start = self.page * self.PAGE_SIZE
+        return self.candidates[start : start + self.PAGE_SIZE]
 
-class DeleteUserSelect(discord.ui.UserSelect):
-    def __init__(self, bot: "PeaceBot", owner_id: int, **kwargs):
-        super().__init__(**kwargs)
+    def _build_select(self) -> "DeleteUserSelect":
+        return DeleteUserSelect(
+            self.bot,
+            self.owner_id,
+            self._page_candidates(),
+            page=self.page,
+            total_pages=self.total_pages,
+        )
+
+    def _refresh_navigation(self) -> None:
+        if self.previous_button is not None:
+            self.previous_button.disabled = self.page == 0
+        if self.next_button is not None:
+            self.next_button.disabled = self.page >= self.total_pages - 1
+
+    async def _change_page(self, interaction: discord.Interaction, delta: int) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este seletor só pode ser usado pelo responsável no PV do bot.")
+            return
+        self.page = min(max(self.page + delta, 0), self.total_pages - 1)
+        self.remove_item(self.select_item)
+        self.select_item = self._build_select()
+        self.add_item(self.select_item)
+        self._refresh_navigation()
+        await interaction.response.edit_message(content=self.prompt(), view=self)
+
+    async def previous_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, -1)
+
+    async def next_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, 1)
+
+
+class DeleteUserSelect(discord.ui.Select):
+    def __init__(
+        self,
+        bot: "PeaceBot",
+        owner_id: int,
+        candidates: list[discord.Member],
+        *,
+        page: int,
+        total_pages: int,
+    ):
         self.bot = bot
         self.owner_id = owner_id
+        options = [
+            discord.SelectOption(
+                label=(member.display_name or member.name or str(member.id))[:100],
+                value=str(member.id),
+                description=f"@{member.name} · Discord {member.id}"[:100],
+            )
+            for member in candidates
+        ]
+        super().__init__(
+            custom_id=f"peace_start_delete_users_{owner_id}_{page}",
+            placeholder=f"Selecione membros · página {page + 1}/{total_pages}",
+            min_values=1,
+            max_values=len(options),
+            options=options,
+            row=0,
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.owner_id or interaction.guild is not None:
@@ -1353,7 +1448,7 @@ class DeleteUserSelect(discord.ui.UserSelect):
         if await self.bot.authorized_dm_member(self.owner_id, "founder") is None:
             await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
             return
-        target_ids = tuple(dict.fromkeys(int(user.id) for user in self.values))
+        target_ids = tuple(dict.fromkeys(int(user_id) for user_id in self.values))
         targets = "\n".join(f"• {mention(user_id)}" for user_id in target_ids)
         await interaction.response.send_message(
             "**Confirmação real**\n"
@@ -4015,6 +4110,35 @@ class PeaceBot(commands.Bot):
         if role_kind == "management":
             return member if management_role_member(member, self.settings) else None
         return None
+
+    async def delete_peace_candidates(self) -> list[discord.Member]:
+        """Return selectable Peace members from the server, not from the DM context."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return []
+
+        members_by_id = {
+            member.id: member
+            for member in getattr(guild, "members", ())
+        }
+        fetch_members = getattr(guild, "fetch_members", None)
+        if callable(fetch_members):
+            try:
+                fetched = [member async for member in fetch_members(limit=None)]
+                members_by_id.update({member.id: member for member in fetched})
+            except (discord.Forbidden, discord.HTTPException):
+                log.info("Não consegui buscar todos os membros para o menu Founder; usando o cache")
+
+        candidates = [
+            member
+            for member in members_by_id.values()
+            if not member.bot
+            and member.id != self.settings.founder_user_id
+            and not founder_role_member(member, self.settings)
+            and role_member(member, self.settings.peace_role_id)
+        ]
+        candidates.sort(key=lambda member: (member.display_name.casefold(), member.id))
+        return candidates
 
     async def start_actions_for(self, user_id: int) -> tuple[str, ...]:
         """Return the internal actions available to a member in the bot's DM."""

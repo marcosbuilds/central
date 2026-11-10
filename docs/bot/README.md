@@ -39,7 +39,9 @@ changing the vacancy setting.
 
 Founder and Management operational actions live behind the global `/start`
 command in the bot's direct messages. Founder sees the confirmed `Excluir
-usuário` flow; Management sees `Avisar`, which collects one follow-up DM and
+usuário` flow; its selector is populated from current Peace members fetched
+from the server (25 per page), rather than from users suggested by the DM
+conversation. Management sees `Avisar`, which collects one follow-up DM and
 publishes its Markdown and attachments to the configured announcements channel.
 The two actions have independent role guards and never create or duplicate
 server roles. Founder and Management authorization reuse the existing

@@ -8,6 +8,7 @@ from bot.core.identity import prefix_for_roles
 from bot.config.settings import _validate_unique_role_ids
 from bot.main import (
     DeleteUserConfirmationView,
+    DeleteUserSelectionView,
     EntryTypeSelect,
     PeaceBot,
     StartActionView,
@@ -153,6 +154,56 @@ def test_start_actions_resolve_canonical_management_role_from_real_member(tmp_pa
     bot.member = AsyncMock(return_value=member)
 
     assert asyncio.run(bot.start_actions_for(member.id)) == ("announcement",)
+
+
+def test_founder_delete_candidates_are_loaded_from_the_peace_server(tmp_path):
+    peace_role = FakeRole(200, "Peace", 10)
+    founder_role = FakeRole(100, "Founder Peace", 30)
+    members = []
+
+    async def fetch_members(limit=None):
+        for member in members:
+            yield member
+
+    guild = SimpleNamespace(
+        roles=[peace_role, founder_role],
+        members=members,
+        get_role=lambda role_id: {
+            peace_role.id: peace_role,
+            founder_role.id: founder_role,
+        }.get(role_id),
+        fetch_members=fetch_members,
+    )
+    members.extend(
+        [
+            FakeMember(1, [peace_role, founder_role], guild),
+            FakeMember(10, [peace_role], guild),
+            FakeMember(11, [peace_role], guild),
+            FakeMember(12, [], guild),
+        ]
+    )
+    bot = PeaceBot(settings(tmp_path))
+    bot.guild = guild
+
+    candidates = asyncio.run(bot.delete_peace_candidates())
+
+    assert [member.id for member in candidates] == [10, 11]
+
+
+def test_founder_delete_selection_paginates_server_candidates(tmp_path):
+    peace_role = FakeRole(200, "Peace", 10)
+    guild = SimpleNamespace(roles=[peace_role])
+    candidates = [FakeMember(100 + index, [peace_role], guild) for index in range(30)]
+    bot = PeaceBot(settings(tmp_path))
+
+    view = DeleteUserSelectionView(bot, 1, candidates)
+    selector = view.children[0]
+
+    assert view.total_pages == 2
+    assert selector.__class__.__name__ == "DeleteUserSelect"
+    assert len(selector.options) == 25
+    assert selector.options[0].value == "100"
+    assert any(getattr(item, "label", "") == "Próxima →" for item in view.children)
 
 
 def test_duplicate_role_ids_are_rejected_before_startup():
