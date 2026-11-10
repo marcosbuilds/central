@@ -160,6 +160,77 @@ def test_start_is_silent_for_members_without_internal_roles(tmp_path):
     interaction.delete_original_response.assert_awaited_once()
 
 
+def test_start_sends_persistent_menu_to_authorized_dm_member(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    bot.authorized_dm_member = AsyncMock(
+        side_effect=lambda _user_id, role_kind: (
+            SimpleNamespace(id=99) if role_kind in {"founder", "management"} else None
+        )
+    )
+    response = SimpleNamespace(
+        is_done=lambda: False,
+        send_message=AsyncMock(),
+        defer=AsyncMock(),
+    )
+    interaction = SimpleNamespace(
+        client=bot,
+        user=SimpleNamespace(id=99),
+        guild=None,
+        response=response,
+    )
+
+    asyncio.run(start.callback(interaction))
+
+    kwargs = response.send_message.call_args.kwargs
+    assert kwargs["ephemeral"] is False
+    assert isinstance(kwargs["view"], StartActionView)
+    assert [option.value for option in kwargs["view"].children[0].options] == [
+        "delete_user",
+        "announcement",
+    ]
+
+
+def test_text_start_in_dm_uses_the_same_authorized_menu(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    bot.authorized_dm_member = AsyncMock(
+        side_effect=lambda _user_id, role_kind: (
+            SimpleNamespace(id=99) if role_kind == "management" else None
+        )
+    )
+    channel = SimpleNamespace(id=123, send=AsyncMock())
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=99, bot=False),
+        guild=None,
+        content="/start",
+        channel=channel,
+        id=456,
+    )
+
+    asyncio.run(bot.on_message(message))
+
+    channel.send.assert_awaited_once()
+    assert [option.value for option in channel.send.call_args.kwargs["view"].children[0].options] == [
+        "announcement",
+    ]
+
+
+def test_text_start_in_dm_stays_silent_without_internal_role(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    bot.authorized_dm_member = AsyncMock(return_value=None)
+    channel = SimpleNamespace(id=123, send=AsyncMock())
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=99, bot=False),
+        guild=None,
+        content="start",
+        channel=channel,
+        id=456,
+    )
+
+    asyncio.run(bot.on_message(message))
+
+    channel.send.assert_not_awaited()
+
+
 def test_request_set_selector_has_only_player_path(tmp_path):
     bot = PeaceBot(settings(tmp_path))
     selector = EntryTypeSelect(bot)

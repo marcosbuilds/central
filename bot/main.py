@@ -1293,7 +1293,7 @@ class StartActionSelect(discord.ui.Select):
             await interaction.response.send_message(
                 "Selecione um ou mais usuários para revisar. A remoção só acontece depois da confirmação final.",
                 view=DeleteUserSelectionView(self.bot, self.owner_id),
-                ephemeral=True,
+                ephemeral=False,
             )
             return
         if action == "announcement":
@@ -1351,7 +1351,7 @@ class DeleteUserSelect(discord.ui.UserSelect):
             "Confirme apenas depois de revisar a lista.",
             view=DeleteUserConfirmationView(self.bot, self.owner_id, target_ids),
             allowed_mentions=discord.AllowedMentions.none(),
-            ephemeral=True,
+            ephemeral=False,
         )
 
 
@@ -1379,7 +1379,7 @@ class DeleteUserConfirmationView(discord.ui.View):
         if actor is None:
             await respond(interaction, "Apenas o cargo Founder pode confirmar esta exclusão.")
             return
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
         results = await self.bot.delete_peace_users(self.target_ids, actor)
         self.disable_all()
         summary = "\n".join(f"• {result}" for result in results) or "Nenhum usuário foi processado."
@@ -2519,6 +2519,10 @@ class PeaceBot(commands.Bot):
         if message.author.bot:
             return
         try:
+            if message.guild is None:
+                if (message.content or "").strip().casefold() in {"start", "/start"}:
+                    await self.send_dm_start_menu(message.author.id, message.channel)
+                return
             if self.settings.automod_channel_id and message.channel.id == self.settings.automod_channel_id:
                 await self.handle_automod_message(message)
                 return
@@ -3999,6 +4003,27 @@ class PeaceBot(commands.Bot):
             return member if management_role_member(member, self.settings) else None
         return None
 
+    async def start_actions_for(self, user_id: int) -> tuple[str, ...]:
+        """Return the internal actions available to a member in the bot's DM."""
+        actions: list[str] = []
+        if await self.authorized_dm_member(user_id, "founder") is not None:
+            actions.append("delete_user")
+        if await self.authorized_dm_member(user_id, "management") is not None:
+            actions.append("announcement")
+        return tuple(actions)
+
+    async def send_dm_start_menu(self, user_id: int, channel: discord.abc.Messageable) -> bool:
+        """Send the persistent DM fallback used when a client sends ``start`` as text."""
+        actions = await self.start_actions_for(user_id)
+        if not actions:
+            return False
+        await channel.send(
+            "Escolha uma ação. Cada opção valida novamente o cargo antes de executar qualquer alteração.",
+            view=StartActionView(self, user_id, actions),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return True
+
     def announcement_channel(self) -> discord.TextChannel | None:
         if self.guild is None:
             return None
@@ -4981,11 +5006,7 @@ async def start(interaction: discord.Interaction) -> None:
     bot = interaction.client
     if not isinstance(bot, PeaceBot):
         return
-    actions: list[str] = []
-    if await bot.authorized_dm_member(interaction.user.id, "founder") is not None:
-        actions.append("delete_user")
-    if await bot.authorized_dm_member(interaction.user.id, "management") is not None:
-        actions.append("announcement")
+    actions = await bot.start_actions_for(interaction.user.id)
     if not actions:
         # Ordinary members must not learn that an internal menu exists.
         await ignore_interaction(interaction)
@@ -4995,8 +5016,8 @@ async def start(interaction: discord.Interaction) -> None:
         return
     await interaction.response.send_message(
         "Escolha uma ação. Cada opção valida novamente o cargo antes de executar qualquer alteração.",
-        view=StartActionView(bot, interaction.user.id, tuple(actions)),
-        ephemeral=True,
+        view=StartActionView(bot, interaction.user.id, actions),
+        ephemeral=False,
     )
 
 
