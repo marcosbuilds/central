@@ -4618,6 +4618,9 @@ class PeaceBot(commands.Bot):
         channel = self.announcement_channel()
         if channel is None:
             return "Não encontrei o canal de avisos configurado. Nenhum aviso foi publicado."
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        if peace_role is None:
+            return "Não encontrei o cargo Peace configurado. Nenhum aviso foi publicado."
         files: list[discord.File] = []
         try:
             for attachment in message.attachments:
@@ -4632,9 +4635,15 @@ class PeaceBot(commands.Bot):
                 None,
             )
             published = await channel.send(
+                content=peace_role.mention,
                 embed=self.announcement_embed(message, actor, image_filename=image_filename),
                 files=files or [],
-                allowed_mentions=discord.AllowedMentions.none(),
+                allowed_mentions=discord.AllowedMentions(
+                    everyone=False,
+                    users=False,
+                    roles=True,
+                    replied_user=False,
+                ),
             )
         except (discord.Forbidden, discord.HTTPException, OSError):
             log.exception("Falha ao publicar aviso no canal %s", channel.id)

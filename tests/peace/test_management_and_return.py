@@ -403,6 +403,7 @@ def test_management_announcement_is_published_as_card_with_markdown_and_image(tm
     channel.send = AsyncMock(return_value=SimpleNamespace(id=700, jump_url="https://discord.com/channels/1/600/700"))
     bot.guild = SimpleNamespace(
         get_channel=lambda channel_id: channel if channel_id == 600 else None,
+        get_role=lambda role_id: SimpleNamespace(id=role_id, mention=f"<@&{role_id}>"),
         text_channels=[channel],
     )
     bot.authorized_dm_member = AsyncMock(return_value=actor)
@@ -411,7 +412,9 @@ def test_management_announcement_is_published_as_card_with_markdown_and_image(tm
     result = asyncio.run(bot.publish_announcement(source, actor))
 
     kwargs = channel.send.call_args.kwargs
-    assert "content" not in kwargs
+    assert kwargs["content"] == "<@&200>"
+    assert kwargs["allowed_mentions"].roles is True
+    assert kwargs["allowed_mentions"].users is False
     assert kwargs["embed"].description == source.content
     assert kwargs["embed"].author.name == "Peace · Avisos"
     assert kwargs["embed"].image.url == "attachment://announcement.png"
