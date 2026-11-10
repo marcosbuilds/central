@@ -12,6 +12,7 @@ credentials are intentionally omitted.
 | `bot/operations/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
 | `bot/persistence/database.py` | SQLite access, tickets, events, onboarding, and requests | active |
 | `bot/config/settings.py` | environment configuration | active |
+| `bot/core/identity.py` | shared access/visual nickname prefix policy | active |
 | `bot/integrations/iris.py` | local support adapter and prompts | available; configuration-controlled |
 | `bot/core/context.py` | redaction, limits, and sanitization | active |
 | `bot/integrations/discord_api.py` | REST used by utilities | active |
@@ -32,6 +33,13 @@ credentials are intentionally omitted.
   permission authority;
 - role migration snapshots affected members before deleting obsolete roles;
 - provider credentials remain in protected environment configuration.
+- `/start` is a DM-only operational menu with separate Founder deletion and
+  Management announcement guards;
+- Request set exposes only the Player path;
+- Peace-ID loss records preserve a reservation reason and optional actor, and
+  returning members are routed directly to `scan-only`;
+- the nickname prefix policy is centralized so access roles cannot acquire
+  presentation prefixes accidentally.
 - the Central bridge stores only challenge and session hashes; the Discord
   access role is rechecked before issuing or validating a session.
 

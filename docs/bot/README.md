@@ -33,9 +33,23 @@ modify roles. The bot applies a role and nickname only after a candidate
 completes the set flow and the panel is open.
 
 Player applications are open by default. Set `SET_VAGAS_ABERTAS=false` to close
-them. Developer and Staff applications remain closed unless their explicit
-flags (`SET_DEVELOPER_VAGAS_ABERTAS` and `SET_STAFF_VAGAS_ABERTAS`) are enabled.
-Restart the bot after changing these values.
+them. The public Request set panel now opens only the Player path; Developer and
+Staff applications are not offered from that panel. Restart the bot after
+changing the vacancy setting.
+
+Founder and Management operational actions live behind the global `/start`
+command in the bot's direct messages. Founder sees the confirmed `Excluir
+usuário` flow; Management sees `Avisar`, which collects one follow-up DM and
+publishes its Markdown and attachments to the configured announcements channel.
+The two actions have independent role guards and never create or duplicate
+server roles. Founder authorization reuses the existing structural Founder
+role identity; it does not add a second Founder-role environment setting.
+Founder deletion keeps the member in the server, applies or
+preserves `Not Verified`, removes only manageable roles, and releases a valid
+Peace ID only after the Discord changes succeed.
+
+When a Player set is approved, the member receives one private welcome card
+with the Peace ID, next step, and the approving member's Discord avatar.
 
 The persistent welcome, set, verification, support, and operations panels use a
 wide banner embed followed by a short explanation card. Their interactive
@@ -50,8 +64,9 @@ again.
 Operational action records are sent as embeds to the channel configured by
 `DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use
 vertical fields and include the actor's display avatar when Discord provides
-one. Runtime diagnostics remain application logs and are not copied into the
-server channel.
+one. Founder actions, announcements, Peace-ID reservations and return
+approvals use the same card format. Runtime diagnostics remain application
+logs and are not copied into the server channel.
 
 Human members enter with the visual `Not Verified` role. The bot exposes one
 verification channel, `verify`, only to that role; its persistent panel starts
@@ -61,6 +76,20 @@ returns the member to the start button for another attempt. Bots and members
 with `Peace` never receive `Visitor` from this flow. A manually approved set
 grants `Peace` and the visual `Intern` role, with no global permissions on the
 latter.
+
+Peace nicknames use `F` for Founder. Access roles such as `Peace`, `Dev`,
+`Staff`, `Management`, and `Visitor` do not create a prefix. Only the explicit
+visual-role allowlist can produce the existing presentation prefixes (`D`, `S`,
+or `R`); the same rule is used by runtime synchronization, snapshots, return
+approval, and `peace-nick`.
+
+When a member leaves with Peace, or loses Peace while remaining in the server,
+the ID is marked `reserved` and is never silently reused. The bot records the
+reason and the actor when Discord's audit log provides one. A returning member
+is sent directly to `scan-only` with a return card explaining the reason; the
+normal Player interview is not opened. The reservation remains in place until
+an authorized review succeeds. If Discord cannot apply the return roles or
+nickname, the database approval is rolled back and the request remains pending.
 
 The bot does not create or edit channel permission overwrites. Channel and
 category permissions are operator-managed; the verification panel only edits

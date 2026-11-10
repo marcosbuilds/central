@@ -580,6 +580,7 @@ def test_approved_set_assigns_peace_and_intern_without_requiring_novato(tmp_path
         guild=guild,
         mention="<@20>",
         display_name="Staff",
+        display_avatar=SimpleNamespace(url="https://cdn.example.test/staff.png"),
     )
     bot.member = AsyncMock(return_value=target)
 
@@ -602,3 +603,7 @@ def test_approved_set_assigns_peace_and_intern_without_requiring_novato(tmp_path
     )
     target.remove_roles.assert_any_await(visitor, reason="Set aprovado: visitante convertido em Peace")
     target.remove_roles.assert_any_await(not_verified, reason="Set aprovado: membro convertido em Peace")
+    dm_kwargs = target.send.await_args.kwargs
+    assert dm_kwargs["embed"].title == "✓ Set aprovado · bem-vindo à Peace"
+    assert dm_kwargs["embed"].thumbnail.url == "https://cdn.example.test/staff.png"
+    assert "Player" in dm_kwargs["embed"].description

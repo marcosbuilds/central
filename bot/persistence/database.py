@@ -9,6 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+if (__package__ or "").startswith("bot."):
+    from ..core.identity import prefix_for_roles
+else:
+    from core.identity import prefix_for_roles
+
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -38,7 +43,9 @@ CREATE TABLE IF NOT EXISTS peace_id_pool (
     peace_id INTEGER PRIMARY KEY,
     released_from TEXT NOT NULL,
     released_at TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'available'
+    status TEXT NOT NULL DEFAULT 'available',
+    release_reason TEXT NOT NULL DEFAULT 'unknown',
+    release_actor_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS peace_return_requests (
@@ -47,6 +54,8 @@ CREATE TABLE IF NOT EXISTS peace_return_requests (
     old_peace_id INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     message_id TEXT,
+    loss_reason TEXT NOT NULL DEFAULT 'unknown',
+    loss_actor_id TEXT,
     created_at TEXT NOT NULL,
     resolved_at TEXT,
     new_peace_id INTEGER
@@ -232,22 +241,15 @@ def _central_token_hash(token: str, salt: str) -> str:
 
 
 def _role_prefix(member: dict[str, Any], role_names: Iterable[str], founder_id: int) -> str:
-    if int(member["user"]["id"]) == founder_id:
-        return "F"
-    names = {name.casefold() for name in role_names}
-    if any("developer" in name or name == "dev" or "diretor" in name for name in names):
-        return "D"
-    if any("streamer" in name for name in names):
-        return "S"
-    if any("recrutador" in name for name in names):
-        return "R"
-    if any(
-        token in name
-        for name in names
-        for token in ("gerência", "gerencia", "gerente", "sublider", "recrutador")
-    ):
-        return "G"
-    return "N"
+    return str(
+        prefix_for_roles(
+            user_id=int(member["user"]["id"]),
+            role_names=role_names,
+            founder_user_id=founder_id,
+            founder_role_names=("Founder Peace", "Founder"),
+            default="N",
+        )
+    )
 
 
 class PeaceDatabase:
@@ -273,6 +275,23 @@ class PeaceDatabase:
             if "status" not in pool_columns:
                 connection.execute(
                     "ALTER TABLE peace_id_pool ADD COLUMN status TEXT NOT NULL DEFAULT 'available'"
+                )
+            if "release_reason" not in pool_columns:
+                connection.execute(
+                    "ALTER TABLE peace_id_pool ADD COLUMN release_reason TEXT NOT NULL DEFAULT 'unknown'"
+                )
+            if "release_actor_id" not in pool_columns:
+                connection.execute(
+                    "ALTER TABLE peace_id_pool ADD COLUMN release_actor_id TEXT"
+                )
+            return_columns = {row["name"] for row in connection.execute("PRAGMA table_info(peace_return_requests)")}
+            if "loss_reason" not in return_columns:
+                connection.execute(
+                    "ALTER TABLE peace_return_requests ADD COLUMN loss_reason TEXT NOT NULL DEFAULT 'unknown'"
+                )
+            if "loss_actor_id" not in return_columns:
+                connection.execute(
+                    "ALTER TABLE peace_return_requests ADD COLUMN loss_actor_id TEXT"
                 )
             developer_columns = {row["name"] for row in connection.execute("PRAGMA table_info(developer_requests)")}
             if developer_columns and "motivation" not in developer_columns:
@@ -699,7 +718,13 @@ class PeaceDatabase:
             )
             connection.commit()
 
-    def release_peace_member(self, discord_user_id: int | str) -> sqlite3.Row | None:
+    def release_peace_member(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str = "vínculo Peace removido manualmente",
+        actor_user_id: int | str | None = None,
+    ) -> sqlite3.Row | None:
         """Remove o vínculo Peace e libera o ID para o próximo set."""
         self.initialize()
         with self.connect() as connection:
@@ -710,16 +735,29 @@ class PeaceDatabase:
                 return None
             connection.execute(
                 """
-                INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                VALUES (?, ?, ?, 'available')
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'available', ?, ?)
                 """,
-                (int(row["peace_id"]), str(discord_user_id), now_iso()),
+                (
+                    int(row["peace_id"]),
+                    str(discord_user_id),
+                    now_iso(),
+                    reason,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                ),
             )
             connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(discord_user_id),))
             connection.commit()
             return row
 
-    def reserve_peace_member(self, discord_user_id: int | str) -> sqlite3.Row | None:
+    def reserve_peace_member(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str = "cargo Peace perdido",
+        actor_user_id: int | str | None = None,
+    ) -> sqlite3.Row | None:
         """Reserva o ID de quem saiu com Peace, sem permitir reutilização automática."""
         self.initialize()
         with self.connect() as connection:
@@ -731,22 +769,103 @@ class PeaceDatabase:
                 return None
             connection.execute(
                 """
-                INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                VALUES (?, ?, ?, 'reserved')
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'reserved', ?, ?)
                 """,
-                (int(row["peace_id"]), str(discord_user_id), now_iso()),
+                (
+                    int(row["peace_id"]),
+                    str(discord_user_id),
+                    now_iso(),
+                    reason,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                ),
             )
             connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(discord_user_id),))
             connection.commit()
             return row
+
+    def recorded_peace_member(self, discord_user_id: int | str, peace_role_id: int) -> bool:
+        """Return whether the local record still proves that the member had Peace."""
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM members
+                JOIN member_roles ON member_roles.discord_user_id = members.discord_user_id
+                WHERE members.discord_user_id = ?
+                  AND members.is_founder = 0
+                  AND members.peace_id > 0
+                  AND member_roles.role_id = ?
+                LIMIT 1
+                """,
+                (str(discord_user_id), str(peace_role_id)),
+            ).fetchone()
+        return row is not None
+
+    def annotate_peace_reservation(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str,
+        actor_user_id: int | str | None = None,
+    ) -> bool:
+        """Append a lifecycle event to an existing reservation without releasing it."""
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT release_reason, release_actor_id
+                FROM peace_id_pool
+                WHERE released_from = ? AND status = 'reserved'
+                ORDER BY released_at DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            previous = str(row["release_reason"] or "unknown")
+            combined = reason if previous in {"", "unknown"} else f"{previous}; {reason}"
+            connection.execute(
+                """
+                UPDATE peace_id_pool
+                SET release_reason = ?,
+                    release_actor_id = COALESCE(release_actor_id, ?),
+                    released_at = ?
+                WHERE released_from = ? AND status = 'reserved'
+                """,
+                (
+                    combined,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                    now_iso(),
+                    str(discord_user_id),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET loss_reason = ?,
+                    loss_actor_id = COALESCE(loss_actor_id, ?)
+                WHERE discord_user_id = ? AND status = 'pending'
+                """,
+                (
+                    combined,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                    str(discord_user_id),
+                ),
+            )
+            connection.commit()
+        return True
 
     def reserve_missing_peace_members(
         self,
         *,
         current_user_ids: set[int],
         peace_role_id: int,
+        current_peace_user_ids: set[int] | None = None,
     ) -> list[sqlite3.Row]:
-        """Reserva registros Peace que não aparecem mais no servidor após um reinício."""
+        """Reserve Peace records missing from the current member/role snapshot."""
         self.initialize()
         reserved: list[sqlite3.Row] = []
         with self.connect() as connection:
@@ -761,14 +880,22 @@ class PeaceDatabase:
             ).fetchall()
             for row in rows:
                 user_id = int(row["discord_user_id"])
-                if user_id in current_user_ids:
+                if user_id in current_user_ids and (
+                    current_peace_user_ids is None or user_id in current_peace_user_ids
+                ):
                     continue
+                reason = (
+                    "registro Peace sem membro após auditoria de inicialização"
+                    if user_id not in current_user_ids
+                    else "cargo Peace ausente após auditoria de inicialização"
+                )
                 connection.execute(
                     """
-                    INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                    VALUES (?, ?, ?, 'reserved')
+                    INSERT OR REPLACE INTO peace_id_pool (
+                        peace_id, released_from, released_at, status, release_reason, release_actor_id
+                    ) VALUES (?, ?, ?, 'reserved', ?, NULL)
                     """,
-                    (int(row["peace_id"]), str(user_id), now_iso()),
+                    (int(row["peace_id"]), str(user_id), now_iso(), reason),
                 )
                 connection.execute(
                     "DELETE FROM members WHERE discord_user_id = ?",
@@ -790,20 +917,79 @@ class PeaceDatabase:
                 (str(discord_user_id),),
             ).fetchone()
 
-    def save_return_request(self, *, discord_user_id: int, old_peace_id: int) -> int:
+    def save_return_request(
+        self,
+        *,
+        discord_user_id: int,
+        old_peace_id: int,
+        loss_reason: str = "retorno Peace pendente",
+        loss_actor_id: int | str | None = None,
+    ) -> int:
         self.initialize()
         timestamp = now_iso()
         with self.connect() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO peace_return_requests (
-                    discord_user_id, old_peace_id, status, created_at
-                ) VALUES (?, ?, 'pending', ?)
+                    discord_user_id, old_peace_id, status, loss_reason, loss_actor_id, created_at
+                ) VALUES (?, ?, 'pending', ?, ?, ?)
                 """,
-                (str(discord_user_id), int(old_peace_id), timestamp),
+                (
+                    str(discord_user_id),
+                    int(old_peace_id),
+                    loss_reason,
+                    str(loss_actor_id) if loss_actor_id is not None else None,
+                    timestamp,
+                ),
             )
             connection.commit()
             return int(cursor.lastrowid)
+
+    def get_or_create_return_request(
+        self,
+        *,
+        discord_user_id: int,
+        old_peace_id: int,
+        loss_reason: str,
+        loss_actor_id: int | str | None = None,
+    ) -> tuple[sqlite3.Row, bool]:
+        """Atomically deduplicate pending return requests for one member."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE discord_user_id = ? AND status = 'pending'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+            if existing is not None:
+                connection.commit()
+                return existing, False
+            cursor = connection.execute(
+                """
+                INSERT INTO peace_return_requests (
+                    discord_user_id, old_peace_id, status, loss_reason, loss_actor_id, created_at
+                ) VALUES (?, ?, 'pending', ?, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(old_peace_id),
+                    loss_reason,
+                    str(loss_actor_id) if loss_actor_id is not None else None,
+                    timestamp,
+                ),
+            )
+            created = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            connection.commit()
+        assert created is not None
+        return created, True
 
     def return_request(self, request_id: int | str) -> sqlite3.Row | None:
         self.initialize()
@@ -931,6 +1117,48 @@ class PeaceDatabase:
             connection.commit()
             return request, int(request["old_peace_id"]), new_peace_id
 
+    def rollback_return_approval(self, request_id: int | str) -> bool:
+        """Restore a pending return when Discord role/nickname mutation failed."""
+        self.initialize()
+        with self.connect() as connection:
+            request = connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE id = ? AND status = 'approved' AND new_peace_id IS NOT NULL
+                """,
+                (str(request_id),),
+            ).fetchone()
+            if request is None:
+                return False
+            connection.execute(
+                "DELETE FROM members WHERE discord_user_id = ?",
+                (str(request["discord_user_id"]),),
+            )
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'reserved', ?, ?)
+                """,
+                (
+                    int(request["old_peace_id"]),
+                    str(request["discord_user_id"]),
+                    now_iso(),
+                    str(request["loss_reason"] or "retorno pendente"),
+                    request["loss_actor_id"],
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET status = 'pending', resolved_at = NULL, new_peace_id = NULL
+                WHERE id = ?
+                """,
+                (str(request_id),),
+            )
+            connection.commit()
+        return True
+
     def ensure_runtime_member(
         self,
         *,
@@ -946,13 +1174,18 @@ class PeaceDatabase:
         if existing:
             with self.connect() as connection:
                 timestamp = now_iso()
+                prefix = _role_prefix(
+                    {"user": {"id": str(discord_user_id)}},
+                    role_names,
+                    founder_id,
+                )
                 connection.execute(
                     """
                     UPDATE members
-                    SET username = ?, nickname = ?, updated_at = ?
+                    SET username = ?, nickname = ?, name_prefix = ?, updated_at = ?
                     WHERE discord_user_id = ?
                     """,
-                    (username, nickname, timestamp, str(discord_user_id)),
+                    (username, nickname, prefix, timestamp, str(discord_user_id)),
                 )
                 connection.execute("DELETE FROM member_roles WHERE discord_user_id = ?", (str(discord_user_id),))
                 connection.executemany(

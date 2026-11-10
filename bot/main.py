@@ -6,6 +6,7 @@ import re
 import asyncio
 import io
 import secrets
+import sqlite3
 import struct
 import time
 import zlib
@@ -21,12 +22,14 @@ from discord.ext import commands
 if __package__ == "bot":
     from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
     from .persistence.database import PeaceDatabase
+    from .core.identity import prefix_for_roles
     from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
     from .core.error_handling import configure_logging, exception_details
 else:
     from config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
     from persistence.database import PeaceDatabase
+    from core.identity import prefix_for_roles
     from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
     from core.error_handling import configure_logging, exception_details
@@ -67,6 +70,11 @@ VERIFICATION_ASSET = "verification.png"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
 INTERN_ROLE_NAME = "Intern"
+FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
+MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
+ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
+MAX_ANNOUNCEMENT_ATTACHMENTS = 10
+MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
 CAPTCHA_FONT = {
     "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
     "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
@@ -222,6 +230,48 @@ def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discor
     )
 
 
+def unique_role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
+    """Resolve an authorization role without guessing among duplicate names."""
+    if role_id is not None:
+        role = guild.get_role(role_id)
+        if role is not None:
+            return role
+    normalized = {name.casefold() for name in names if name}
+    matches = [
+        role
+        for role in getattr(guild, "roles", ())
+        if role.name.casefold() in normalized
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def canonical_founder_role_id() -> int | None:
+    """Reuse the structural migration's Founder role ID; do not add another env key."""
+    try:
+        if __package__ == "bot":
+            from .operations.maintenance import ROLE_IDS
+        else:
+            from operations.maintenance import ROLE_IDS
+        return int(ROLE_IDS["founder"])
+    except (ImportError, KeyError, TypeError, ValueError):
+        return None
+
+
+def role_is_manageable(role: discord.Role, bot_member: discord.Member | None) -> bool:
+    is_default = getattr(role, "is_default", None)
+    if (is_default() if callable(is_default) else bool(is_default)) or getattr(role, "managed", False):
+        return False
+    if bot_member is None:
+        return False
+    bot_top = getattr(bot_member, "top_role", None)
+    if bot_top is None:
+        return False
+    try:
+        return role < bot_top
+    except TypeError:
+        return int(getattr(role, "position", 0)) < int(getattr(bot_top, "position", 0))
+
+
 def needs_visitor(
     member: discord.Member,
     peace_role_id: int | None,
@@ -247,6 +297,35 @@ def reviewer_member(member: discord.Member, settings: Settings) -> bool:
     return (
         staff_member(member, settings)
         or role_member(member, settings.manager_role_id)
+    )
+
+
+def configured_role_member(
+    member: discord.Member,
+    guild: discord.Guild,
+    role_id: int | None,
+    *names: str,
+) -> bool:
+    role = unique_role_named(guild, role_id, *names)
+    return role is not None and role_member(member, role.id)
+
+
+def founder_role_member(member: discord.Member, settings: Settings) -> bool:
+    role_id = getattr(settings, "founder_role_id", None) or canonical_founder_role_id()
+    return configured_role_member(
+        member,
+        member.guild,
+        role_id,
+        *FOUNDER_ROLE_NAMES,
+    )
+
+
+def management_role_member(member: discord.Member, settings: Settings) -> bool:
+    return configured_role_member(
+        member,
+        member.guild,
+        settings.manager_role_id,
+        *MANAGEMENT_ROLE_NAMES,
     )
 
 
@@ -283,6 +362,17 @@ async def respond(interaction: discord.Interaction, content: str, *, ephemeral: 
         await interaction.followup.send(content, **kwargs)
     else:
         await interaction.response.send_message(content, **kwargs)
+
+
+async def ignore_interaction(interaction: discord.Interaction) -> None:
+    """Acknowledge an ignored slash command without exposing a denial message."""
+    if interaction.response.is_done():
+        return
+    try:
+        await interaction.response.defer(ephemeral=True)
+        await interaction.delete_original_response()
+    except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+        log.debug("Não consegui limpar a confirmação silenciosa da interação", exc_info=True)
 
 
 async def dismiss_component_message(interaction: discord.Interaction) -> None:
@@ -594,11 +684,26 @@ class SetView(discord.ui.View):
 
     @discord.ui.button(label="◈ Iniciar entrevista", style=discord.ButtonStyle.secondary, custom_id="peace_pedir_set_open")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_message(
-            "Eu peço que você escolha um caminho de entrada. As opções com **sem vagas** estão fechadas.",
-            view=EntryTypeView(self.bot),
-            ephemeral=True,
-        )
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        if member is not None:
+            reservation = self.bot.database.reserved_peace_id_for_user(member.id)
+            if reservation is not None:
+                await self.bot.ensure_return_request(member)
+                await respond(
+                    interaction,
+                    "Seu ID Peace continua reservado. Eu encaminhei seu retorno diretamente ao **scan-only** para aprovação; não é necessário refazer a entrevista.",
+                )
+                return
+            if role_member(member, self.bot.settings.peace_role_id):
+                await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
+                return
+            if not application_path_open("player", self.bot.settings):
+                await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+                return
+        elif not application_path_open("player", self.bot.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+            return
+        await interaction.response.send_modal(SetModal(self.bot))
 
 
 class EntryTypeSelect(discord.ui.Select):
@@ -613,45 +718,19 @@ class EntryTypeSelect(discord.ui.Select):
                     value="player",
                     description="Player applications are open",
                 ),
-                discord.SelectOption(
-                    label="Join Developers · sem vagas",
-                    value="developer",
-                    description="Developer applications are closed",
-                ),
-                discord.SelectOption(
-                    label="Join Staff · sem vagas",
-                    value="staff",
-                    description="Staff applications are closed",
-                ),
             ],
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        if self.values[0] == "player":
-            if member is not None and role_member(member, self.bot.settings.peace_role_id):
-                await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
-                return
-            if not application_path_open("player", self.bot.settings):
-                await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
-                return
-            await interaction.response.send_modal(SetModal(self.bot))
-            await dismiss_component_message(interaction)
+        if member is not None and role_member(member, self.bot.settings.peace_role_id):
+            await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
             return
-        if self.values[0] == "developer":
-            if not application_path_open("developer", self.bot.settings):
-                await respond(interaction, "Eu mantive as vagas de Developers fechadas no momento.")
-                return
-            if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
-                await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
-                return
-            await interaction.response.send_modal(DeveloperIdentityModal(self.bot))
-            await dismiss_component_message(interaction)
+        if not application_path_open("player", self.bot.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
             return
-        if not application_path_open("staff", self.bot.settings):
-            await respond(interaction, "Eu mantive as vagas de Staff fechadas no momento.")
-            return
-        await respond(interaction, "Eu ainda não configurei a entrevista de Staff.")
+        await interaction.response.send_modal(SetModal(self.bot))
+        await dismiss_component_message(interaction)
 
 
 class EntryTypeView(discord.ui.View):
@@ -1090,32 +1169,72 @@ class ReturnApprovalView(discord.ui.View):
         if target is None:
             await respond(interaction, "O membro não está disponível no servidor.")
             return
+        peace_role = target.guild.get_role(self.bot.settings.peace_role_id)
+        visitor_role = target.guild.get_role(self.bot.settings.visitor_role_id or 0)
+        if peace_role is None:
+            await respond(interaction, "O cargo Peace não está configurado; o retorno continua pendente.")
+            return
         await interaction.response.defer()
         result = self.bot.database.approve_return_request(
             self.request_id,
             username=target.name,
             nickname=target.nick,
             role_ids=[role.id for role in target.roles],
-            role_names=[role.name for role in target.roles],
+            role_names=[getattr(role, "name", str(role.id)) for role in target.roles],
             founder_id=self.bot.settings.founder_user_id,
         )
         if result is None:
             await respond(interaction, "Não consegui localizar a reserva do ID. Verifique o banco e tente novamente.")
             return
         _, old_id, new_id = result
-        peace_role = target.guild.get_role(self.bot.settings.peace_role_id)
-        visitor_role = target.guild.get_role(self.bot.settings.visitor_role_id or 0)
+        added_peace = False
+        removed_visitor = False
         try:
-            if peace_role is not None and peace_role not in target.roles:
+            if peace_role not in target.roles:
                 await target.add_roles(peace_role, reason=f"Retorno Peace aprovado por {member.id}")
+                added_peace = True
             if visitor_role is not None and visitor_role in target.roles:
                 await target.remove_roles(visitor_role, reason="Retorno Peace aprovado")
+                removed_visitor = True
             await self.bot.sync_member_tag(target)
+        except (discord.Forbidden, discord.HTTPException, RuntimeError):
+            if added_peace:
+                try:
+                    await target.remove_roles(peace_role, reason="Rollback de retorno Peace incompleto")
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception("Falha ao reverter o cargo Peace do retorno %s", target.id)
+            if removed_visitor and visitor_role is not None:
+                try:
+                    await target.add_roles(visitor_role, reason="Rollback de retorno Peace incompleto")
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception("Falha ao reverter o cargo Visitor do retorno %s", target.id)
+            self.bot.database.rollback_return_approval(self.request_id)
+            log.info("Retorno Peace %s voltou a pendente após falha no Discord", self.request_id)
+            if interaction.message is not None:
+                pending = self.bot.database.return_request(self.request_id)
+                await interaction.message.edit(
+                    content="⚠️ Não consegui aplicar os cargos do retorno. A solicitação continua pendente e o ID permanece reservado.",
+                    embed=self.bot.return_request_embed(pending) if pending is not None else None,
+                    view=self,
+                )
+            return
+        try:
             await target.send(
                 f"Seu retorno à Peace foi aprovado. O ID antigo `{old_id}` foi liberado e seu novo ID é `{new_id}`."
             )
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não consegui finalizar a tag do retorno Peace %s", target.id)
+        await self.bot.send_log(
+            "Retorno Peace aprovado",
+            actor=member,
+            fields=(
+                ("Usuário", target.mention),
+                ("ID anterior", f"`{old_id}`"),
+                ("Novo ID", f"`{new_id}`"),
+                ("Aprovado por", member.mention),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
         if interaction.message is not None:
             await interaction.message.edit(
                 content=f"ID liberado por {member.mention}. Antigo: `{old_id}` · novo: `{new_id}`.",
@@ -1123,6 +1242,155 @@ class ReturnApprovalView(discord.ui.View):
                 view=None,
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
+
+
+class StartActionSelect(discord.ui.Select):
+    def __init__(self, bot: "PeaceBot", owner_id: int, actions: tuple[str, ...]):
+        self.bot = bot
+        self.owner_id = owner_id
+        options = []
+        if "delete_user" in actions:
+            options.append(
+                discord.SelectOption(
+                    label="Excluir usuário",
+                    value="delete_user",
+                    description="Remove o vínculo Peace e libera o ID com confirmação",
+                )
+            )
+        if "announcement" in actions:
+            options.append(
+                discord.SelectOption(
+                    label="Avisar",
+                    value="announcement",
+                    description="Publica um aviso com Markdown e anexos",
+                )
+            )
+        super().__init__(
+            placeholder="Escolha o que deseja fazer",
+            custom_id="peace_start_action",
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este menu só pode ser usado pelo responsável no PV do bot.")
+            return
+        action = self.values[0]
+        if action == "delete_user":
+            member = await self.bot.authorized_dm_member(self.owner_id, "founder")
+            if member is None:
+                await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
+                return
+            await interaction.response.send_message(
+                "Selecione um ou mais usuários para revisar. A remoção só acontece depois da confirmação final.",
+                view=DeleteUserSelectionView(self.bot, self.owner_id),
+                ephemeral=True,
+            )
+            return
+        if action == "announcement":
+            member = await self.bot.authorized_dm_member(self.owner_id, "management")
+            if member is None:
+                await respond(interaction, "Apenas o cargo Management pode publicar avisos.")
+                return
+            await self.bot.collect_announcement(interaction, member)
+            return
+        await respond(interaction, "Ação desconhecida. Abra o `/start` novamente.")
+
+
+class StartActionView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", owner_id: int, actions: tuple[str, ...]):
+        super().__init__(timeout=300)
+        self.add_item(StartActionSelect(bot, owner_id, actions))
+
+
+class DeleteUserSelectionView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", owner_id: int):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.owner_id = owner_id
+        self.add_item(
+            DeleteUserSelect(
+                bot,
+                owner_id,
+                custom_id="peace_start_delete_users",
+                placeholder="Selecione usuários",
+                min_values=1,
+                max_values=25,
+            )
+        )
+
+
+class DeleteUserSelect(discord.ui.UserSelect):
+    def __init__(self, bot: "PeaceBot", owner_id: int, **kwargs):
+        super().__init__(**kwargs)
+        self.bot = bot
+        self.owner_id = owner_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este seletor só pode ser usado pelo responsável no PV do bot.")
+            return
+        if await self.bot.authorized_dm_member(self.owner_id, "founder") is None:
+            await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
+            return
+        target_ids = tuple(dict.fromkeys(int(user.id) for user in self.values))
+        targets = "\n".join(f"• {mention(user_id)}" for user_id in target_ids)
+        await interaction.response.send_message(
+            "**Confirmação real**\n"
+            "Vou remover os cargos gerenciáveis, manter ou aplicar `Not Verified`, conservar o membro no servidor e liberar o ID Peace somente para registros válidos.\n\n"
+            f"Usuários selecionados:\n{targets}\n\n"
+            "Confirme apenas depois de revisar a lista.",
+            view=DeleteUserConfirmationView(self.bot, self.owner_id, target_ids),
+            allowed_mentions=discord.AllowedMentions.none(),
+            ephemeral=True,
+        )
+
+
+class DeleteUserConfirmationView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", owner_id: int, target_ids: tuple[int, ...]):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.owner_id = owner_id
+        self.target_ids = target_ids
+
+    def disable_all(self) -> None:
+        for item in self.children:
+            item.disabled = True
+
+    @discord.ui.button(
+        label="Confirmar exclusão",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_start_delete_confirm",
+    )
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Esta confirmação só pode ser usada pelo responsável no PV do bot.")
+            return
+        actor = await self.bot.authorized_dm_member(self.owner_id, "founder")
+        if actor is None:
+            await respond(interaction, "Apenas o cargo Founder pode confirmar esta exclusão.")
+            return
+        await interaction.response.defer(ephemeral=True)
+        results = await self.bot.delete_peace_users(self.target_ids, actor)
+        self.disable_all()
+        summary = "\n".join(f"• {result}" for result in results) or "Nenhum usuário foi processado."
+        await interaction.edit_original_response(
+            content=f"**Resultado da exclusão**\n{summary}",
+            view=self,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    @discord.ui.button(
+        label="Cancelar",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_start_delete_cancel",
+    )
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id:
+            await respond(interaction, "Esta confirmação pertence a outro Founder.")
+            return
+        self.disable_all()
+        await interaction.response.edit_message(content="Operação cancelada. Nenhum vínculo foi alterado.", view=self)
 
 
 class WelcomeView(discord.ui.View):
@@ -1624,7 +1892,9 @@ class PeaceBot(commands.Bot):
         self.set_approval_views: dict[int, SetApprovalView] = {}
         self.return_approval_views: dict[int, ReturnApprovalView] = {}
         self.developer_approval_views: dict[int, DeveloperApprovalView] = {}
+        self.announcement_collectors: set[int] = set()
         self.booster_tasks: set[int] = set()
+        self.managed_peace_role_removals: set[int] = set()
         self.reception_visibility_synced = False
         self.iris_context_cache = ""
         self.iris_context_cache_at = 0.0
@@ -1651,6 +1921,7 @@ class PeaceBot(commands.Bot):
         for row in self.database.pending_developer_requests():
             self.developer_approval_view(int(row["id"]))
         try:
+            await self.tree.sync()
             await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         except discord.HTTPException:
             log.exception("Falha ao sincronizar comandos slash")
@@ -1673,17 +1944,19 @@ class PeaceBot(commands.Bot):
         specs = (
             (
                 NOT_VERIFIED_ROLE_NAME,
+                getattr(self.settings, "not_verified_role_id", None),
                 ("Não verificado", "Nao verificado"),
                 discord.Colour(0x7F8C8D),
             ),
             (
                 INTERN_ROLE_NAME,
+                getattr(self.settings, "intern_role_id", None),
                 ("Estagiário", "Estagiario"),
                 discord.Colour(0x1ABC9C),
             ),
         )
-        for name, aliases, colour in specs:
-            role = role_named(self.guild, None, name, *aliases)
+        for name, role_id, aliases, colour in specs:
+            role = role_named(self.guild, role_id, name, *aliases)
             if role is None:
                 await self.guild.create_role(
                     name=name,
@@ -2098,17 +2371,111 @@ class PeaceBot(commands.Bot):
             await self.sync_member_tag(member)
         await self.ensure_booster_space(member)
 
-    async def on_member_remove(self, member: discord.Member) -> None:
-        if member.bot or not role_member(member, self.settings.peace_role_id):
-            return
-        reserved = self.database.reserve_peace_member(member.id)
+    async def peace_role_removal_actor(
+        self,
+        before: discord.Member,
+        after: discord.Member,
+    ) -> discord.abc.User | None:
+        """Best-effort audit-log lookup; never guess an actor from stale entries."""
+        guild = after.guild
+        bot_member = getattr(guild, "me", None)
+        permissions = getattr(bot_member, "guild_permissions", None)
+        if bot_member is None or not getattr(permissions, "view_audit_log", False):
+            return None
+
+        def role_ids(value) -> set[int]:
+            roles = getattr(value, "roles", value)
+            if roles is None:
+                return set()
+            return {int(getattr(role, "id", role)) for role in roles}
+
+        try:
+            async for entry in guild.audit_logs(
+                limit=15,
+                action=discord.AuditLogAction.member_role_update,
+            ):
+                target = getattr(entry, "target", None)
+                if getattr(target, "id", None) != after.id:
+                    continue
+                created_at = getattr(entry, "created_at", None)
+                if created_at is None or datetime.now(timezone.utc) - created_at > timedelta(seconds=45):
+                    continue
+                for change in getattr(entry, "changes", ()):
+                    if getattr(change, "key", None) != "roles":
+                        continue
+                    before_ids = role_ids(getattr(change, "before", None))
+                    after_ids = role_ids(getattr(change, "after", None))
+                    if not before_ids and not after_ids:
+                        continue
+                    if self.settings.peace_role_id in before_ids and self.settings.peace_role_id not in after_ids:
+                        actor = getattr(entry, "user", None)
+                        if actor is not None:
+                            return actor
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("Não consegui consultar o audit log para a remoção de Peace de %s", after.id)
+        return None
+
+    async def reserve_member_peace(
+        self,
+        member: discord.Member,
+        *,
+        reason: str,
+        actor: discord.abc.User | None = None,
+    ) -> sqlite3.Row | None:
+        reserved = self.database.reserve_peace_member(
+            member.id,
+            reason=reason,
+            actor_user_id=getattr(actor, "id", None),
+        )
         if reserved is not None:
-            log.info("ID Peace %s reservado para o retorno de %s", reserved["peace_id"], member.id)
+            await self.send_log(
+                "ID Peace reservado",
+                actor=actor or member,
+                fields=(
+                    ("Usuário", member.mention),
+                    ("ID reservado", f"`{int(reserved['peace_id'])}`"),
+                    ("Motivo", reason),
+                    ("Quem", actor.mention if actor is not None else "não identificado"),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
+            )
+        return reserved
+
+    async def on_member_remove(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+        existing_reservation = self.database.reserved_peace_id_for_user(member.id)
+        if existing_reservation is not None:
+            self.database.annotate_peace_reservation(
+                member.id,
+                reason="membro também saiu do servidor",
+            )
+            return
+        if not role_member(member, self.settings.peace_role_id) and not self.database.recorded_peace_member(
+            member.id,
+            self.settings.peace_role_id,
+        ):
+            return
+        await self.reserve_member_peace(
+            member,
+            reason="membro saiu do servidor enquanto o vínculo Peace estava ativo",
+        )
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         if before.roles != after.roles:
             before_role_ids = {role.id for role in before.roles}
             after_role_ids = {role.id for role in after.roles}
+            peace_removed = (
+                self.settings.peace_role_id in before_role_ids
+                and self.settings.peace_role_id not in after_role_ids
+            )
+            if peace_removed and after.id not in self.managed_peace_role_removals:
+                actor = await self.peace_role_removal_actor(before, after)
+                await self.reserve_member_peace(
+                    after,
+                    reason="cargo Peace retirado enquanto o membro permaneceu no servidor",
+                    actor=actor,
+                )
             visitor = role_named(
                 after.guild,
                 getattr(self.settings, "visitor_role_id", None),
@@ -3014,34 +3381,15 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def tag_prefix(member: discord.Member, settings: Settings) -> str | None:
-        if member.id == settings.founder_user_id:
-            return "F"
-        names = {role.name.casefold() for role in member.roles}
-        if any(
-            name == "dev"
-            or any(
-                marker in name
-                for marker in (
-                    "developer",
-                    "desenvolvedor",
-                    "desenvolvimento",
-                    "frontend",
-                    "backend",
-                    "documentation",
-                    "documentação",
-                    "documentacao",
-                    "ais",
-                    "ai & bots",
-                    "ia & bots",
-                )
-            )
-            for name in names
-        ):
-            return "D"
-        if any("streamer" in name for name in names):
-            return "S"
-        if any("gerente" in name or "gerência" in name or "gerencia" in name for name in names):
-            return "G"
+        visual_prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=(role.name for role in member.roles),
+            founder_user_id=settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default=None,
+        )
+        if visual_prefix is not None:
+            return visual_prefix
         if role_member(member, settings.peace_role_id):
             return "N"
         return None
@@ -3088,9 +3436,15 @@ class PeaceBot(commands.Bot):
         if self.guild is None:
             return
         current_ids = {member.id for member in self.guild.members}
+        current_peace_ids = {
+            member.id
+            for member in self.guild.members
+            if role_member(member, self.settings.peace_role_id)
+        }
         reserved = self.database.reserve_missing_peace_members(
             current_user_ids=current_ids,
             peace_role_id=self.settings.peace_role_id,
+            current_peace_user_ids=current_peace_ids,
         )
         if reserved:
             log.info("IDs Peace reservados após auditoria: %s", len(reserved))
@@ -3101,28 +3455,31 @@ class PeaceBot(commands.Bot):
         reservation = self.database.reserved_peace_id_for_user(member.id)
         if reservation is None:
             return False
-        request = self.database.pending_return_request_for_user(member.id)
-        if request is None:
-            request_id = self.database.save_return_request(
-                discord_user_id=member.id,
-                old_peace_id=int(reservation["peace_id"]),
-            )
-            request = self.database.return_request(request_id)
-            if request is not None:
-                await self.publish_return_request(request)
+        request, created = self.database.get_or_create_return_request(
+            discord_user_id=member.id,
+            old_peace_id=int(reservation["peace_id"]),
+            loss_reason=str(reservation["release_reason"] or "motivo não registrado"),
+            loss_actor_id=reservation["release_actor_id"],
+        )
+        if created:
+            await self.publish_return_request(request)
         return True
 
     @staticmethod
     def return_request_embed(request) -> discord.Embed:
+        actor_id = request["loss_actor_id"]
+        actor = mention(actor_id) if actor_id else "não identificado"
         embed = discord.Embed(
             title="Retorno Peace pendente · scan-only",
             description=(
                 f"**Membro:** {mention(request['discord_user_id'])}\n"
                 f"**ID reservado:** `{int(request['old_peace_id'])}`\n\n"
-                "Este membro voltou ao servidor depois de sair com acesso Peace. "
-                "O ID antigo está reservado e não será usado por outra pessoa.\n\n"
-                "Use **Liberar ID** somente após conferir o retorno. A ação libera o ID antigo "
-                "para o pool e gera um novo ID para este membro."
+                f"**Motivo registrado:** {redact(str(request['loss_reason'] or 'não informado'), limit=500)}\n"
+                f"**Quem retirou:** {actor}\n"
+                f"**Registrado em:** {redact(str(request['created_at']), limit=40)}\n\n"
+                "Este retorno foi enviado diretamente ao scan-only. Não refaça a entrevista de Player. "
+                "Use **Liberar ID** somente após conferir o histórico e a situação atual. A ação libera o ID antigo "
+                "para o pool e registra um novo ID para este membro."
             ),
             color=0xF1C40F,
         )
@@ -3312,6 +3669,32 @@ class PeaceBot(commands.Bot):
         embed.set_footer(text=f"set_request:{request['id']}")
         return embed
 
+    @staticmethod
+    def set_approved_dm_embed(request, recruiter: discord.Member, peace_id: int) -> discord.Embed:
+        """Build the private welcome card sent after a Player set is approved."""
+        approver_name = getattr(recruiter, "display_name", None) or getattr(recruiter, "name", "Staff")
+        avatar = getattr(getattr(recruiter, "display_avatar", None), "url", None)
+        embed = discord.Embed(
+            title="✓ Set aprovado · bem-vindo à Peace",
+            description=(
+                f"Seu acesso de **Player** foi liberado, {redact(str(request['in_game_username']), limit=80)}.\n\n"
+                "O time aprovou sua entrada e seu vínculo já está ativo no servidor. "
+                "Leia as regras, acompanhe os avisos e participe da comunidade."
+            ),
+            color=0x2B2D42,
+        )
+        embed.add_field(name="Seu ID Peace", value=f"`{peace_id}`", inline=True)
+        embed.add_field(name="Aprovado por", value=redact(str(approver_name), limit=80), inline=True)
+        embed.add_field(
+            name="Próximo passo",
+            value="Leia as regras e siga as orientações dos canais de entrada. Se precisar, abra um ticket de suporte.",
+            inline=False,
+        )
+        if avatar:
+            embed.set_thumbnail(url=str(avatar))
+        embed.set_footer(text="Peace · Player set")
+        return embed
+
     async def sync_pending_set_panels(self) -> None:
         if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
             return
@@ -3489,7 +3872,7 @@ class PeaceBot(commands.Bot):
         actor: discord.abc.User | None = None,
     ) -> None:
         await self.send_to_channel(
-            self.settings.log_channel_id,
+            getattr(self.settings, "log_channel_id", None),
             embed=self.log_card(title, fields=fields, actor=actor),
         )
 
@@ -3555,6 +3938,277 @@ class PeaceBot(commands.Bot):
             return await guild.fetch_member(user_id)
         except discord.NotFound:
             return None
+
+    async def authorized_dm_member(
+        self,
+        user_id: int,
+        role_kind: str,
+    ) -> discord.Member | None:
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+        member = await self.member(guild, user_id)
+        if member is None:
+            return None
+        if role_kind == "founder":
+            return member if founder_role_member(member, self.settings) else None
+        if role_kind == "management":
+            return member if management_role_member(member, self.settings) else None
+        return None
+
+    def announcement_channel(self) -> discord.TextChannel | None:
+        if self.guild is None:
+            return None
+        configured_id = getattr(self.settings, "announcement_channel_id", None)
+        if configured_id is not None:
+            configured = self.guild.get_channel(configured_id)
+            if isinstance(configured, discord.TextChannel):
+                return configured
+        names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
+        return discord.utils.find(
+            lambda channel: isinstance(channel, discord.TextChannel)
+            and (
+                channel.name.casefold() in names
+                or channel.name.casefold().endswith("・announcements")
+                or channel.name.casefold().endswith("・avisos")
+            ),
+            self.guild.text_channels,
+        )
+
+    async def collect_announcement(
+        self,
+        interaction: discord.Interaction,
+        actor: discord.Member,
+    ) -> None:
+        """Collect one real DM message so Markdown and attachments stay intact."""
+        if actor.id in self.announcement_collectors:
+            await respond(interaction, "Já estou aguardando um aviso seu. Envie uma única mensagem no PV atual.")
+            return
+        if interaction.channel_id is None:
+            await respond(interaction, "Não consegui identificar seu PV com o bot.")
+            return
+        self.announcement_collectors.add(actor.id)
+        try:
+            await interaction.response.send_message(
+                "Envie agora a mensagem do aviso neste PV. Markdown, links e anexos serão preservados. "
+                "Aguardo uma mensagem por até 5 minutos.",
+                ephemeral=False,
+            )
+            prompt = None
+            try:
+                prompt = await interaction.original_response()
+            except (discord.HTTPException, discord.NotFound):
+                pass
+
+            def check(message: discord.Message) -> bool:
+                return message.author.id == actor.id and message.channel.id == interaction.channel_id
+
+            try:
+                message = await self.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError:
+                if prompt is not None:
+                    try:
+                        await prompt.edit(content="Tempo esgotado. Nenhum aviso foi publicado.")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+                return
+            if len(message.attachments) > MAX_ANNOUNCEMENT_ATTACHMENTS:
+                if prompt is not None:
+                    await prompt.edit(content=f"Envie no máximo {MAX_ANNOUNCEMENT_ATTACHMENTS} anexos. Nenhum aviso foi publicado.")
+                return
+            if any(attachment.size > MAX_ANNOUNCEMENT_ATTACHMENT_BYTES for attachment in message.attachments):
+                if prompt is not None:
+                    await prompt.edit(content="Um dos anexos ultrapassa o limite de 25 MB. Nenhum aviso foi publicado.")
+                return
+            if len(message.content) > 2000:
+                if prompt is not None:
+                    await prompt.edit(content="A mensagem ultrapassa o limite de 2.000 caracteres do Discord. Nenhum aviso foi publicado.")
+                return
+            if not message.content and not message.attachments:
+                if prompt is not None:
+                    await prompt.edit(content="A mensagem precisa conter texto ou pelo menos um anexo. Nenhum aviso foi publicado.")
+                return
+            current_actor = await self.authorized_dm_member(actor.id, "management")
+            published = (
+                "O cargo Management não está mais presente. Nenhum aviso foi publicado."
+                if current_actor is None
+                else await self.publish_announcement(message, current_actor)
+            )
+            if prompt is not None:
+                try:
+                    await prompt.edit(content=published)
+                except (discord.Forbidden, discord.HTTPException):
+                    await interaction.followup.send(published, ephemeral=True)
+            else:
+                await interaction.followup.send(published, ephemeral=True)
+        finally:
+            self.announcement_collectors.discard(actor.id)
+
+    async def publish_announcement(
+        self,
+        message: discord.Message,
+        actor: discord.Member,
+    ) -> str:
+        current_actor = await self.authorized_dm_member(actor.id, "management")
+        if current_actor is None:
+            return "O cargo Management não está mais presente. Nenhum aviso foi publicado."
+        actor = current_actor
+        channel = self.announcement_channel()
+        if channel is None:
+            return "Não encontrei o canal de avisos configurado. Nenhum aviso foi publicado."
+        files: list[discord.File] = []
+        try:
+            for attachment in message.attachments:
+                files.append(await attachment.to_file(use_cached=True))
+            published = await channel.send(
+                content=message.content or None,
+                files=files or [],
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except (discord.Forbidden, discord.HTTPException, OSError):
+            log.exception("Falha ao publicar aviso no canal %s", channel.id)
+            return "Não consegui publicar o aviso. Nenhuma confirmação de publicação foi registrada."
+        jump_url = getattr(published, "jump_url", None) or (
+            f"https://discord.com/channels/{self.settings.guild_id}/{channel.id}/{published.id}"
+        )
+        await self.send_log(
+            "Aviso publicado",
+            actor=actor,
+            fields=(
+                ("Usuário", actor.mention),
+                ("Canal", channel.mention),
+                ("Anexos", str(len(message.attachments))),
+                ("Mensagem", jump_url),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
+        return f"✓ Aviso publicado em {channel.mention}: {jump_url}"
+
+    async def delete_peace_users(
+        self,
+        target_ids: tuple[int, ...],
+        actor: discord.Member,
+    ) -> list[str]:
+        """Remove manageable roles without kicking members or releasing invalid IDs."""
+        if self.guild is None:
+            return ["Servidor indisponível; nenhum vínculo foi alterado."]
+        authorized_actor = await self.authorized_dm_member(actor.id, "founder")
+        if authorized_actor is None:
+            return ["Apenas o cargo Founder pode excluir vínculos Peace; nada foi alterado."]
+        actor = authorized_actor
+        not_verified = role_named(
+            self.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        bot_member = self.guild.me
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        if not_verified is None or peace_role is None or bot_member is None:
+            return ["Cargos de Peace incompletos ou hierarquia indisponível; nenhum vínculo foi alterado."]
+
+        results: list[str] = []
+        for target_id in dict.fromkeys(target_ids):
+            if await self.authorized_dm_member(actor.id, "founder") is None:
+                results.append("O cargo Founder não está mais presente; os próximos usuários não foram processados.")
+                break
+            target = await self.member(self.guild, int(target_id))
+            record = self.database.get_member(target_id)
+            if target is None:
+                results.append(f"{mention(target_id)}: não está no servidor; nada foi alterado.")
+                continue
+            if (
+                record is None
+                or int(record["peace_id"]) <= 0
+                or int(record["is_founder"])
+                or not self.database.recorded_peace_member(target.id, self.settings.peace_role_id)
+            ):
+                results.append(f"{target.mention}: registro Peace válido não encontrado; nada foi alterado.")
+                continue
+            if not role_member(target, peace_role.id):
+                reserved = await self.reserve_member_peace(
+                    target,
+                    reason="cargo Peace já estava ausente durante a revisão Founder",
+                    actor=actor,
+                )
+                if reserved is None:
+                    results.append(f"{target.mention}: o cargo Peace já não está presente e a reserva não pôde ser criada.")
+                else:
+                    results.append(f"{target.mention}: o cargo Peace já não estava presente; ID `{int(reserved['peace_id'])}` ficou reservado para retorno.")
+                continue
+            roles_to_remove = [
+                role
+                for role in target.roles
+                if role != not_verified
+                and not (
+                    getattr(role, "is_default", lambda: False)()
+                    if callable(getattr(role, "is_default", None))
+                    else bool(getattr(role, "is_default", False))
+                )
+            ]
+            if any(not role_is_manageable(role, bot_member) for role in roles_to_remove):
+                results.append(f"{target.mention}: há cargo gerenciado ou acima da hierarquia do bot; nada foi alterado.")
+                continue
+            if not role_is_manageable(not_verified, bot_member) and not role_member(target, not_verified.id):
+                results.append(f"{target.mention}: não consigo manter o cargo Not Verified; nada foi alterado.")
+                continue
+
+            self.managed_peace_role_removals.add(target.id)
+            added_not_verified = False
+            try:
+                if not role_member(target, not_verified.id):
+                    await target.add_roles(
+                        not_verified,
+                        reason=f"Vínculo Peace removido por Founder {actor.id}",
+                    )
+                    added_not_verified = True
+                if roles_to_remove:
+                    await target.remove_roles(
+                        *roles_to_remove,
+                        reason=f"Vínculo Peace removido por Founder {actor.id}",
+                    )
+                released = self.database.release_peace_member(
+                    target.id,
+                    reason="vínculo Peace removido manualmente por Founder",
+                    actor_user_id=actor.id,
+                )
+                if released is None:
+                    raise RuntimeError("registro Peace mudou antes da liberação do ID")
+                await self.send_log(
+                    "Vínculo Peace removido",
+                    actor=actor,
+                    fields=(
+                        ("Usuário", target.mention),
+                        ("ID liberado", f"`{int(released['peace_id'])}`"),
+                        ("Ação", "Cargos gerenciáveis removidos; Not Verified mantido/aplicado."),
+                        ("Quem", actor.mention),
+                        ("Horário", f"<t:{now_unix()}:F>"),
+                    ),
+                )
+                results.append(f"{target.mention}: vínculo removido e ID `{int(released['peace_id'])}` liberado.")
+            except (discord.Forbidden, discord.HTTPException, RuntimeError, sqlite3.Error):
+                log.exception("Falha ao remover vínculo Peace de %s", target.id)
+                if roles_to_remove:
+                    try:
+                        await target.add_roles(
+                            *roles_to_remove,
+                            reason="Rollback de exclusão Peace incompleta",
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        log.exception("Falha ao restaurar cargos do vínculo Peace %s", target.id)
+                if added_not_verified:
+                    try:
+                        await target.remove_roles(
+                            not_verified,
+                            reason="Rollback de exclusão Peace incompleta",
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        log.exception("Falha ao remover Not Verified do rollback Peace %s", target.id)
+                results.append(f"{target.mention}: falha no Discord; o ID não foi liberado automaticamente.")
+            finally:
+                self.managed_peace_role_removals.discard(target.id)
+        return results
 
     async def recruiter_members(self) -> list[discord.Member]:
         if self.guild is None:
@@ -4054,6 +4708,17 @@ class PeaceBot(commands.Bot):
         if member is None:
             await respond(interaction, "Não consegui localizar seu membro no servidor.")
             return
+        reservation = self.database.reserved_peace_id_for_user(member.id)
+        if reservation is not None:
+            await self.ensure_return_request(member)
+            await respond(
+                interaction,
+                "Seu ID Peace continua reservado. O retorno foi enviado diretamente ao scan-only para aprovação; não vou abrir uma entrevista comum.",
+            )
+            return
+        if not application_path_open("player", self.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+            return
         peace_role = guild.get_role(self.settings.peace_role_id)
         if peace_role is None:
             await respond(interaction, "A configuração de cargos Peace está incompleta; procure a staff.")
@@ -4124,7 +4789,15 @@ class PeaceBot(commands.Bot):
             role_names=[role.name for role in member.roles],
             founder_id=self.settings.founder_user_id,
         )
-        nickname = f"N ⎰ {request['in_game_username']} {peace_id}"
+        requested_role_names = [role.name for role in member.roles] + [peace_role.name, intern_role.name]
+        prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=requested_role_names,
+            founder_user_id=self.settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default="N",
+        ) or "N"
+        nickname = f"{prefix} ⎰ {request['in_game_username']} {peace_id}"
         try:
             await member.add_roles(
                 peace_role,
@@ -4148,14 +4821,31 @@ class PeaceBot(commands.Bot):
                 founder_id=self.settings.founder_user_id,
             )
             self.database.update_set_request_status(request["id"], "approved")
+            dm_sent = True
             try:
-                await member.send(f"Seu set foi aprovado por {recruiter.display_name}. Seu ID Peace é `{peace_id}`.")
+                await member.send(
+                    embed=self.set_approved_dm_embed(request, recruiter, peace_id),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
             except (discord.Forbidden, discord.HTTPException):
+                dm_sent = False
                 log.info("DM fechado para o membro aprovado %s", member.id)
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
             log.exception("Falha ao aplicar set pendente em %s", member.id)
             return "Não consegui aplicar o set. Verifique permissões, hierarquia e tente novamente."
-        return f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`."
+        await self.send_log(
+            "Set aprovado",
+            actor=recruiter,
+            fields=(
+                ("Usuário", member.mention),
+                ("ID Peace", f"`{peace_id}`"),
+                ("Aprovado por", recruiter.mention),
+                ("DM de boas-vindas", "enviada" if dm_sent else "indisponível"),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
+        dm_note = "" if dm_sent else " A DM de boas-vindas está fechada."
+        return f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`.{dm_note}"
 
     async def reject_set_request(self, request, recruiter: discord.Member) -> None:
         self.database.update_set_request_status(request["id"], "rejected")
@@ -4240,6 +4930,31 @@ class PeaceBot(commands.Bot):
             await respond(interaction, "Não consegui abrir o ticket. Verifique as permissões e tente novamente.")
             return
         await respond(interaction, f"Ticket aberto: {channel.mention}")
+
+
+@app_commands.command(name="start", description="Abre as ações internas da Peace no PV")
+@app_commands.allowed_contexts(guilds=False, dms=True, private_channels=False)
+async def start(interaction: discord.Interaction) -> None:
+    bot = interaction.client
+    if not isinstance(bot, PeaceBot):
+        return
+    actions: list[str] = []
+    if await bot.authorized_dm_member(interaction.user.id, "founder") is not None:
+        actions.append("delete_user")
+    if await bot.authorized_dm_member(interaction.user.id, "management") is not None:
+        actions.append("announcement")
+    if not actions:
+        # Ordinary members must not learn that an internal menu exists.
+        await ignore_interaction(interaction)
+        return
+    if interaction.guild is not None:
+        await respond(interaction, "Use o `/start` no PV com o bot.")
+        return
+    await interaction.response.send_message(
+        "Escolha uma ação. Cada opção valida novamente o cargo antes de executar qualquer alteração.",
+        view=StartActionView(bot, interaction.user.id, tuple(actions)),
+        ephemeral=True,
+    )
 
 
 @app_commands.command(name="painel_set", description="Publica ou atualiza o painel de pedido de set")
@@ -4405,6 +5120,7 @@ def run() -> None:
         raise SystemExit(2) from error
     bot = PeaceBot(settings)
     guild = discord.Object(id=settings.guild_id)
+    bot.tree.add_command(start)
     for command in (
         panel_set,
         sync_panels,

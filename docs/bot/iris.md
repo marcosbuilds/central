@@ -72,11 +72,12 @@ along with a compatible hierarchy. Iris records the action and never punishes
 the founder, the bot, the requester, or a member above the bot's hierarchy.
 
 Requests for a developer, streamer, recruiter, or another role go through a
-strict ticket interview and never receive a role through that flow. In the
-development area, only an authorized developer may apply a role with an exact
-target and confirmation; historical score and risk signals block operations
-when confidence is insufficient. Peace tags follow the pattern
-`N/D/S/R/G/F ⎰ name id`, according to the primary function.
+strict ticket interview and never receive a role through the public Player set
+flow. In the development area, only an authorized developer may apply a role
+with an exact target and confirmation; historical score and risk signals block
+operations when confidence is insufficient. Peace tags use `F` for Founder and
+otherwise follow the explicit visual-role policy (`D/S/R ⎰ name id`). Access
+roles never acquire a nickname prefix.
 
 Boosters automatically receive a role and a configured private call. A booster
 may add or remove people according to the server's current permissions; Iris

@@ -59,6 +59,26 @@ def _ids_env(name: str, default: tuple[int, ...] = ()) -> tuple[int, ...]:
     return tuple(dict.fromkeys(values)) or default
 
 
+def _validate_unique_role_ids(role_ids: dict[str, int | None]) -> None:
+    """Fail closed when two settings point at the same Discord role."""
+    owners: dict[int, list[str]] = {}
+    for setting_name, role_id in role_ids.items():
+        if role_id is None:
+            continue
+        owners.setdefault(int(role_id), []).append(setting_name)
+    duplicates = {
+        role_id: names
+        for role_id, names in owners.items()
+        if len(names) > 1
+    }
+    if duplicates:
+        details = "; ".join(
+            f"{role_id}: {', '.join(names)}"
+            for role_id, names in sorted(duplicates.items())
+        )
+        raise RuntimeError(f"IDs de cargos duplicados na configuração: {details}")
+
+
 def is_valid_central_bridge_key(value: str) -> bool:
     normalized = value.strip()
     return (
@@ -165,7 +185,7 @@ class Settings:
         if not database_path.is_absolute():
             database_path = ROOT / database_path
         central_bridge_url = os.getenv("CENTRAL_BRIDGE_URL", "").strip()
-        return cls(
+        settings = cls(
             token=_required("DISCORD_TOKEN"),
             guild_id=_int_env("DISCORD_GUILD_ID"),
             peace_role_id=_int_env("DISCORD_PEACE_ROLE_ID"),
@@ -222,4 +242,25 @@ class Settings:
             username_min_length=_int_env("SET_USERNAME_MIN_LENGTH", 3),
             username_max_length=_int_env("SET_USERNAME_MAX_LENGTH", 20),
         )
+        configured_role_ids = {
+            "DISCORD_PEACE_ROLE_ID": settings.peace_role_id,
+            "DISCORD_NOVATO_ROLE_ID": settings.novato_role_id,
+            "DISCORD_STAFF_ROLE_ID": settings.staff_role_id,
+            "DISCORD_MANAGER_ROLE_ID": settings.manager_role_id,
+            "DISCORD_VISITOR_ROLE_ID": settings.visitor_role_id,
+            "DISCORD_NOT_VERIFIED_ROLE_ID": settings.not_verified_role_id,
+            "DISCORD_INTERN_ROLE_ID": settings.intern_role_id,
+            "DISCORD_BOOSTER_ROLE_ID": settings.booster_role_id,
+            "DISCORD_CENTRAL_ACCESS_ROLE_ID": settings.central_access_role_id,
+        }
+        try:
+            if (__package__ or "").startswith("bot."):
+                from ..operations.maintenance import ROLE_IDS
+            else:
+                from operations.maintenance import ROLE_IDS
+            configured_role_ids["existing Founder role"] = int(ROLE_IDS["founder"])
+        except (ImportError, KeyError, TypeError, ValueError):
+            pass
+        _validate_unique_role_ids(configured_role_ids)
+        return settings
 
