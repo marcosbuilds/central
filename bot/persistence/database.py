@@ -728,6 +728,7 @@ class PeaceDatabase:
         """Remove o vínculo Peace e libera o ID para o próximo set."""
         self.initialize()
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT * FROM members WHERE discord_user_id = ?", (str(discord_user_id),)
             ).fetchone()
@@ -750,6 +751,43 @@ class PeaceDatabase:
             connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(discord_user_id),))
             connection.commit()
             return row
+
+    def available_peace_id_for_user(self, discord_user_id: int | str) -> sqlite3.Row | None:
+        """Return a previously released ID for an already-completed operation."""
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM peace_id_pool
+                WHERE released_from = ? AND status = 'available'
+                ORDER BY released_at DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+
+    def manual_peace_releases_for_cleanup(self) -> list[sqlite3.Row]:
+        """Return legacy manual releases that still need Discord cleanup.
+
+        The reason filter excludes the old ID release that happens during an
+        approved return. A current ``members`` row also wins over a stale pool
+        row, so a later set can never be removed by this repair pass.
+        """
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT pool.*
+                    FROM peace_id_pool AS pool
+                    LEFT JOIN members
+                      ON members.discord_user_id = pool.released_from
+                    WHERE pool.status = 'available'
+                      AND pool.release_reason LIKE 'vínculo Peace removido manualmente por Founder%'
+                      AND members.discord_user_id IS NULL
+                    ORDER BY pool.released_at, pool.peace_id
+                    """
+                ).fetchall()
+            )
 
     def reserve_peace_member(
         self,
@@ -917,6 +955,18 @@ class PeaceDatabase:
                 (str(discord_user_id),),
             ).fetchone()
 
+    def latest_return_request_for_user(self, discord_user_id: int | str) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE discord_user_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+
     def save_return_request(
         self,
         *,
@@ -991,6 +1041,46 @@ class PeaceDatabase:
         assert created is not None
         return created, True
 
+    def reject_return_request(self, request_id: int | str) -> sqlite3.Row | None:
+        """Reject a pending return while keeping its Peace ID reserved."""
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            request = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ? AND status = 'pending'",
+                (str(request_id),),
+            ).fetchone()
+            if request is None:
+                connection.rollback()
+                return None
+            reservation = connection.execute(
+                """
+                SELECT 1 FROM peace_id_pool
+                WHERE peace_id = ? AND released_from = ? AND status = 'reserved'
+                """,
+                (int(request["old_peace_id"]), str(request["discord_user_id"])),
+            ).fetchone()
+            if reservation is None:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET status = 'rejected', resolved_at = ?, new_peace_id = NULL
+                WHERE id = ? AND status = 'pending'
+                """,
+                (now_iso(), str(request_id)),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            row = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ?",
+                (str(request_id),),
+            ).fetchone()
+            connection.commit()
+            return row
+
     def return_request(self, request_id: int | str) -> sqlite3.Row | None:
         self.initialize()
         with self.connect() as connection:
@@ -1018,6 +1108,29 @@ class PeaceDatabase:
                 "SELECT * FROM peace_return_requests WHERE status = 'pending' ORDER BY id"
             ).fetchall())
 
+    def approved_return_requests(self) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE status = 'approved' AND new_peace_id IS NOT NULL
+                ORDER BY id
+                """
+            ).fetchall())
+
+    def approved_return_user_ids(self) -> set[int]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT discord_user_id
+                FROM peace_return_requests
+                WHERE status = 'approved' AND new_peace_id IS NOT NULL
+                """
+            ).fetchall()
+        return {int(row["discord_user_id"]) for row in rows}
+
     def set_return_request_message(self, request_id: int | str, message_id: int | str) -> None:
         self.initialize()
         with self.connect() as connection:
@@ -1040,6 +1153,7 @@ class PeaceDatabase:
         """Libera o ID reservado e registra um novo ID para o retorno aprovado."""
         self.initialize()
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             request = connection.execute(
                 "SELECT * FROM peace_return_requests WHERE id = ? AND status = 'pending'",
                 (str(request_id),),
@@ -1121,6 +1235,7 @@ class PeaceDatabase:
         """Restore a pending return when Discord role/nickname mutation failed."""
         self.initialize()
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             request = connection.execute(
                 """
                 SELECT * FROM peace_return_requests
@@ -1129,6 +1244,14 @@ class PeaceDatabase:
                 (str(request_id),),
             ).fetchone()
             if request is None:
+                connection.rollback()
+                return False
+            current_member = connection.execute(
+                "SELECT peace_id FROM members WHERE discord_user_id = ?",
+                (str(request["discord_user_id"]),),
+            ).fetchone()
+            if current_member is not None and int(current_member["peace_id"]) != int(request["new_peace_id"]):
+                connection.rollback()
                 return False
             connection.execute(
                 "DELETE FROM members WHERE discord_user_id = ?",

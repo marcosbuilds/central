@@ -19,12 +19,24 @@ derived from the caller's current server roles:
 Deletion is a membership-preserving operational action rather than a kick. It requires
 a valid non-founder Peace record, applies or preserves `Not Verified`, removes
 only roles below the bot's hierarchy, and releases the ID only after the role
-operation succeeds. The member remains in the server. A second confirmation is
-mandatory, and every successful action uses the configured logs channel.
+operation succeeds. The member remains in the server and the Peace nickname is
+reset. Selection, confirmation, progress, and result states edit the same DM
+message; no extra confirmation message is created. Multi-member deletions expose
+a bounded textual progress bar and the users already processed in that same
+message. A second confirmation is mandatory, and every successful action uses
+the configured logs channel.
+
+The operation is serialized per member and the database release is guarded by an
+immediate transaction, so repeated clicks converge to one release and one
+success log. Startup repairs legacy manual deletions only when the pool reason
+identifies that operation and no active member record exists. A later Player set
+therefore consumes the released ID and is never removed by the repair pass.
 
 Management announcements are collected as the next DM message so Discord
 Markdown and attachments remain intact. `AllowedMentions.none()` prevents
 untrusted message text from notifying users or roles. The published message is
+a neutral embed card; the first image attachment is used as the card image and
+all attachments remain available on the published message. The result is
 reported back to the operator and recorded as a log card without copying the
 announcement body into the audit channel.
 
@@ -52,7 +64,11 @@ recorded time. No Player interview is opened. The old ID remains reserved while
 the request is pending. If role or nickname application fails during approval,
 the local approval is rolled back and the request remains pending. After a
 successful approval, the previous ID is released according to the existing
-return contract and a new ID is recorded.
+return contract and a new ID is recorded. Approval applies Peace, removes the
+entry roles, updates the nickname, and repairs interrupted approved states on
+startup before the missing-ID audit. Staff and Management can also reject a
+pending return from the same card; the request becomes terminally rejected and
+the old ID remains reserved, with no automatic duplicate card.
 
 ## Nickname policy
 

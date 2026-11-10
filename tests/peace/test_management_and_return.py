@@ -1,7 +1,8 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from bot.core.identity import prefix_for_roles
@@ -9,8 +10,10 @@ from bot.config.settings import _validate_unique_role_ids
 from bot.main import (
     DeleteUserConfirmationView,
     DeleteUserSelectionView,
+    DeleteUserSelect,
     EntryTypeSelect,
     PeaceBot,
+    ReturnApprovalView,
     StartActionView,
     canonical_management_role_id,
     founder_role_member,
@@ -46,7 +49,14 @@ class FakeMember:
         self.guild = guild
         self.add_roles = AsyncMock()
         self.remove_roles = AsyncMock()
-        self.edit = AsyncMock()
+        async def edit_member(**kwargs):
+            if "roles" in kwargs and kwargs["roles"] is not None:
+                self.roles = list(kwargs["roles"])
+            if "nick" in kwargs:
+                self.nick = kwargs["nick"]
+                self.display_name = self.nick or self.name
+
+        self.edit = AsyncMock(side_effect=edit_member)
         self.send = AsyncMock()
 
 
@@ -310,6 +320,131 @@ def test_text_start_in_dm_stays_silent_without_internal_role(tmp_path):
     channel.send.assert_not_awaited()
 
 
+def test_management_announcement_is_published_as_card_with_markdown_and_image(tmp_path):
+    config = settings(tmp_path, announcement_channel_id=600)
+    bot = PeaceBot(config)
+    actor = SimpleNamespace(
+        id=99,
+        name="manager",
+        display_name="Management",
+        mention="<@99>",
+        display_avatar=SimpleNamespace(url="https://cdn.example/avatar.png"),
+    )
+    attachment = SimpleNamespace(
+        filename="announcement.png",
+        content_type="image/png",
+        size=128,
+        to_file=AsyncMock(return_value=SimpleNamespace(filename="announcement.png")),
+    )
+    source = SimpleNamespace(
+        content="**Aviso importante**\n[Leia mais](https://example.com)",
+        attachments=[attachment],
+    )
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "<#600>"
+    channel.send = AsyncMock(return_value=SimpleNamespace(id=700, jump_url="https://discord.com/channels/1/600/700"))
+    bot.guild = SimpleNamespace(
+        get_channel=lambda channel_id: channel if channel_id == 600 else None,
+        text_channels=[channel],
+    )
+    bot.authorized_dm_member = AsyncMock(return_value=actor)
+    bot.send_log = AsyncMock()
+
+    result = asyncio.run(bot.publish_announcement(source, actor))
+
+    kwargs = channel.send.call_args.kwargs
+    assert "content" not in kwargs
+    assert kwargs["embed"].description == source.content
+    assert kwargs["embed"].author.name == "Peace · Avisos"
+    assert kwargs["embed"].image.url == "attachment://announcement.png"
+    assert kwargs["files"]
+    assert "Aviso publicado" in result
+
+
+def test_delete_selection_edits_the_existing_interaction_message(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    candidate = FakeMember(10, [], SimpleNamespace())
+    selector = DeleteUserSelect(bot, 1, [candidate], page=0, total_pages=1)
+    selector._values = ["10"]
+    bot.authorized_dm_member = AsyncMock(return_value=SimpleNamespace(id=1))
+    response = SimpleNamespace(
+        edit_message=AsyncMock(),
+        send_message=AsyncMock(),
+    )
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=1),
+        guild=None,
+        response=response,
+    )
+
+    asyncio.run(selector.callback(interaction))
+
+    response.edit_message.assert_awaited_once()
+    response.send_message.assert_not_awaited()
+    assert isinstance(response.edit_message.call_args.kwargs["view"], DeleteUserConfirmationView)
+
+
+def test_delete_confirmation_updates_the_same_message_after_processing(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    actor = SimpleNamespace(id=1)
+    bot.authorized_dm_member = AsyncMock(return_value=actor)
+    bot.delete_peace_users = AsyncMock(return_value=["ok"])
+    view = DeleteUserConfirmationView(bot, 1, (10,))
+    response = SimpleNamespace(edit_message=AsyncMock(), defer=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock())
+    interaction = SimpleNamespace(
+        user=actor,
+        guild=None,
+        response=response,
+        message=message,
+    )
+
+    asyncio.run(view.children[0].callback(interaction))
+
+    response.edit_message.assert_awaited_once()
+    message.edit.assert_awaited_once()
+    assert "Resultado da exclusão" in message.edit.call_args.kwargs["content"]
+    assert bot.delete_peace_users.await_args.args == ((10,), actor)
+    assert callable(bot.delete_peace_users.await_args.kwargs["progress_callback"])
+
+
+def test_delete_confirmation_renders_progress_bar_and_processed_users(tmp_path):
+    bot = PeaceBot(settings(tmp_path))
+    actor = SimpleNamespace(id=1)
+    bot.authorized_dm_member = AsyncMock(return_value=actor)
+
+    async def delete_with_progress(_target_ids, _actor, *, progress_callback):
+        await progress_callback(1, 2, ("<@10>: vínculo removido e ID `10` liberado.",))
+        await progress_callback(
+            2,
+            2,
+            (
+                "<@10>: vínculo removido e ID `10` liberado.",
+                "<@11>: vínculo removido e ID `11` liberado.",
+            ),
+        )
+        return ["<@10>: vínculo removido e ID `10` liberado.", "<@11>: vínculo removido e ID `11` liberado."]
+
+    bot.delete_peace_users = AsyncMock(side_effect=delete_with_progress)
+    view = DeleteUserConfirmationView(bot, 1, (10, 11))
+    response = SimpleNamespace(edit_message=AsyncMock(), defer=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock())
+    interaction = SimpleNamespace(
+        user=actor,
+        guild=None,
+        response=response,
+        message=message,
+    )
+
+    asyncio.run(view.children[0].callback(interaction))
+
+    assert "0/2" in response.edit_message.call_args.kwargs["content"]
+    progress_messages = [call.kwargs["content"] for call in message.edit.await_args_list]
+    assert any("1/2" in content and "50%" in content for content in progress_messages)
+    assert any("2/2" in content and "100%" in content for content in progress_messages)
+    assert any("<@11>: vínculo removido" in content for content in progress_messages)
+
+
 def test_request_set_selector_has_only_player_path(tmp_path):
     bot = PeaceBot(settings(tmp_path))
     selector = EntryTypeSelect(bot)
@@ -394,14 +529,12 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
     result = asyncio.run(bot.delete_peace_users((10,), actor))
 
     assert "liberado" in result[0]
-    target.add_roles.assert_awaited_once_with(
-        not_verified,
-        reason="Vínculo Peace removido por Founder 1",
-    )
-    target.remove_roles.assert_awaited_once_with(
-        peace,
-        reason="Vínculo Peace removido por Founder 1",
-    )
+    target.edit.assert_awaited_once()
+    edit_kwargs = target.edit.await_args.kwargs
+    assert edit_kwargs["roles"] == [not_verified]
+    assert edit_kwargs["nick"] is None
+    assert target.roles == [not_verified]
+    assert target.nick is None
     assert bot.database.get_member(10) is None
     with bot.database.connect() as connection:
         pool = connection.execute(
@@ -410,6 +543,11 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
     assert pool["status"] == "available"
     assert "Founder" in pool["release_reason"]
     assert pool["release_actor_id"] == "1"
+    assert bot.send_log.await_count == 1
+
+    repeated = asyncio.run(bot.delete_peace_users((10,), actor))
+    assert "já confirmada" in repeated[0]
+    assert target.edit.await_count == 1
     assert bot.send_log.await_count == 1
 
 
@@ -493,6 +631,127 @@ def test_loss_of_peace_creates_direct_scan_request_with_reason(tmp_path):
     assert bot.send_log.await_count == 1
 
 
+def test_missing_peace_audit_accepts_approved_return_members_without_name_error(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    member = SimpleNamespace(id=10, roles=[peace])
+    bot.guild = SimpleNamespace(members=[member])
+    bot.database.approved_return_user_ids = MagicMock(return_value={10})
+    bot.database.reserve_missing_peace_members = MagicMock(return_value=[])
+
+    asyncio.run(bot.sync_missing_peace_ids())
+
+    bot.database.reserve_missing_peace_members.assert_called_once_with(
+        current_user_ids={10},
+        peace_role_id=200,
+        current_peace_user_ids={10},
+    )
+
+
+def test_pending_return_sync_reuses_stored_card_instead_of_sending_duplicate(tmp_path):
+    config = settings(tmp_path, scan_channel_id=600)
+    bot = PeaceBot(config)
+    bot._connection.user = SimpleNamespace(id=99)
+    peace = FakeRole(200, "Peace", 10)
+    guild = SimpleNamespace(
+        get_channel=lambda channel_id: channel if channel_id == 600 else None,
+        get_role=lambda role_id: peace if role_id == peace.id else None,
+    )
+    bot.guild = guild
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=10,
+        username="member",
+        nickname=None,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    reservation = bot.database.reserve_peace_member(10, reason="membro saiu do servidor")
+    request, _ = bot.database.get_or_create_return_request(
+        discord_user_id=10,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="membro saiu do servidor",
+    )
+    bot.database.set_return_request_message(request["id"], 123)
+    component = SimpleNamespace(custom_id=f"peace_return_release_{request['id']}")
+    message = SimpleNamespace(
+        id=123,
+        author=SimpleNamespace(id=99),
+        components=[SimpleNamespace(children=[component])],
+        edit=AsyncMock(),
+        delete=AsyncMock(),
+    )
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.fetch_message = AsyncMock(return_value=message)
+
+    async def history(**_kwargs):
+        if False:
+            yield message
+
+    channel.history = history
+    bot.return_approval_view = MagicMock(return_value=object())
+
+    asyncio.run(bot.sync_pending_return_panels())
+
+    channel.fetch_message.assert_awaited_once_with(123)
+    channel.send.assert_not_called()
+    message.edit.assert_awaited_once()
+
+
+def test_approved_return_repair_skips_member_with_a_new_active_id(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    bot_role = FakeRole(900, "PeaceBot", 100)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=bot_role),
+        roles=[peace, bot_role],
+        get_role=lambda role_id: peace if role_id == peace.id else None,
+    )
+    target = FakeMember(10, [peace], guild)
+    target.nick = "N ⎰ member-10 99"
+    target.display_name = target.nick
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=target)
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=target.id,
+        username=target.name,
+        nickname=target.nick,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    reservation = bot.database.reserve_peace_member(target.id, reason="membro saiu do servidor")
+    request, _ = bot.database.get_or_create_return_request(
+        discord_user_id=target.id,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="membro saiu do servidor",
+    )
+    approved = bot.database.approve_return_request(
+        request["id"],
+        username=target.name,
+        nickname=target.nick,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    assert approved is not None
+    with bot.database.connect() as connection:
+        connection.execute(
+            "UPDATE members SET peace_id = ?, nickname = ? WHERE discord_user_id = ?",
+            (99, "N ⎰ member-10 99", str(target.id)),
+        )
+        connection.commit()
+
+    asyncio.run(bot.sync_approved_return_requests())
+
+    target.edit.assert_not_awaited()
+    assert bot.database.get_member(target.id)["peace_id"] == 99
+
+
 def test_return_card_explains_reason_and_actor():
     request = {
         "id": 4,
@@ -517,3 +776,224 @@ def test_confirmation_view_is_a_real_second_step(tmp_path):
 
     assert len(view.children) == 2
     assert all(getattr(button, "style", None).name == "secondary" for button in view.children)
+
+
+def test_manual_delete_cleanup_repairs_old_state_but_skips_a_new_set(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    not_verified = FakeRole(500, "Not Verified", 5)
+    bot_role = FakeRole(900, "PeaceBot", 100)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=bot_role),
+        roles=[peace, not_verified, bot_role],
+        get_role=lambda role_id: {200: peace, 500: not_verified}.get(role_id),
+    )
+    target = FakeMember(10, [peace], guild)
+    target.nick = "N ⎰ member-10 7"
+    target.display_name = target.nick
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=target)
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=10,
+        username=target.name,
+        nickname=target.nick,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    bot.database.release_peace_member(
+        target.id,
+        reason="vínculo Peace removido manualmente por Founder 1",
+        actor_user_id=1,
+    )
+
+    asyncio.run(bot.sync_released_member_cleanup())
+
+    assert target.roles == [not_verified]
+    assert target.nick is None
+    target.edit.reset_mock()
+
+    target.roles = [peace]
+    target.nick = "N ⎰ member-10 8"
+    target.display_name = target.nick
+    bot.database.ensure_runtime_member(
+        discord_user_id=target.id,
+        username=target.name,
+        nickname=target.nick,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+
+    asyncio.run(bot.sync_released_member_cleanup())
+
+    target.edit.assert_not_awaited()
+
+
+def test_rejected_return_keeps_reservation_and_does_not_reopen(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=FakeRole(900, "PeaceBot", 100)),
+        roles=[peace],
+        get_role=lambda role_id: peace if role_id == peace.id else None,
+    )
+    member = FakeMember(10, [peace], guild)
+    bot.guild = guild
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=None,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    reservation = bot.database.reserve_peace_member(member.id, reason="saiu do servidor")
+    request, created = bot.database.get_or_create_return_request(
+        discord_user_id=member.id,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="saiu do servidor",
+    )
+    assert created
+
+    rejected = bot.database.reject_return_request(request["id"])
+
+    assert rejected["status"] == "rejected"
+    assert bot.database.reserved_peace_id_for_user(member.id) is not None
+    bot.member = AsyncMock(return_value=member)
+    assert asyncio.run(bot.ensure_return_request(member)) is True
+    assert bot.database.pending_return_request_for_user(member.id) is None
+
+
+def test_reject_return_callback_edits_card_and_keeps_reserved_id(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    founder_role = FakeRole(100, "Founder Peace", 20)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=FakeRole(900, "PeaceBot", 100)),
+        roles=[peace, founder_role],
+        get_role=lambda role_id: {peace.id: peace, founder_role.id: founder_role}.get(role_id),
+    )
+    target = FakeMember(10, [peace], guild)
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=target)
+    bot.send_log = AsyncMock()
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=target.id,
+        username=target.name,
+        nickname=None,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    reservation = bot.database.reserve_peace_member(target.id, reason="membro saiu do servidor")
+    request, _ = bot.database.get_or_create_return_request(
+        discord_user_id=target.id,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="membro saiu do servidor",
+    )
+    reviewer = MagicMock(spec=discord.Member)
+    reviewer.id = 1
+    reviewer.roles = [founder_role]
+    reviewer.guild = guild
+    reviewer.mention = "<@1>"
+    response = SimpleNamespace(is_done=lambda: response.edit_message.await_count > 0, edit_message=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock())
+    interaction = SimpleNamespace(
+        user=reviewer,
+        guild=guild,
+        response=response,
+        message=message,
+    )
+
+    view = ReturnApprovalView(bot, int(request["id"]))
+    asyncio.run(view.children[1].callback(interaction))
+
+    assert bot.database.return_request(request["id"])["status"] == "rejected"
+    assert bot.database.reserved_peace_id_for_user(target.id)["peace_id"] == reservation["peace_id"]
+    assert target.roles == [peace]
+    assert target.nick is None
+    assert target.send.await_count == 1
+    assert bot.send_log.await_count == 1
+    response.edit_message.assert_awaited_once()
+    message.edit.assert_awaited_once()
+    assert "continua reservado" in message.edit.call_args.kwargs["content"]
+    assert all(button.disabled for button in view.children)
+
+
+def test_return_approval_view_has_release_and_reject_actions(tmp_path):
+    view = ReturnApprovalView(PeaceBot(settings(tmp_path)), 4)
+
+    assert [button.label for button in view.children] == ["Liberar ID", "Recusar retorno"]
+    assert [button.custom_id for button in view.children] == [
+        "peace_return_release_4",
+        "peace_return_reject_4",
+    ]
+
+
+def test_return_approval_assigns_peace_removes_entry_roles_and_updates_nickname(tmp_path):
+    config = settings(tmp_path)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 10)
+    visitor = FakeRole(400, "Visitor", 4)
+    not_verified = FakeRole(500, "Not Verified", 5)
+    bot_role = FakeRole(900, "PeaceBot", 100)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=bot_role),
+        roles=[peace, visitor, not_verified, bot_role],
+        get_role=lambda role_id: {
+            peace.id: peace,
+            visitor.id: visitor,
+            not_verified.id: not_verified,
+        }.get(role_id),
+    )
+    target = FakeMember(10, [not_verified], guild)
+    target.nick = "N ⎰ member-10 24"
+    target.display_name = target.nick
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=target)
+    bot.send_log = AsyncMock()
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=target.id,
+        username=target.name,
+        nickname="N ⎰ member-10 24",
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    reservation = bot.database.reserve_peace_member(target.id, reason="cargo Peace perdido")
+    request, _ = bot.database.get_or_create_return_request(
+        discord_user_id=target.id,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="cargo Peace perdido",
+    )
+    reviewer = MagicMock(spec=discord.Member)
+    reviewer.id = 1
+    reviewer.roles = []
+    reviewer.guild = guild
+    reviewer.mention = "<@1>"
+    response = SimpleNamespace(is_done=lambda: response.edit_message.await_count > 0, edit_message=AsyncMock())
+    interaction = SimpleNamespace(
+        user=reviewer,
+        guild=guild,
+        response=response,
+        message=SimpleNamespace(edit=AsyncMock()),
+    )
+
+    view = ReturnApprovalView(bot, int(request["id"]))
+    asyncio.run(view.children[0].callback(interaction))
+
+    assert target.roles == [peace]
+    assert target.nick == "N ⎰ member-10 2"
+    assert bot.database.return_request(request["id"])["status"] == "approved"
+    assert bot.database.get_member(target.id)["peace_id"] == 2
+    assert bot.send_log.await_count == 1
+    interaction.response.edit_message.assert_awaited_once()
+    interaction.message.edit.assert_awaited_once()
