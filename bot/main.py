@@ -216,6 +216,15 @@ def role_member(member: discord.Member, role_id: int | None) -> bool:
     return role_id is not None and any(role.id == role_id for role in member.roles)
 
 
+def role_position_map(roles) -> dict[str, int]:
+    """Return live Discord role positions for the identity policy."""
+    return {
+        str(role.name): int(getattr(role, "position", 0))
+        for role in roles
+        if getattr(role, "name", None) is not None
+    }
+
+
 def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
     """Resolve configured roles while keeping local development configuration optional."""
     if role_id is not None:
@@ -982,6 +991,9 @@ class DeveloperApprovalView(discord.ui.View):
             return
         member_roles = {role.id: role.name for role in member.roles}
         member_roles[developer_role.id] = developer_role.name
+        member_role_objects = list(member.roles)
+        if developer_role not in member_role_objects:
+            member_role_objects.append(developer_role)
         peace_id = self.bot.database.ensure_runtime_member(
             discord_user_id=member.id,
             username=member.name,
@@ -989,6 +1001,7 @@ class DeveloperApprovalView(discord.ui.View):
             role_ids=list(member_roles),
             role_names=list(member_roles.values()),
             founder_id=self.bot.settings.founder_user_id,
+            role_positions=role_position_map(member_role_objects),
         )
         self.bot.database.update_developer_request(self.request_id, status="approved")
         sent = await self.bot.send_developer_decision_notice(request, peace_id=peace_id)
@@ -1255,6 +1268,7 @@ class ReturnApprovalView(discord.ui.View):
                         role_ids=list(return_roles),
                         role_names=list(return_roles.values()),
                         founder_id=self.bot.settings.founder_user_id,
+                        role_positions=role_position_map(target.roles),
                     )
                 except sqlite3.Error:
                     log.exception("Falha ao registrar a aprovação do retorno Peace %s", self.request_id)
@@ -2801,7 +2815,16 @@ class PeaceBot(commands.Bot):
         )
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
-        if before.roles != after.roles:
+        roles_changed = before.roles != after.roles
+        nickname_changed = getattr(before, "nick", None) != getattr(after, "nick", None)
+        if not roles_changed and not nickname_changed:
+            return
+        # A removal clears the nickname before it removes the Peace role. Do
+        # not let the intermediate Discord event immediately rebuild the old
+        # tag while the two-step mutation is still in progress.
+        if after.id in self.managed_peace_role_removals:
+            return
+        if roles_changed:
             before_role_ids = {role.id for role in before.roles}
             after_role_ids = {role.id for role in after.roles}
             peace_removed = (
@@ -2841,8 +2864,9 @@ class PeaceBot(commands.Bot):
             )
             if prefer_reverification:
                 await self.sync_verification_panel()
-            if not await self.ensure_return_request(after):
-                await self.sync_member_tag(after)
+        if not await self.ensure_return_request(after):
+            await self.sync_member_tag(after)
+        if roles_changed:
             await self.ensure_booster_space(after)
 
     async def on_message(self, message: discord.Message) -> None:
@@ -3732,6 +3756,7 @@ class PeaceBot(commands.Bot):
             founder_user_id=settings.founder_user_id,
             founder_role_names=FOUNDER_ROLE_NAMES,
             default=None,
+            role_positions=role_position_map(member.roles),
         )
         if visual_prefix is not None:
             return visual_prefix
@@ -3746,6 +3771,7 @@ class PeaceBot(commands.Bot):
         role_names: list[str],
         peace_id: int,
         settings: Settings,
+        role_positions: dict[str, int] | None = None,
     ) -> str | None:
         visual_prefix = prefix_for_roles(
             user_id=member.id,
@@ -3753,6 +3779,7 @@ class PeaceBot(commands.Bot):
             founder_user_id=settings.founder_user_id,
             founder_role_names=FOUNDER_ROLE_NAMES,
             default=None,
+            role_positions=role_positions,
         )
         has_peace = role_member(member, settings.peace_role_id) or any(
             str(name).casefold().strip() == "peace"
@@ -3778,6 +3805,7 @@ class PeaceBot(commands.Bot):
         if member.bot:
             return True
         effective_role_names = role_names or [role.name for role in member.roles]
+        effective_role_positions = role_position_map(member.roles)
         has_peace = role_member(member, self.settings.peace_role_id) or any(
             str(name).casefold().strip() == "peace"
             for name in effective_role_names
@@ -3791,6 +3819,7 @@ class PeaceBot(commands.Bot):
                 role_ids=[role.id for role in member.roles],
                 role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
+                role_positions=effective_role_positions,
             )
         elif peace_id is not None:
             resolved_peace_id = peace_id
@@ -3804,12 +3833,14 @@ class PeaceBot(commands.Bot):
                 role_ids=[role.id for role in member.roles],
                 role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
+                role_positions=effective_role_positions,
             )
         desired = self.peace_nickname(
             member,
             role_names=effective_role_names,
             peace_id=resolved_peace_id,
             settings=self.settings,
+            role_positions=effective_role_positions,
         )
         if desired is None:
             return True
@@ -4656,7 +4687,13 @@ class PeaceBot(commands.Bot):
         nick_changed = reset_nickname and target.nick is not None
         if not role_changed and not nick_changed:
             return
-        await target.edit(roles=desired_roles, nick=nick, reason=reason)
+        # Clear the server nickname first. Discord can accept both fields in
+        # one PATCH, but separating them makes the reset observable and lets a
+        # retry finish safely if the role mutation is rate-limited.
+        if nick_changed:
+            await target.edit(nick=nick, reason=reason)
+        if role_changed:
+            await target.edit(roles=desired_roles, reason=reason)
 
     async def apply_return_member_state(
         self,
@@ -4700,6 +4737,7 @@ class PeaceBot(commands.Bot):
             role_names=desired_role_names,
             peace_id=peace_id,
             settings=self.settings,
+            role_positions=role_position_map(desired_roles),
         )
         if desired_nick is None:
             raise RuntimeError("não foi possível calcular o apelido Peace")
@@ -4715,6 +4753,7 @@ class PeaceBot(commands.Bot):
             role_ids=[role.id for role in desired_roles],
             role_names=desired_role_names,
             founder_id=self.settings.founder_user_id,
+            role_positions=role_position_map(desired_roles),
         )
         return desired_nick
 
@@ -4737,6 +4776,7 @@ class PeaceBot(commands.Bot):
             if target is None or target.bot or self.database.get_member(target.id) is not None:
                 continue
             async with self.mutation_lock(target.id):
+                self.managed_peace_role_removals.add(target.id)
                 try:
                     await self.apply_removed_member_state(
                         target,
@@ -4747,6 +4787,8 @@ class PeaceBot(commands.Bot):
                     )
                 except (discord.Forbidden, discord.HTTPException, RuntimeError):
                     log.info("Não foi possível regularizar a exclusão Peace antiga de %s", target.id)
+                finally:
+                    self.managed_peace_role_removals.discard(target.id)
 
     async def sync_approved_return_requests(self) -> None:
         """Converge approved return records whose Discord mutation was interrupted."""
@@ -5486,6 +5528,11 @@ class PeaceBot(commands.Bot):
         )
         if member is None or peace_role is None or intern_role is None:
             return "Não consegui localizar o membro ou os cargos do set."
+        requested_role_objects = list(member.roles)
+        for role in (peace_role, intern_role):
+            if role not in requested_role_objects:
+                requested_role_objects.append(role)
+        requested_role_names = [role.name for role in requested_role_objects]
         existing = self.database.get_member(member.id)
         peace_id = int(existing["peace_id"]) if existing else self.database.ensure_runtime_member(
             discord_user_id=member.id,
@@ -5494,14 +5541,15 @@ class PeaceBot(commands.Bot):
             role_ids=[role.id for role in member.roles],
             role_names=[role.name for role in member.roles],
             founder_id=self.settings.founder_user_id,
+            role_positions=role_position_map(requested_role_objects),
         )
-        requested_role_names = [role.name for role in member.roles] + [peace_role.name, intern_role.name]
         prefix = prefix_for_roles(
             user_id=member.id,
             role_names=requested_role_names,
             founder_user_id=self.settings.founder_user_id,
             founder_role_names=FOUNDER_ROLE_NAMES,
             default="N",
+            role_positions=role_position_map(requested_role_objects),
         ) or "N"
         nickname = f"{prefix} ⎰ {request['in_game_username']} {peace_id}"
         try:
@@ -5525,6 +5573,7 @@ class PeaceBot(commands.Bot):
                 role_ids=list(member_roles),
                 role_names=list(member_roles.values()),
                 founder_id=self.settings.founder_user_id,
+                role_positions=role_position_map(requested_role_objects),
             )
             self.database.update_set_request_status(request["id"], "approved")
             dm_sent = True

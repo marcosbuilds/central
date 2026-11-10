@@ -7,7 +7,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 if (__package__ or "").startswith("bot."):
     from ..core.identity import prefix_for_roles
@@ -240,7 +240,12 @@ def _central_token_hash(token: str, salt: str) -> str:
     ).hex()
 
 
-def _role_prefix(member: dict[str, Any], role_names: Iterable[str], founder_id: int) -> str:
+def _role_prefix(
+    member: dict[str, Any],
+    role_names: Iterable[str],
+    founder_id: int,
+    role_positions: Mapping[str, int] | None = None,
+) -> str:
     return str(
         prefix_for_roles(
             user_id=int(member["user"]["id"]),
@@ -248,6 +253,7 @@ def _role_prefix(member: dict[str, Any], role_names: Iterable[str], founder_id: 
             founder_user_id=founder_id,
             founder_role_names=("Founder Peace", "Founder"),
             default="N",
+            role_positions=role_positions,
         )
     )
 
@@ -343,6 +349,11 @@ class PeaceDatabase:
                 user_id = str(user["id"])
                 role_ids = [str(role_id) for role_id in member.get("roles", [])]
                 role_names = [str(roles_by_id.get(role_id, {}).get("name", role_id)) for role_id in role_ids]
+                role_positions = {
+                    str(role.get("name", role_id)): int(role.get("position", 0))
+                    for role_id, role in roles_by_id.items()
+                    if isinstance(role, dict)
+                }
                 previous = existing.get(user_id)
                 if previous is not None:
                     peace_id = int(previous["peace_id"])
@@ -354,7 +365,7 @@ class PeaceDatabase:
                     peace_id = next_id
                     next_id += 1
                     new_ids += 1
-                prefix = _role_prefix(member, role_names, founder_id)
+                prefix = _role_prefix(member, role_names, founder_id, role_positions)
                 connection.execute(
                     """
                     INSERT INTO members (
@@ -1149,6 +1160,7 @@ class PeaceDatabase:
         role_ids: list[int],
         role_names: list[str],
         founder_id: int,
+        role_positions: Mapping[str, int] | None = None,
     ) -> tuple[sqlite3.Row, int, int] | None:
         """Libera o ID reservado e registra um novo ID para o retorno aprovado."""
         self.initialize()
@@ -1192,6 +1204,7 @@ class PeaceDatabase:
                 {"user": {"id": str(request["discord_user_id"])}},
                 role_names,
                 founder_id,
+                role_positions,
             )
             connection.execute(
                 """
@@ -1291,6 +1304,7 @@ class PeaceDatabase:
         role_ids: list[int],
         role_names: list[str],
         founder_id: int,
+        role_positions: Mapping[str, int] | None = None,
     ) -> int:
         self.initialize()
         existing = self.get_member(discord_user_id)
@@ -1301,6 +1315,7 @@ class PeaceDatabase:
                     {"user": {"id": str(discord_user_id)}},
                     role_names,
                     founder_id,
+                    role_positions,
                 )
                 connection.execute(
                     """
@@ -1320,7 +1335,10 @@ class PeaceDatabase:
         with self.connect() as connection:
             peace_id = 0 if discord_user_id == founder_id else self._next_peace_id(connection)
             prefix = _role_prefix(
-                {"user": {"id": str(discord_user_id)}}, role_names, founder_id
+                {"user": {"id": str(discord_user_id)}},
+                role_names,
+                founder_id,
+                role_positions,
             )
             timestamp = now_iso()
             connection.execute(

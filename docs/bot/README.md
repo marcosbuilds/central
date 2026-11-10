@@ -83,7 +83,8 @@ latter.
 Peace nicknames use `F` for Founder. Access roles such as `Peace`, `Dev`,
 `Staff`, `Management`, and `Visitor` do not create a prefix. Only the explicit
 visual-role allowlist can produce the existing presentation prefixes (`D`, `S`,
-or `R`); the same rule is used by runtime synchronization, snapshots, return
+or `R`); when more than one visual role is present, the highest live Discord
+role wins. The same rule is used by runtime synchronization, snapshots, return
 approval, and `peace-nick`.
 
 When a member leaves with Peace, or loses Peace while remaining in the server,

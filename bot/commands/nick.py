@@ -7,10 +7,12 @@ import sys
 if (__package__ or "").startswith("bot."):
     from ..integrations.discord_api import DiscordAPI, DiscordAPIError
     from ..config.settings import Settings
+    from ..core.identity import prefix_for_roles
     from ..persistence.database import PeaceDatabase
 else:
     from integrations.discord_api import DiscordAPI, DiscordAPIError
     from config.settings import Settings
+    from core.identity import prefix_for_roles
     from persistence.database import PeaceDatabase
 
 
@@ -47,7 +49,11 @@ def run() -> None:
     database = PeaceDatabase(settings.database_path)
     database.initialize()
     roles = api.guild_roles(settings.guild_id)
-    role_positions = {str(role["id"]): int(role.get("position", 0)) for role in roles}
+    roles_by_id = {str(role["id"]): role for role in roles}
+    role_positions = {
+        str(role.get("name", role["id"])): int(role.get("position", 0))
+        for role in roles
+    }
     guild = api.get(f"/guilds/{settings.guild_id}")
     owner_id = int(guild.get("owner_id", 0))
     bot_member = api.get(f"/guilds/{settings.guild_id}/members/{settings.bot_user_id}")
@@ -70,7 +76,21 @@ def run() -> None:
             print(f"SKIP {user_id}: membro não está no SQLite")
             skipped += 1
             continue
-        prefix = str(row["name_prefix"] or "N")
+        member_role_names = [
+            str(roles_by_id.get(str(role_id), {}).get("name", role_id))
+            for role_id in member.get("roles", [])
+        ]
+        prefix = str(
+            prefix_for_roles(
+                user_id=user_id,
+                role_names=member_role_names,
+                founder_user_id=settings.founder_user_id,
+                founder_role_names=("Founder Peace", "Founder"),
+                default=str(row["name_prefix"] or "N"),
+                role_positions=role_positions,
+            )
+            or "N"
+        )
         fallback = str(user.get("global_name") or user.get("username") or user_id)
         alias = alias_from_member(member, fallback)
         proposed = build_name(prefix, alias, int(row["peace_id"]))

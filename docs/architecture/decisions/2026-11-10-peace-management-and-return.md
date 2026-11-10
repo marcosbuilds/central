@@ -76,6 +76,9 @@ the old ID remains reserved, with no automatic duplicate card.
 Access roles do not generate prefixes. Only the explicit visual-role allowlist
 can generate the existing presentation prefixes `D`, `S`, and `R`; runtime
 sync, snapshot import, return approval, and `peace-nick` share the same helper.
+When a member has more than one matching visual role, the live Discord role
+position selects the highest one; `Peace`, `Staff`, `Management`, `Dev`, and
+`Visitor` remain access roles and never compete for that prefix.
 
 ## Compatibility and verification
 

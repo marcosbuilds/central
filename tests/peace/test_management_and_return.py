@@ -116,6 +116,64 @@ def test_access_roles_do_not_create_prefixes_but_visual_roles_do(tmp_path):
     ) == "F"
 
 
+def test_highest_live_visual_role_wins_over_prefix_precedence():
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Developer", "Streamer", "Management"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 4, "Developer": 8, "Streamer": 22, "Management": 15},
+    ) == "S"
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Developer", "Streamer", "Staff"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 20, "Developer": 30, "Streamer": 10, "Staff": 40},
+    ) == "D"
+
+
+def test_member_role_update_rebuilds_nickname_from_live_visual_priority(tmp_path):
+    bot = PeaceBot(
+        settings(
+            tmp_path,
+            booster_role_id=None,
+            private_call_category_id=None,
+        )
+    )
+    peace = FakeRole(200, "Peace", 4)
+    developer = FakeRole(201, "Developer", 8)
+    streamer = FakeRole(202, "Streamer", 22)
+    bot_role = FakeRole(900, "PeaceBot", 100)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=bot_role),
+        roles=[peace, developer, streamer, bot_role],
+        get_role=lambda role_id: {200: peace, 201: developer, 202: streamer}.get(role_id),
+    )
+    before = FakeMember(10, [peace, developer], guild)
+    before.nick = "N ⎰ member-10 1"
+    before.display_name = before.nick
+    after = FakeMember(10, [peace, developer, streamer], guild)
+    after.nick = before.nick
+    after.display_name = after.nick
+    bot.guild = guild
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=after.id,
+        username=after.name,
+        nickname=before.nick,
+        role_ids=[role.id for role in before.roles],
+        role_names=[role.name for role in before.roles],
+        founder_id=1,
+        role_positions={role.name: role.position for role in before.roles},
+    )
+
+    asyncio.run(bot.on_member_update(before, after))
+
+    assert after.nick.startswith("S ⎰")
+    assert bot.database.get_member(after.id)["name_prefix"] == "S"
+
+
 def test_start_menu_reuses_real_management_role_and_separates_actions(tmp_path):
     founder_role = FakeRole(100, "Founder Peace", 20)
     manager_role = FakeRole(700, "Management", 10)
@@ -512,6 +570,8 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
         get_role=lambda role_id: {100: founder_role, 200: peace, 500: not_verified}.get(role_id),
     )
     target = FakeMember(10, [peace], guild)
+    target.nick = "apelido personalizado"
+    target.display_name = target.nick
     actor = FakeMember(1, [founder_role], guild)
     bot.guild = guild
     bot.member = AsyncMock(side_effect=lambda _guild, user_id: {actor.id: actor, target.id: target}.get(user_id))
@@ -529,10 +589,12 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
     result = asyncio.run(bot.delete_peace_users((10,), actor))
 
     assert "liberado" in result[0]
-    target.edit.assert_awaited_once()
-    edit_kwargs = target.edit.await_args.kwargs
-    assert edit_kwargs["roles"] == [not_verified]
-    assert edit_kwargs["nick"] is None
+    assert target.edit.await_count == 2
+    nickname_edit, role_edit = target.edit.await_args_list
+    assert nickname_edit.kwargs["nick"] is None
+    assert "roles" not in nickname_edit.kwargs
+    assert role_edit.kwargs["roles"] == [not_verified]
+    assert "nick" not in role_edit.kwargs
     assert target.roles == [not_verified]
     assert target.nick is None
     assert bot.database.get_member(10) is None
@@ -547,7 +609,7 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
 
     repeated = asyncio.run(bot.delete_peace_users((10,), actor))
     assert "já confirmada" in repeated[0]
-    assert target.edit.await_count == 1
+    assert target.edit.await_count == 2
     assert bot.send_log.await_count == 1
 
 
@@ -808,6 +870,32 @@ def test_manual_delete_cleanup_repairs_old_state_but_skips_a_new_set(tmp_path):
         reason="vínculo Peace removido manualmente por Founder 1",
         actor_user_id=1,
     )
+
+    original_apply = bot.apply_removed_member_state
+    bot.ensure_return_request = AsyncMock(return_value=False)
+    bot.sync_member_tag = AsyncMock()
+
+    async def apply_with_intermediate_event(*args, **kwargs):
+        assert target.id in bot.managed_peace_role_removals
+        before = SimpleNamespace(
+            id=target.id,
+            bot=False,
+            roles=[peace],
+            nick=target.nick,
+            guild=guild,
+        )
+        after = SimpleNamespace(
+            id=target.id,
+            bot=False,
+            roles=[peace],
+            nick=None,
+            guild=guild,
+        )
+        await bot.on_member_update(before, after)
+        bot.sync_member_tag.assert_not_awaited()
+        await original_apply(*args, **kwargs)
+
+    bot.apply_removed_member_state = apply_with_intermediate_event
 
     asyncio.run(bot.sync_released_member_cleanup())
 
