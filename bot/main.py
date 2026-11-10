@@ -4898,9 +4898,6 @@ class PeaceBot(commands.Bot):
                     else:
                         await record_result(f"{target.mention}: registro Peace válido não encontrado; nada foi alterado.")
                     continue
-                if not self.database.recorded_peace_member(target.id, self.settings.peace_role_id):
-                    await record_result(f"{target.mention}: registro Peace válido não encontrado; nada foi alterado.")
-                    continue
                 if not role_member(target, peace_role.id):
                     reserved = await self.reserve_member_peace(
                         target,

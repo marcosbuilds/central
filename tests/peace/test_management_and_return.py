@@ -613,6 +613,45 @@ def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path)
     assert bot.send_log.await_count == 1
 
 
+def test_delete_peace_user_uses_live_role_when_role_snapshot_is_stale(tmp_path):
+    config = settings(tmp_path)
+    peace = FakeRole(200, "Peace", 10)
+    not_verified = FakeRole(500, "Not Verified", 5)
+    founder_role = FakeRole(100, "Founder Peace", 20)
+    bot_role = FakeRole(900, "PeaceBot", 100)
+    guild = SimpleNamespace(
+        me=SimpleNamespace(top_role=bot_role),
+        roles=[peace, not_verified, founder_role, bot_role],
+        text_channels=[],
+        get_role=lambda role_id: {100: founder_role, 200: peace, 500: not_verified}.get(role_id),
+    )
+    target = FakeMember(10, [peace], guild)
+    actor = FakeMember(1, [founder_role], guild)
+    bot = PeaceBot(config)
+    bot.guild = guild
+    bot.member = AsyncMock(side_effect=lambda _guild, user_id: {actor.id: actor, target.id: target}.get(user_id))
+    bot.send_log = AsyncMock()
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=target.id,
+        username="member",
+        nickname=None,
+        role_ids=[peace.id],
+        role_names=[peace.name],
+        founder_id=1,
+    )
+    with bot.database.connect() as connection:
+        connection.execute("DELETE FROM member_roles WHERE discord_user_id = ?", (str(target.id),))
+        connection.commit()
+
+    result = asyncio.run(bot.delete_peace_users((target.id,), actor))
+
+    assert "vínculo removido" in result[0]
+    assert target.roles == [not_verified]
+    assert bot.database.get_member(target.id) is None
+    assert bot.send_log.await_count == 1
+
+
 def test_delete_peace_users_rejects_management_actor_at_mutation_boundary(tmp_path):
     config = settings(tmp_path)
     bot = PeaceBot(config)
