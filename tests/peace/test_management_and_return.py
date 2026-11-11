@@ -260,6 +260,50 @@ def test_startup_tag_sync_fetches_existing_members_outside_gateway_cache(tmp_pat
     assert summary["failed"] == 0
 
 
+def test_pending_return_with_peace_role_repairs_nickname_without_recreating_record(tmp_path):
+    config = settings(tmp_path, booster_role_id=None, private_call_category_id=None)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 4, hoist=False)
+    streamer = FakeRole(202, "Streamer", 22, hoist=True)
+    guild = SimpleNamespace(
+        members=[],
+        chunked=True,
+        roles=[peace, streamer],
+        get_role=lambda role_id: {200: peace, 202: streamer}.get(role_id),
+    )
+    member = FakeMember(24, [peace, streamer], guild)
+    member.nick = "N ⎰ member-24 1"
+    member.display_name = member.nick
+    guild.members = [member]
+    bot.guild = guild
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[role.id for role in member.roles],
+        role_names=[role.name for role in member.roles],
+        founder_id=1,
+        role_positions={role.name: role.position for role in member.roles},
+        role_hoist={role.name: role.hoist for role in member.roles},
+    )
+    reservation = bot.database.reserve_peace_member(member.id, reason="cargo Peace perdido")
+    assert reservation is not None
+    request, _ = bot.database.get_or_create_return_request(
+        discord_user_id=member.id,
+        old_peace_id=int(reservation["peace_id"]),
+        loss_reason="cargo Peace perdido",
+    )
+
+    summary = asyncio.run(bot.sync_peace_tags())
+
+    assert member.nick == f"S ⎰ member-24 {int(reservation['peace_id'])}"
+    assert bot.database.get_member(member.id) is None
+    assert bot.database.return_request(request["id"])["status"] == "pending"
+    assert summary["returned"] == 1
+    assert summary["updated"] == 1
+
+
 def test_start_menu_reuses_real_management_role_and_separates_actions(tmp_path):
     founder_role = FakeRole(100, "Founder Peace", 20)
     manager_role = FakeRole(700, "Management", 10)

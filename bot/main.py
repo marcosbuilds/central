@@ -3844,7 +3844,9 @@ class PeaceBot(commands.Bot):
             for name in effective_role_names
         )
         record = self.database.get_member(member.id)
-        if record is None and has_peace:
+        if peace_id is not None:
+            resolved_peace_id = peace_id
+        elif record is None and has_peace:
             resolved_peace_id = self.database.ensure_runtime_member(
                 discord_user_id=member.id,
                 username=member.name,
@@ -3855,8 +3857,6 @@ class PeaceBot(commands.Bot):
                 role_positions=effective_role_positions,
                 role_hoist=effective_role_hoist,
             )
-        elif peace_id is not None:
-            resolved_peace_id = peace_id
         else:
             resolved_peace_id = int(record["peace_id"]) if record is not None else int(str(member.id)[-4:])
         if record is not None and role_names is None:
@@ -3960,6 +3960,20 @@ class PeaceBot(commands.Bot):
         for member in members:
             if await self.ensure_return_request(member):
                 counters["returned"] += 1
+                reservation = self.database.reserved_peace_id_for_user(member.id)
+                has_peace = role_member(member, self.settings.peace_role_id) or any(
+                    str(role.name).casefold().strip() == "peace"
+                    for role in getattr(member, "roles", ())
+                )
+                if reservation is not None and has_peace:
+                    # A pending return has no active ``members`` row by design.
+                    # Repair the live nickname with the reserved ID, but never
+                    # recreate the active Peace record before review approval.
+                    await self.sync_member_tag(
+                        member,
+                        peace_id=int(reservation["peace_id"]),
+                        stats=counters,
+                    )
                 continue
             await self.sync_member_tag(member, stats=counters)
         summary: dict[str, int | bool] = {**counters, "fetched": fetched}
