@@ -1,4 +1,6 @@
 import asyncio
+import http.client
+import threading
 from types import SimpleNamespace
 
 from aiohttp import web
@@ -115,6 +117,7 @@ def test_public_site_files_are_complete():
     assert (site_root / "styles.css").is_file()
     assert (site_root / "script.js").is_file()
     assert (site_root / "assets" / "peace-bird.png").is_file()
+    assert (site_root / "assets" / "discord.svg").is_file()
     assert (member_root / "index.html").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
@@ -135,6 +138,8 @@ def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
     assert "data-member-gate" in member_html
     assert "data-member-preview" in member_html
     assert 'data-preview-screen="investigativa"' in member_html
+    assert "member-header" in member_html
+    assert "site-header site-header--area" not in member_html
     assert "registros abaixo são sintéticos" in member_html
     assert 'get("preview") === "member"' in script
     assert "grant" not in script.lower()
@@ -148,5 +153,37 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/entrar https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/entrar/ https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/area /area/ 301!" in redirects
+    assert "/acessar /area/ 301!" in redirects
     assert "/api/status http://api.peacegg.com.br:25072/api/status 200!" in redirects
+
+
+def test_local_site_server_handles_static_and_entry_routes():
+    from ops.peace_site_server import PeaceSiteHandler
+
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), PeaceSiteHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        for path, expected_status, expected_location in (
+            ("/", 200, None),
+            ("/discord", 302, "https://discord.gg/qUkQH8XmcN"),
+            ("/entrar", 302, "https://discord.gg/qUkQH8XmcN"),
+            ("/acessar", 301, "/area/"),
+        ):
+            connection.request("GET", path)
+            response = connection.getresponse()
+            response.read()
+            assert response.status == expected_status
+            if expected_location:
+                assert response.getheader("Location") == expected_location
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

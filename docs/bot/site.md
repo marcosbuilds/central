@@ -23,6 +23,14 @@ single read-only `/api/status` route to the fixed ACLClouds API origin, so the
 browser keeps a same-origin HTTPS request. The invite is public by design; bot
 credentials and provider settings remain outside the repository.
 
+For local review, run `python ops/peace_site_server.py --port 4173`. The
+localhost-only server mirrors the small route contract needed by the static
+front: `/discord` and `/entrar` redirect to the public invite, `/acessar` and
+`/area` normalize to `/area/`, and `GET /api/status` proxies only the fixed
+read-only ACLClouds status endpoint. It does not proxy cookies, authorization
+headers, member routes, or administrative actions. If ACLClouds cannot be
+resolved or reached, the local route returns a truthful `503` response.
+
 The repository-level `netlify.toml` publishes `bot/site` without a build step,
 so a linked Netlify project can reproduce the same artifact from the source
 tree. Production visibility is public; deploy previews remain private.
@@ -38,7 +46,8 @@ ACL process and must not be copied into the ACL deployment as a served site.
 |---|---|
 | Netlify `/` | serves `bot/site/index.html` with HTTPS |
 | Netlify `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
-| Netlify `/discord` and `/discord/` | redirects to the public Discord invite via `_redirects` |
+| Netlify `/discord`, `/discord/`, `/entrar`, `/entrar/` | redirects to the public Discord invite via `_redirects` |
+| Netlify `/acessar` and `/acessar/` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
@@ -75,6 +84,23 @@ this redesign and stored at a stable runtime path. The original attachment is
 not a runtime dependency. The background treatment is project-owned CSS derived
 from the logo's blue-gray feathers and navy outline; it is not presented as an
 original Discord background or a separately sourced brand asset.
+
+`bot/site/assets/discord.svg` is the local Discord destination icon used only
+inside links that visibly lead to the Peace Discord invite. Its provenance is
+recorded here so the asset is not mistaken for a project-owned logo:
+
+- source: [theSVG Discord default icon](https://thesvg.org/icons/discord/default.svg);
+- upstream brand and usage rules: [Discord](https://discord.com/branding);
+- license metadata declared by theSVG: `CC0-1.0` for the catalogued file;
+- retrieved: 2026-11-11;
+- SHA-256: `6634CC2F915DB66DF7A5237CAC0C1B98016289E86A2BB4B7BF6408EC2B95265C`;
+- constraint: keep the mark unmodified and do not imply Discord endorsement.
+
+The public page uses a small allowlist for copying: the visible invite is
+explicitly marked as copyable and has a copy button; ordinary editorial text is
+not placed on the clipboard by the page. This is browser-level friction, not a
+security boundary: source inspection, DevTools, OCR, screenshots, and
+assistive technology remain outside the control of a static site.
 
 ## Verification
 

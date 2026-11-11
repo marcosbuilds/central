@@ -31,6 +31,11 @@ RGBA cutout of the Peace bird supplied for the public-site redesign. It is site
 runtime artwork rather than a documentation visual; the original attachment is
 not a runtime dependency.
 
+The public Peace site also consumes `bot/site/assets/discord.svg`, a local
+theSVG Discord default icon used only to identify links that redirect to the
+Peace Discord invite. The source, declared license metadata, retrieval date,
+hash, and brand-use constraint are recorded in [`docs/bot/site.md`](../docs/bot/site.md).
+
 ## Change rules
 
 - Give every asset one documented purpose and a stable filename.

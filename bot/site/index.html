@@ -7,9 +7,9 @@
     <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça a entrada e os espaços públicos da comunidade.">
     <title>Peace — comunidade, presença e participação</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=20261111-3">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js"></script>
+    <script defer src="/script.js?v=20261111-3"></script>
   </head>
   <body data-page="home">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -18,7 +18,7 @@
       <header class="site-header">
         <a class="brand" href="#top" aria-label="Peace — início">
           <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
-          <span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
         </a>
 
         <nav class="site-nav" id="site-nav" aria-label="Navegação principal">
@@ -29,8 +29,9 @@
         </nav>
 
         <div class="header-actions">
-          <a class="header-login" href="/area/">Acessar</a>
-          <a class="button button--outline header-cta" href="/discord">
+          <a class="header-login" href="/acessar">Acessar</a>
+          <a class="button button--outline header-cta" href="/entrar">
+            <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
             <span>Entrar para Peace</span>
             <span class="button-icon" aria-hidden="true">↗</span>
           </a>
@@ -67,7 +68,8 @@
                 <span>Conhecer a Peace</span>
                 <span class="button-icon" aria-hidden="true">↓</span>
               </a>
-              <a class="button button--light button--large" href="/discord">
+              <a class="button button--light button--large" href="/entrar">
+                <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
                 <span>Entrar para Peace</span>
                 <span class="button-icon" aria-hidden="true">↗</span>
               </a>
@@ -85,12 +87,25 @@
         </section>
 
         <section class="section intro" id="sobre" aria-labelledby="about-title">
-          <div class="section-heading" data-reveal>
-            <p class="eyebrow">01 / A Peace</p>
-            <h2 id="about-title">Tem espaço para jogar, conversar e <em>construir.</em></h2>
-            <p>O Discord continua sendo a nossa casa. O site organiza o caminho: quem chega entende a comunidade, encontra o próximo passo e sabe onde a conversa acontece.</p>
+          <div class="intro-grid">
+            <div class="section-heading" data-reveal>
+              <p class="eyebrow">01 / A Peace</p>
+              <h2 id="about-title">Tem espaço para jogar, conversar e <em>construir.</em></h2>
+              <p>O Discord continua sendo a nossa casa. O site organiza o caminho: quem chega entende a comunidade, encontra o próximo passo e sabe onde a conversa acontece.</p>
+            </div>
+            <aside class="intro-visual" data-reveal aria-label="Onde a comunidade acontece">
+              <div class="intro-visual-mark"><img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="42" height="33"></div>
+              <p class="eyebrow">Ponto de encontro</p>
+              <h3>Discord primeiro.</h3>
+              <p>A Peace organiza a chegada aqui e deixa a conversa acontecer onde a comunidade já está.</p>
+            </aside>
           </div>
           <div class="intro-rule" data-reveal aria-hidden="true"><span></span><small>presença · conversa · respeito</small><span></span></div>
+          <div class="intro-pillars" role="list" aria-label="Princípios da Peace">
+            <div role="listitem" data-reveal><span>01</span><strong>Presença</strong><p>Chegar, acompanhar e participar com atenção.</p></div>
+            <div role="listitem" data-reveal><span>02</span><strong>Conversa</strong><p>Encontrar o canal certo antes de procurar atalhos.</p></div>
+            <div role="listitem" data-reveal><span>03</span><strong>Respeito</strong><p>Construir um espaço claro para quem já está e quem chega.</p></div>
+          </div>
         </section>
 
         <section class="section entry" id="entrada" aria-labelledby="entry-title">
@@ -125,7 +140,7 @@
 
           <div class="section-action" data-reveal>
             <span>Já conhece o caminho?</span>
-            <a class="text-link" href="/discord">Entrar no Discord <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="/discord"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Entrar no Discord <span aria-hidden="true">↗</span></a>
           </div>
         </section>
 
@@ -147,7 +162,13 @@
               <p class="eyebrow">04 / Avisos</p>
               <h2 id="notices-title">O que é importante aparece <em>no lugar certo.</em></h2>
               <p>Os avisos públicos da equipe serão publicados aqui quando a integração autorizada estiver disponível. Até lá, o Discord continua sendo a fonte oficial.</p>
-              <a class="button button--light" href="/discord"><span>Acompanhar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a>
+              <a class="button button--light" href="/discord"><img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span>Acompanhar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a>
+              <div class="discord-copy">
+                <span class="eyebrow">Convite público</span>
+                <code id="discord-invite" data-copyable>https://discord.gg/qUkQH8XmcN</code>
+                <button class="copy-button" type="button" data-copy-target="#discord-invite" aria-describedby="copy-status">Copiar convite</button>
+                <span id="copy-status" class="copy-status" role="status" aria-live="polite"></span>
+              </div>
             </div>
             <div class="notice-ledger" aria-label="Estado atual dos avisos">
               <div class="notice-line"><span>Fonte</span><strong>Canal autorizado</strong><small>integração planejada</small></div>
@@ -172,9 +193,9 @@
       </main>
 
       <footer class="site-footer">
-        <a class="brand brand--footer" href="#top" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span></a>
+        <a class="brand brand--footer" href="#top" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
         <p>Uma comunidade para conversar, criar e participar.</p>
-        <a class="footer-link" href="/discord">Discord <span aria-hidden="true">↗</span></a>
+        <a class="footer-link" href="/discord"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Discord <span aria-hidden="true">↗</span></a>
       </footer>
     </div>
   </body>

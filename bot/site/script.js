@@ -7,7 +7,7 @@
   var navigation = document.querySelector("#site-nav");
   var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var mobileNavigation = window.matchMedia("(max-width: 760px)");
+  var mobileNavigation = window.matchMedia("(max-width: 840px)");
 
   document.documentElement.classList.add("js-ready");
 
@@ -90,6 +90,53 @@
   }
 
   refreshServiceStatus();
+
+  function copyAllowedFrom(node) {
+    var element = node && node.nodeType === 1 ? node : node && node.parentElement;
+    return Boolean(element && element.closest("[data-copyable], code, pre, input, textarea, [contenteditable=\"true\"]"));
+  }
+
+  document.addEventListener("copy", function (event) {
+    var selection = window.getSelection();
+    if (!selection || (!copyAllowedFrom(selection.anchorNode) && !copyAllowedFrom(selection.focusNode))) {
+      event.preventDefault();
+    }
+  });
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; });
+    }
+
+    var fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "");
+    fallback.style.position = "fixed";
+    fallback.style.top = "-9999px";
+    document.body.appendChild(fallback);
+    fallback.select();
+    var copied = false;
+    try { copied = document.execCommand("copy"); } catch (error) { copied = false; }
+    document.body.removeChild(fallback);
+    return Promise.resolve(copied);
+  }
+
+  document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var target = document.querySelector(button.dataset.copyTarget);
+      var status = button.closest(".discord-copy") && button.closest(".discord-copy").querySelector("[data-copy-status], .copy-status");
+      if (!target || !status) return;
+
+      copyText(target.textContent.trim())
+        .then(function (copied) {
+          status.textContent = copied ? "Convite copiado." : "Não foi possível copiar aqui.";
+          window.setTimeout(function () { status.textContent = ""; }, 3500);
+        })
+        .catch(function () {
+          status.textContent = "Não foi possível copiar aqui.";
+        });
+    });
+  });
 
   function setMemberTab(name, moveFocus) {
     var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-member-tab]"));
