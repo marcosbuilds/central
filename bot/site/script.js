@@ -85,7 +85,7 @@
 
     window.fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" })
       .then(function (response) {
-        if (!response.ok) throw new Error("status unavailable");
+        if (!response.ok) throw new Error("status check failed");
         return response.json();
       })
       .then(function (payload) {
@@ -224,7 +224,11 @@
   }
 
   function attemptEndpoint(url, options, timeoutMs) {
-    if (!window.fetch) return Promise.reject(new Error("fetch unavailable"));
+    if (!window.fetch) {
+      var browserError = new Error("A conexão não está disponível neste navegador. Tente novamente.");
+      browserError.code = "BROWSER_NETWORK";
+      return Promise.reject(browserError);
+    }
     var requestOptions = Object.assign({}, options || { headers: { Accept: "application/json" } });
     var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
     var timeoutId;
@@ -239,7 +243,7 @@
     var timeout = new Promise(function (_, reject) {
       timeoutId = window.setTimeout(function () {
         if (controller) controller.abort();
-        var error = new Error("request timeout");
+        var error = new Error("A conexão demorou mais do que o esperado. Tente novamente.");
         error.code = "TIMEOUT";
         reject(error);
       }, duration);
@@ -684,11 +688,7 @@
     if (body.dataset.page !== "login") return;
 
     var requestForm = document.querySelector("[data-login-request]");
-    var verifyForm = document.querySelector("[data-login-verify]");
     var status = document.querySelector("[data-login-status]");
-    var result = document.querySelector("[data-login-result]");
-    var codeInput = document.querySelector("[name=\"access-code\"]");
-    var cells = Array.prototype.slice.call(document.querySelectorAll("[data-code-cell]"));
     var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
 
     if (idInput) {
@@ -698,58 +698,13 @@
       });
     }
 
-    function syncCodeCells() {
-      var value = codeInput ? codeInput.value : "";
-      cells.forEach(function (cell, index) { cell.textContent = value.charAt(index) || ""; });
-    }
-
-    if (codeInput) {
-      codeInput.addEventListener("input", function () {
-        codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
-        syncCodeCells();
-      });
-    }
-
     if (requestForm) requestForm.addEventListener("submit", function (event) {
       event.preventDefault();
       if (!idInput || !/^\d{1,19}$/.test(idInput.value.trim())) {
         if (idInput) { idInput.setCustomValidity("Use somente números, de 1 a 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
         return;
       }
-      var submit = requestForm.querySelector("button[type=submit]");
-      if (status) status.hidden = true;
-      setButtonBusy(submit, true, "Enviando código…");
-      attemptEndpoint("/api/auth/code/request", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ peace_id: idInput.value.trim() }) }, 60000).then(function () {
-        setButtonBusy(submit, false);
-        setButtonLabel(submit, "Reenviar código");
-        setStatusMessage(status, "Código enviado", "Confira sua DM.", "success");
-        if (verifyForm) {
-          verifyForm.hidden = false;
-          if (codeInput) codeInput.focus();
-        }
-      }).catch(function () {
-        setButtonBusy(submit, false);
-        setStatusMessage(status, "Não foi possível enviar", "Tente novamente.", "offline");
-      });
-    });
-
-    if (verifyForm) verifyForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      if (!codeInput || !/^\d{6}$/.test(codeInput.value)) {
-        if (result) result.textContent = "Digite os seis dígitos do código para continuar.";
-        if (codeInput) codeInput.focus();
-        return;
-      }
-      var verifyButton = verifyForm.querySelector("button[type=submit]");
-      if (result) result.textContent = "";
-      setButtonBusy(verifyButton, true, "Validando…");
-      attemptEndpoint("/api/auth/code/verify", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: codeInput.value }) }, 60000).then(function () {
-        setButtonBusy(verifyButton, false);
-        if (result) result.textContent = "Código confirmado.";
-      }).catch(function () {
-        setButtonBusy(verifyButton, false);
-        if (result) result.textContent = "Não foi possível validar agora. Tente novamente.";
-      });
+      setStatusMessage(status, "Acesso web em preparação", "A autenticação do membro acontece pelo Discord. Use Fazer parte para continuar.", "pending");
     });
   }
 

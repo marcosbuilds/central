@@ -20,8 +20,11 @@ Discord display name, and exposes the verification state from the member's
 `Not Verified`, `Visitor`, or `Peace` role. The interface advances to the
 interview only after `Visitor` or `Peace` is observed; it never treats the
 public service-health check as proof of a member identity and it does not
-create a Discord OAuth session. `/acessar/` remains the member login UI for
-Peace ID plus a six-digit DM code. No static page creates an application,
+create a Discord OAuth session. `/acessar/` keeps the compact Peace ID surface
+for the future member login, but does not call a remote code endpoint until the
+documented web-session contract exists. The page explains that authentication
+continues through Discord instead of exposing a broken request or pretending
+that a web session was created. No static page creates an application,
 approval, or member record.
 
 The `/area/` route is the member-area UI shell. Without a future authenticated

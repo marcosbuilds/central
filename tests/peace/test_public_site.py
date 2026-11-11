@@ -248,7 +248,8 @@ def test_public_site_files_are_complete():
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
         assert (site_root / route / "index.html").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
-    assert "/api/auth/code/request" in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "/api/auth/code/request" not in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "/api/auth/code/verify" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
     script = (site_root / "script.js").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
@@ -284,6 +285,10 @@ def test_public_site_files_are_complete():
     assert 'src="/assets/id-card.svg"' in login_html
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
+    assert "Acesso web em preparação" in script
+    assert "status unavailable" not in script
+    assert "fetch unavailable" not in script
+    assert "request timeout" not in script
     assert 'data-button-label' in login_html and 'button-spinner' in login_html
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert '60000' in script
