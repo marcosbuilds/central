@@ -81,17 +81,22 @@ grants `Peace` and the visual `Intern` role, with no global permissions on the
 latter.
 
 Peace nicknames use `F` for Founder. Access and status roles such as `Peace`,
-`Dev`, `Staff`, `Management`, `Manager ⎰ Deputy Delegate`, `Visitor`, and
-`Not Verified` do not create a prefix. For the remaining known visual roles, a
-live role must have Discord's “display members of this role separately”
-(`hoist`) flag enabled, and the prefix is the first letter of the highest live
-visual role (`Intern` → `I`, `Rookie ⎰ Agent` → `R`, `Streamer` → `S`). The
-same rule is used by runtime synchronization, snapshots, return approval, and
-`peace-nick`; offline name-only data keeps the known visual-role fallback so
-historical records remain readable. Startup reconciliation runs the nickname
-repair before panel history reconciliation and merges the gateway cache with
-Discord's complete member iterator, so existing members are repaired even when
-a slow panel sync would otherwise delay or prevent the backfill.
+`Dev`, `Staff`, `Management`, `Visitor`, and `Not Verified` do not create a
+prefix. `Manager ⎰ Deputy Delegate` is a visual role and uses the stable code
+`DEL` when Discord's “display members of this role separately” (`hoist`) flag is
+enabled. The remaining known visual roles keep their established short codes
+(`Intern` → `I`, `Rookie ⎰ Agent` → `R`, `Streamer` → `S`). The highest live
+visual role by Discord position wins, and nickname codes use uppercase ASCII
+tokens so they remain readable and searchable on every Discord client.
+
+The same rule is used by runtime synchronization, snapshots, return approval,
+and `peace-nick`; their shared formatter accepts one-to-four-letter codes,
+preserves the alias, and never truncates the complete Peace ID. Offline
+name-only data keeps the known visual-role fallback so historical records remain
+readable. Startup reconciliation runs the nickname repair before panel history
+reconciliation and merges the gateway cache with Discord's complete member
+iterator, so existing members are repaired even when a slow panel sync would
+otherwise delay or prevent the backfill.
 
 When a member leaves with Peace, or loses Peace while remaining in the server,
 the ID is marked `reserved` and is never silently reused. The bot records the
@@ -161,6 +166,7 @@ uses management, chat, and previous-ticket information as controlled context,
 but does not store raw conversations as memory or reveal internal content to the
 requester.
 
-`bot.commands.nick` changes only the final ID portion of existing nicknames and preserves
-the in-game name. It automatically skips the server owner and members above the
-bot's hierarchy; roles are not removed or added by this migration.
+`bot.commands.nick` recalculates the visual code and final ID portion of existing
+nicknames while preserving the in-game name. It automatically skips the server
+owner and members above the bot's hierarchy; roles are not removed or added by
+this migration.

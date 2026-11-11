@@ -23,14 +23,14 @@ from discord.ext import commands
 if __package__ == "bot":
     from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
     from .persistence.database import PeaceDatabase
-    from .core.identity import prefix_for_roles
+    from .core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
     from .core.error_handling import configure_logging, exception_details
 else:
     from config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
     from persistence.database import PeaceDatabase
-    from core.identity import prefix_for_roles
+    from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
     from core.error_handling import configure_logging, exception_details
@@ -3807,21 +3807,8 @@ class PeaceBot(commands.Bot):
         if prefix is None:
             return None
         current = member.nick or member.display_name or member.name
-        match = re.match(r"^[A-Z]\s*⎰\s*(.+?)\s+(\d{1,8})$", current)
-        if match:
-            base = match.group(1).strip()
-        else:
-            # Older Peace nicknames could contain the numeric ID without the
-            # visual prefix. Preserve the alias when repairing those names so
-            # the backfill does not produce e.g. ``S ⎰ Name 24 24``.
-            legacy_match = re.match(r"^(.+?)\s+\d{1,8}$", current)
-            base = (
-                legacy_match.group(1).strip()
-                if legacy_match and has_peace
-                else current.strip()
-            )
-        base = re.sub(r"\s+", " ", base)[:20].strip() or member.name[:20]
-        return f"{prefix} ⎰ {base} {peace_id}"[:32]
+        base = alias_from_nickname(current, strip_legacy_id=has_peace) or member.name
+        return build_peace_nickname(prefix, base, peace_id)
 
     async def sync_member_tag(
         self,

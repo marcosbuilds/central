@@ -75,9 +75,13 @@ the old ID remains reserved, with no automatic duplicate card.
 `bot/core/identity.py` is the single prefix policy. Founder receives `F`.
 Access/status roles do not generate prefixes. For the known visual-role
 allowlist, live Discord metadata must also show “display members of this role
-separately” (`hoist`); the prefix is the first letter of the highest matching
-role. Runtime sync, snapshot import, return approval, and `peace-nick` share the
-same helper. `Peace`, `Staff`, `Management`, `Manager ⎰ Deputy Delegate`, `Dev`,
+separately” (`hoist`); the stable code of the highest matching role wins.
+`Manager ⎰ Deputy Delegate` is visual-only in the live server (no global
+permissions, channel visibility, or authorization use) and receives `DEL`.
+Existing one-letter visual codes remain unchanged for compatibility. Runtime
+sync, snapshot import, return approval, and `peace-nick` share the same
+length-safe formatter/parser, which accepts one-to-four uppercase ASCII letters
+and preserves the complete Peace ID. `Peace`, `Staff`, `Management`, `Dev`,
 `Visitor`, and status roles remain outside the allowlist and never compete for
 that prefix. Founder remains the explicit `F` exception.
 

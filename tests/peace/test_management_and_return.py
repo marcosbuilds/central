@@ -6,6 +6,7 @@ import discord
 import pytest
 
 from bot.core.identity import prefix_for_roles
+from bot.commands.nick import alias_from_member, build_name
 from bot.config.settings import _validate_unique_role_ids
 from bot.main import (
     DeleteUserConfirmationView,
@@ -159,7 +160,7 @@ def test_live_display_separation_filters_visual_prefixes_but_not_founder():
     ) == "F"
 
 
-def test_live_visual_role_uses_first_letter_and_ignores_hoisted_access_roles():
+def test_live_visual_role_uses_stable_code_and_ignores_hoisted_access_roles():
     assert prefix_for_roles(
         user_id=10,
         role_names=("Peace", "Intern", "Rookie ⎰ Agent"),
@@ -175,7 +176,52 @@ def test_live_visual_role_uses_first_letter_and_ignores_hoisted_access_roles():
         default="N",
         role_positions={"Peace": 4, "Manager ⎰ Deputy Delegate": 30, "Staff": 40},
         role_hoist={"Peace": False, "Manager ⎰ Deputy Delegate": True, "Staff": True},
+    ) == "DEL"
+
+
+def test_manager_code_requires_discord_display_separation():
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Manager ⎰ Deputy Delegate"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 4, "Manager ⎰ Deputy Delegate": 30},
+        role_hoist={"Peace": False, "Manager ⎰ Deputy Delegate": False},
     ) == "N"
+
+
+def test_multi_letter_prefix_parser_and_formatter_preserve_alias_and_id():
+    assert alias_from_member({"nick": "DEL ⎰ Kamikaze 21"}, "fallback") == "Kamikaze"
+    assert alias_from_member({"nick": "R ⎰ Kamikaze 21"}, "fallback") == "Kamikaze"
+    assert alias_from_member({"nick": "Kamikaze 21"}, "fallback") == "Kamikaze"
+    proposed = build_name("DEL", "Kamikaze", 21)
+    assert proposed == "DEL ⎰ Kamikaze 21"
+    assert len(proposed) <= 32
+
+
+def test_multi_letter_prefix_formatter_keeps_long_peace_id_intact():
+    proposed = build_name("DEL", "a" * 40, 12345678)
+    assert proposed.endswith(" 12345678")
+    assert len(proposed) <= 32
+
+
+def test_peace_nickname_repairs_manager_prefix_without_duplicating_alias(tmp_path):
+    config = settings(tmp_path, booster_role_id=None, private_call_category_id=None)
+    peace = FakeRole(200, "Peace", 4, hoist=False)
+    manager = FakeRole(700, "Manager ⎰ Deputy Delegate", 30, hoist=True)
+    guild = SimpleNamespace(roles=[peace, manager])
+    member = FakeMember(21, [peace, manager], guild)
+    member.nick = "R ⎰ Kamikaze 21"
+    member.display_name = member.nick
+
+    assert PeaceBot.peace_nickname(
+        member,
+        role_names=[role.name for role in member.roles],
+        peace_id=21,
+        settings=config,
+        role_positions={role.name: role.position for role in member.roles},
+        role_hoist={role.name: role.hoist for role in member.roles},
+    ) == "DEL ⎰ Kamikaze 21"
 
 
 def test_member_role_update_rebuilds_nickname_from_live_visual_priority(tmp_path):

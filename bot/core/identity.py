@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping
 
 # These are presentation labels only. Access/status roles must never produce a
 # nickname prefix, even when Discord's ``hoist`` flag is enabled on them. The
-# prefix is the first letter of the highest live visual role.
+# prefix is the stable code of the highest live visual role.
 NON_VISUAL_ROLE_NAMES = frozenset(
     {
         "peace",
@@ -17,7 +17,6 @@ NON_VISUAL_ROLE_NAMES = frozenset(
         "management",
         "gerência",
         "gerencia",
-        "manager ⎰ deputy delegate",
         "visitor",
         "not verified",
         "não verificado",
@@ -28,6 +27,7 @@ NON_VISUAL_ROLE_NAMES = frozenset(
 )
 
 VISUAL_ROLE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("DEL", ("manager ⎰ deputy delegate", "gerente ⎰ delegado adjunto")),
     (
         "D",
         (
@@ -49,6 +49,54 @@ VISUAL_ROLE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("I", ("intern", "estagiário", "estagiario")),
     ("S", ("streamer",)),
 )
+
+MAX_DISCORD_NICKNAME_LENGTH = 32
+PREFIX_TOKEN_PATTERN = r"[A-Z]{1,4}"
+PEACE_NICKNAME_PATTERN = re.compile(
+    rf"^\s*(?P<prefix>{PREFIX_TOKEN_PATTERN})\s*⎰\s*(?P<alias>.+?)\s+(?P<peace_id>\d+)\s*$"
+)
+PREFIXED_NICKNAME_PATTERN = re.compile(
+    rf"^\s*(?P<prefix>{PREFIX_TOKEN_PATTERN})\s*⎰\s*(?P<alias>.+?)\s*$"
+)
+LEGACY_ID_PATTERN = re.compile(r"^\s*(?P<alias>.+?)\s+\d+\s*$")
+
+
+def alias_from_nickname(value: str | None, *, strip_legacy_id: bool = False) -> str:
+    """Extract the member alias from a Peace nickname in any supported format."""
+
+    nickname = str(value or "").strip()
+    match = PEACE_NICKNAME_PATTERN.match(nickname)
+    if match:
+        return match.group("alias").strip()
+    match = PREFIXED_NICKNAME_PATTERN.match(nickname)
+    if match:
+        return match.group("alias").strip()
+    if strip_legacy_id:
+        match = LEGACY_ID_PATTERN.match(nickname)
+        if match:
+            return match.group("alias").strip()
+    return nickname
+
+
+def build_peace_nickname(prefix: str, alias: str, peace_id: int) -> str:
+    """Build a Discord-safe nickname while preserving the complete Peace ID."""
+
+    normalized_prefix = str(prefix).strip().upper()
+    if not re.fullmatch(PREFIX_TOKEN_PATTERN, normalized_prefix):
+        raise ValueError("Peace nickname prefixes must be 1-4 uppercase ASCII letters")
+    peace_id_text = str(int(peace_id))
+    available_alias_length = (
+        MAX_DISCORD_NICKNAME_LENGTH
+        - len(normalized_prefix)
+        - len(" ⎰ ")
+        - len(peace_id_text)
+        - 1
+    )
+    if available_alias_length < 1:
+        raise ValueError("Peace ID is too long for a Discord nickname")
+    normalized_alias = re.sub(r"\s+", " ", str(alias)).strip()
+    base = normalized_alias[:available_alias_length].strip() or "Peace"
+    return f"{normalized_prefix} ⎰ {base} {peace_id_text}"
 
 
 def _normalise_role_name(value: str) -> str:

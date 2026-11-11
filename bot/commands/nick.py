@@ -1,40 +1,27 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 
 if (__package__ or "").startswith("bot."):
     from ..integrations.discord_api import DiscordAPI, DiscordAPIError
     from ..config.settings import Settings
-    from ..core.identity import prefix_for_roles
+    from ..core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from ..persistence.database import PeaceDatabase
 else:
     from integrations.discord_api import DiscordAPI, DiscordAPIError
     from config.settings import Settings
-    from core.identity import prefix_for_roles
+    from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from persistence.database import PeaceDatabase
-
-
-OLD_NAME = re.compile(r"^\s*[A-Za-z]\s*⎰\s*(.+?)\s+\d+\s*$")
-PREFIX_NAME = re.compile(r"^\s*[A-Za-z]\s*⎰\s*(.+?)\s*$")
 
 
 def alias_from_member(member: dict, fallback: str) -> str:
     nickname = str(member.get("nick") or "").strip()
-    match = OLD_NAME.match(nickname)
-    if match:
-        return match.group(1).strip()
-    match = PREFIX_NAME.match(nickname)
-    if match:
-        return match.group(1).strip()
-    return nickname or fallback
+    return alias_from_nickname(nickname, strip_legacy_id=bool(nickname)) or fallback
 
 
 def build_name(prefix: str, alias: str, peace_id: int) -> str:
-    suffix = f" {peace_id}"
-    room = max(1, 32 - len(prefix) - len(" ⎰ ") - len(suffix))
-    return f"{prefix} ⎰ {alias[:room].strip()}" + suffix
+    return build_peace_nickname(prefix, alias, peace_id)
 
 
 def run() -> None:
