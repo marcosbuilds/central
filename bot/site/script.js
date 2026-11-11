@@ -129,7 +129,7 @@
 
       copyText(target.textContent.trim())
         .then(function (copied) {
-          status.textContent = copied ? "Convite copiado." : "Não foi possível copiar aqui.";
+          status.textContent = copied ? "Link copiado." : "Não foi possível copiar aqui.";
           window.setTimeout(function () { status.textContent = ""; }, 3500);
         })
         .catch(function () {
@@ -238,20 +238,33 @@
 
     function updateReview() {
       var nickname = wizard.querySelector('[name="nickname"]');
+      var discovery = wizard.querySelector('[name="discovery"]');
       var motivation = wizard.querySelector('[name="motivation"]');
       var reviewNickname = wizard.querySelector("[data-review-nickname]");
+      var reviewDiscovery = wizard.querySelector("[data-review-discovery]");
       var reviewMotivation = wizard.querySelector("[data-review-motivation]");
       if (reviewNickname) reviewNickname.textContent = nickname && nickname.value.trim() ? nickname.value.trim() : "Ainda não preenchido.";
+      if (reviewDiscovery) reviewDiscovery.textContent = discovery && discovery.value.trim() ? discovery.value.trim() : "Ainda não preenchido.";
       if (reviewMotivation) reviewMotivation.textContent = motivation && motivation.value.trim() ? motivation.value.trim().slice(0, 140) + (motivation.value.trim().length > 140 ? "…" : "") : "Ainda não preenchida.";
     }
 
-    var motivation = wizard.querySelector('[name="motivation"]');
-    var characterCount = wizard.querySelector("[data-character-count]");
-    if (motivation && characterCount) {
-      motivation.addEventListener("input", function () { characterCount.textContent = String(motivation.value.length); });
-    }
+    wizard.querySelectorAll("[data-character-count-for]").forEach(function (counter) {
+      var field = wizard.querySelector('[name="' + counter.dataset.characterCountFor + '"]');
+      if (!field) return;
+      function syncCounter() { counter.textContent = String(field.value.length); }
+      field.addEventListener("input", syncCounter);
+      syncCounter();
+    });
     if (wizardNext) wizardNext.addEventListener("click", function () {
       if (wizardStep < 4) {
+        var currentPanel = wizard.querySelector('[data-wizard-panel="' + wizardStep + '"]');
+        var invalidField = currentPanel && Array.prototype.slice.call(currentPanel.querySelectorAll("input, textarea")).find(function (field) {
+          return !field.checkValidity();
+        });
+        if (invalidField) {
+          invalidField.reportValidity();
+          return;
+        }
         if (wizardStep === 3) updateReview();
         updateWizard(wizardStep + 1, true);
       }
@@ -263,13 +276,15 @@
     var submitButton = wizard.querySelector("[data-application-submit]");
     var result = wizard.querySelector("[data-application-result]");
     if (submitButton) submitButton.addEventListener("click", function () {
-      var consent = wizard.querySelector('[name="rules-consent"]');
-      if (consent && !consent.checked) {
-        if (result) result.textContent = "Marque a ciência das regras para revisar a candidatura.";
-        consent.focus();
+      var missingTerm = Array.prototype.slice.call(wizard.querySelectorAll('[name^="terms-"]')).find(function (term) {
+        return !term.checked;
+      });
+      if (missingTerm) {
+        if (result) result.textContent = "Aceite os três termos para enviar.";
+        missingTerm.focus();
         return;
       }
-      if (result) result.textContent = "Envio bloqueado com honestidade: /api/applications/submit ainda não está conectado. Nenhuma candidatura foi criada.";
+      if (result) result.textContent = "Envio indisponível nesta instalação: a API ainda não está conectada. Nenhuma candidatura foi criada.";
       setIntegrationMessage(integrationBanner, "Candidatura não enviada", "A API de candidatura ainda não está conectada a esta instalação.", "offline");
     });
 

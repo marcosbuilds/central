@@ -12,8 +12,8 @@ time and does not expose member data or operational logs. Avisos and parceiros
 are separate public interfaces rather than sections embedded in the home.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
-UI. They model the documented Discord OAuth, verification, setagem and staff
-review states without pretending that those future APIs exist. `/acessar/` is
+UI. They model the documented Discord OAuth, verification, short interview and
+staff review states without pretending that those future APIs exist. `/acessar/` is
 the member login UI for Peace ID plus a six-digit DM code; it also remains
 honest when the code endpoints are unavailable. No static page creates a
 session, invitation, application, approval, or member record.
@@ -124,11 +124,23 @@ so it is not confused with the Peace mark:
 - constraint: use only for a verification/security state, never as the Peace
   logo or as evidence that a user is authenticated.
 
+`bot/site/assets/copy.svg` is the icon-only action for copying the public
+Discord route. Its provenance is recorded here so the control remains
+recognizable without turning into a large secondary button:
+
+- source: [theSVG Copy outline UI icon](https://thesvg.org/ui/copy/outline.svg);
+- license/attribution: theSVG UI collection is open-source and requires no attribution;
+- retrieved: 2026-11-11;
+- SHA-256: `1CB5A83DCF054C292A43071EE8FEDA3AF9886EF596854BEB5ED39DABCF2AA7AD`;
+- accessible behavior: the button keeps an `aria-label`, a native tooltip and a live copy result;
+- constraint: use only for the copy action, never as a substitute for the visible link.
+
 The public page uses a small allowlist for copying: the visible invite is
-explicitly marked as copyable and has a copy button; ordinary editorial text is
-not placed on the clipboard by the page. This is browser-level friction, not a
-security boundary: source inspection, DevTools, OCR, screenshots, and
-assistive technology remain outside the control of a static site.
+explicitly marked as copyable and shows `peacegg.com.br/discord`; ordinary
+editorial text is not placed on the clipboard by the page. This is
+browser-level friction, not a security boundary: source inspection, DevTools,
+OCR, screenshots, and assistive technology remain outside the control of a
+static site.
 
 ## Verification
 
