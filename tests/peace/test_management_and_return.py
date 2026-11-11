@@ -200,6 +200,47 @@ def test_member_role_update_rebuilds_nickname_from_live_visual_priority(tmp_path
     assert bot.database.get_member(after.id)["name_prefix"] == "S"
 
 
+def test_startup_tag_sync_fetches_existing_members_outside_gateway_cache(tmp_path):
+    config = settings(tmp_path, booster_role_id=None, private_call_category_id=None)
+    bot = PeaceBot(config)
+    peace = FakeRole(200, "Peace", 4)
+    streamer = FakeRole(202, "Streamer", 22, hoist=True)
+    guild = SimpleNamespace(
+        members=[],
+        roles=[peace, streamer],
+        get_role=lambda role_id: {200: peace, 202: streamer}.get(role_id),
+    )
+    existing = FakeMember(24, [peace, streamer], guild)
+    existing.nick = "member-24 1"
+    existing.display_name = existing.nick
+
+    async def fetch_members(*, limit=None):
+        assert limit is None
+        yield existing
+
+    guild.fetch_members = fetch_members
+    bot.guild = guild
+    bot.database.initialize()
+    bot.database.ensure_runtime_member(
+        discord_user_id=existing.id,
+        username=existing.name,
+        nickname=existing.nick,
+        role_ids=[role.id for role in existing.roles],
+        role_names=[role.name for role in existing.roles],
+        founder_id=1,
+        role_positions={role.name: role.position for role in existing.roles},
+        role_hoist={role.name: role.hoist for role in existing.roles},
+    )
+
+    summary = asyncio.run(bot.sync_peace_tags())
+
+    assert existing.nick == "S ⎰ member-24 1"
+    assert summary["fetched"] is True
+    assert summary["seen"] == 1
+    assert summary["updated"] == 1
+    assert summary["failed"] == 0
+
+
 def test_start_menu_reuses_real_management_role_and_separates_actions(tmp_path):
     founder_role = FakeRole(100, "Founder Peace", 20)
     manager_role = FakeRole(700, "Management", 10)

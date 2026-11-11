@@ -88,7 +88,9 @@ Discord's “display members of this role separately” (`hoist`) flag enabled.
 When more than one matching visual role is present, the highest live Discord
 role wins. The same rule is used by runtime synchronization, snapshots, return
 approval, and `peace-nick`; offline name-only data keeps the existing allowlist
-fallback so historical records remain readable.
+fallback so historical records remain readable. Startup reconciliation merges
+the gateway cache with Discord's complete member iterator, so existing members
+are repaired even when they were not present in the local cache at restart.
 
 When a member leaves with Peace, or loses Peace while remaining in the server,
 the ID is marked `reserved` and is never silently reused. The bot records the

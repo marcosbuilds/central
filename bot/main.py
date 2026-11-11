@@ -3804,7 +3804,18 @@ class PeaceBot(commands.Bot):
             return None
         current = member.nick or member.display_name or member.name
         match = re.match(r"^[A-Z]\s*⎰\s*(.+?)\s+(\d{1,8})$", current)
-        base = match.group(1).strip() if match else current.strip()
+        if match:
+            base = match.group(1).strip()
+        else:
+            # Older Peace nicknames could contain the numeric ID without the
+            # visual prefix. Preserve the alias when repairing those names so
+            # the backfill does not produce e.g. ``S ⎰ Name 24 24``.
+            legacy_match = re.match(r"^(.+?)\s+\d{1,8}$", current)
+            base = (
+                legacy_match.group(1).strip()
+                if legacy_match and has_peace
+                else current.strip()
+            )
         base = re.sub(r"\s+", " ", base)[:20].strip() or member.name[:20]
         return f"{prefix} ⎰ {base} {peace_id}"[:32]
 
@@ -3815,8 +3826,11 @@ class PeaceBot(commands.Bot):
         role_names: list[str] | None = None,
         peace_id: int | None = None,
         strict: bool = False,
+        stats: dict[str, int] | None = None,
     ) -> bool:
         if member.bot:
+            if stats is not None:
+                stats["ignored"] = stats.get("ignored", 0) + 1
             return True
         effective_role_names = role_names or [role.name for role in member.roles]
         effective_role_positions = role_position_map(member.roles)
@@ -3861,26 +3875,103 @@ class PeaceBot(commands.Bot):
             role_hoist=effective_role_hoist,
         )
         if desired is None:
+            if stats is not None:
+                stats["not_applicable"] = stats.get("not_applicable", 0) + 1
             return True
         if member.nick == desired:
+            if stats is not None:
+                stats["already_correct"] = stats.get("already_correct", 0) + 1
             return True
         try:
             await member.edit(nick=desired, reason="Padronização da tag Peace")
             self.database.update_nickname(member.id, desired)
+            if stats is not None:
+                stats["updated"] = stats.get("updated", 0) + 1
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível atualizar a tag de %s", member.id)
+            if stats is not None:
+                stats["failed"] = stats.get("failed", 0) + 1
             if strict:
                 raise
             return False
         return True
 
-    async def sync_peace_tags(self) -> None:
+    async def members_for_tag_sync(self) -> tuple[list[discord.Member], bool]:
+        """Return the complete member view used by the nickname backfill.
+
+        ``Guild.members`` is a cache and can be incomplete after a restart or
+        when the gateway has not delivered every member chunk yet. The REST
+        member iterator is the authoritative fallback for this reconciliation;
+        cached members remain useful when Discord denies the fetch.
+        """
         if self.guild is None:
-            return
-        for member in self.guild.members:
+            return [], False
+        members_by_id = {
+            member.id: member
+            for member in getattr(self.guild, "members", ())
+            if getattr(member, "id", None) is not None
+        }
+        member_count = getattr(self.guild, "member_count", None)
+        if getattr(self.guild, "chunked", False) or (
+            isinstance(member_count, int) and len(members_by_id) >= member_count
+        ):
+            return list(members_by_id.values()), False
+        fetch_members = getattr(self.guild, "fetch_members", None)
+        if not callable(fetch_members):
+            return list(members_by_id.values()), False
+        try:
+            async for member in fetch_members(limit=None):
+                members_by_id[member.id] = member
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Não foi possível buscar todos os membros para a sincronização de tags; "
+                "usando o cache (%s membros)",
+                len(members_by_id),
+            )
+            return list(members_by_id.values()), False
+        return list(members_by_id.values()), True
+
+    async def sync_peace_tags(self) -> dict[str, int | bool]:
+        if self.guild is None:
+            return {
+                "seen": 0,
+                "updated": 0,
+                "already_correct": 0,
+                "ignored": 0,
+                "not_applicable": 0,
+                "returned": 0,
+                "failed": 0,
+                "fetched": False,
+            }
+        members, fetched = await self.members_for_tag_sync()
+        counters: dict[str, int] = {
+            "seen": len(members),
+            "updated": 0,
+            "already_correct": 0,
+            "ignored": 0,
+            "not_applicable": 0,
+            "returned": 0,
+            "failed": 0,
+        }
+        for member in members:
             if await self.ensure_return_request(member):
+                counters["returned"] += 1
                 continue
-            await self.sync_member_tag(member)
+            await self.sync_member_tag(member, stats=counters)
+        summary: dict[str, int | bool] = {**counters, "fetched": fetched}
+        log.info(
+            "Sincronização de tags Peace concluída: %s vistos, %s atualizados, "
+            "%s já corretos, %s sem tag, %s retornos pendentes, %s falhas "
+            "(busca completa=%s)",
+            counters["seen"],
+            counters["updated"],
+            counters["already_correct"],
+            counters["not_applicable"],
+            counters["returned"],
+            counters["failed"],
+            "sim" if fetched else "não",
+        )
+        return summary
 
     async def sync_missing_peace_ids(self) -> None:
         if self.guild is None:
