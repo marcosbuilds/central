@@ -4,12 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#050607">
-    <meta name="description" content="Login da Peace com ID e código de acesso.">
+    <meta name="description" content="Acesso de membro da Peace com ID e código enviado no Discord.">
     <title>Acessar — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-12">
+    <link rel="stylesheet" href="/styles.css?v=20261111-15">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-12"></script>
+    <script defer src="/script.js?v=20261111-15"></script>
   </head>
   <body data-page="login">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -25,14 +25,14 @@
       <main id="conteudo" class="flow-main flow-main--login">
         <section class="login-layout login-layout--focused" aria-labelledby="login-title">
           <div class="flow-copy" data-reveal>
-            <p class="eyebrow">Peace ID</p>
+            <p class="eyebrow">Já sou membro</p>
             <h1 id="login-title">Entrar na <em>Peace.</em></h1>
           </div>
 
-          <section class="login-card" aria-label="Formulário de acesso">
+          <section class="login-card" aria-label="Acesso de membro">
             <form class="auth-form" data-login-request novalidate>
               <label class="field field--id"><span>ID Peace</span><span class="field-control"><img class="field-icon" src="/assets/id-card.svg" alt="" aria-hidden="true" width="24" height="24"><input name="peace-id" type="text" required autocomplete="username" inputmode="numeric" maxlength="19" pattern="[0-9]{1,19}" autocapitalize="off" spellcheck="false" placeholder="Somente números" aria-describedby="peace-id-help"></span><small id="peace-id-help">Somente números · até 19 dígitos.</small></label>
-              <button class="button button--light button--large" type="submit"><span data-button-label>Continuar</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
+              <button class="button button--light button--large" type="submit"><span data-button-label>Enviar código no Discord</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
             </form>
 
             <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong></strong><p></p></div></div>
@@ -44,7 +44,7 @@
               <p class="form-status" data-login-result role="status" aria-live="polite"></p>
             </form>
 
-            <p class="login-switch">Ainda não é membro? <a href="/entrar/">Fazer parte</a></p>
+            <p class="login-switch">Ainda não é membro? <a href="/entrar/">Fazer parte da Peace</a></p>
           </section>
         </section>
       </main>

@@ -1,5 +1,6 @@
 import asyncio
 import http.client
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -97,6 +98,55 @@ def test_public_api_status_is_bounded_and_tracks_discord_readiness(tmp_path):
     )
 
 
+def test_public_media_feed_reads_discord_attachments_and_keeps_external_urls_out(tmp_path):
+    created_at = datetime.now(timezone.utc)
+    messages = []
+    for index in range(8):
+        messages.append(
+            SimpleNamespace(
+                id=100 + index,
+                created_at=created_at - timedelta(days=index),
+                content=f"Momento {index}",
+                jump_url=f"https://discord.com/channels/1/2/{100 + index}",
+                reactions=[SimpleNamespace(count=index)],
+                attachments=[
+                    SimpleNamespace(
+                        url=f"https://cdn.discordapp.com/attachments/1/2/{index}.png",
+                        content_type="image/png",
+                        size=1024,
+                    ),
+                    SimpleNamespace(
+                        url="https://example.com/private.png",
+                        content_type="image/png",
+                        size=1024,
+                    ),
+                ],
+            )
+        )
+
+    async def history(limit):
+        for message in messages:
+            yield message
+
+    channel = SimpleNamespace(history=history)
+    bot = make_bot(tmp_path)
+    bot.settings.website_media_channel_id = 1459444827635712134
+    bot.settings.website_clips_channel_id = None
+    bot.guild = SimpleNamespace(get_channel=lambda channel_id: channel if channel_id == bot.settings.website_media_channel_id else None)
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(bot, "/api/media?seed=7", method="GET")
+
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["moments"]
+    assert len(payload["moments"]) <= 6
+    assert all(item["url"].startswith("https://cdn.discordapp.com/") for item in payload["moments"])
+    assert any(item["engagement"] > 0 for item in payload["moments"])
+    assert payload["clips"] == []
+
+
 def test_public_api_rejects_untrusted_origins_without_reflection(tmp_path):
     status, headers, _ = run_public_api(
         tmp_path,
@@ -169,6 +219,153 @@ def test_public_entry_invite_is_single_use_and_reused_until_expiry(tmp_path):
         unique=True,
         reason="Convite único do fluxo público de entrada Peace",
     )
+
+
+def test_public_entry_binds_join_from_the_verification_channel_invite_list(tmp_path):
+    from bot.main import EntryInviteSession
+
+    not_verified = SimpleNamespace(id=300, name="Not Verified")
+    channel = SimpleNamespace(name="verify")
+    channel.create_invite = AsyncMock()
+    channel.invites = AsyncMock(
+        return_value=[SimpleNamespace(code="entry-code", url="https://discord.gg/entry-code", uses=1)]
+    )
+    guild = SimpleNamespace(
+        text_channels=[channel],
+        roles=[not_verified],
+        get_channel=lambda channel_id: channel if channel_id == 500 else None,
+        get_role=lambda role_id: not_verified if role_id == 300 else None,
+    )
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="peaceiro",
+        roles=[not_verified],
+        guild=guild,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = guild
+    token = "B" * 43
+    session = EntryInviteSession(
+        session_token=token,
+        invite_code="entry-code",
+        invite_url="https://discord.gg/entry-code",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        initial_uses=0,
+    )
+    bot.entry_sessions[token] = session
+
+    asyncio.run(bot.bind_entry_invite(member))
+
+    assert session.discord_user_id == member.id
+    assert session.discord_username == member.display_name
+    assert session.status == "verification_pending"
+    channel.invites.assert_awaited_once_with()
+
+
+def test_public_member_auth_sends_and_consumes_one_dm_code(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick="M ⎰ Peaceiro 42",
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+        send=AsyncMock(),
+    )
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=999,
+    )
+    bot.guild = SimpleNamespace(
+        members=[member],
+        get_member=lambda user_id: member if user_id == member.id else None,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, requested = run_configured_api(
+        bot,
+        "/api/member/auth/request",
+        method="POST",
+        payload={"peace_id": "42"},
+    )
+    assert status == 200
+    assert requested["ok"] is True
+    assert requested["member_name"] == "Peaceiro"
+    message = member.send.await_args.args[0]
+    code = re.search(r"Código: `(?P<code>\d{6})`", message).group("code")
+    assert code not in requested
+
+    status, verified = run_configured_api(
+        bot,
+        "/api/member/auth/verify",
+        method="POST",
+        payload={"peace_id": "42", "code": code},
+    )
+    assert status == 200
+    assert verified["ok"] is True
+    assert verified["session"]["peace_id"] == 42
+    assert verified["session"]["member_name"] == "Peaceiro"
+    assert "token" in verified["session"]
+
+    status, invalid = run_configured_api(
+        bot,
+        "/api/member/auth/verify",
+        method="POST",
+        payload={"peace_id": "42", "code": code},
+    )
+    assert status == 401
+    assert invalid["code"] == "INVALID_CODE"
+
+
+def test_public_entry_identifies_existing_visitor_without_granting_access(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick=None,
+        roles=[SimpleNamespace(id=200, name="Visitor")],
+        bot=False,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = SimpleNamespace(members=[member], get_member=lambda user_id: member if user_id == member.id else None)
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/identify",
+        method="POST",
+        payload={"discord_username": "peaceiro"},
+    )
+    assert status == 200
+    assert payload["status"] == "visitor_member"
+    assert payload["next_stage"] == 3
+    assert payload["discord_user"]["mention"] == "@Peaceiro"
+
+
+def test_public_member_auth_rejects_ids_outside_numeric_limit(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.guild = SimpleNamespace()
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/request",
+        method="POST",
+        payload={"peace_id": "1" * 20},
+    )
+    assert status == 400
+    assert payload["code"] == "INVALID_PEACE_ID"
 
 
 def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
@@ -283,10 +480,17 @@ def test_public_site_files_are_complete():
     assert 'maxlength="19"' in login_html
     assert 'inputmode="numeric"' in login_html
     assert 'src="/assets/id-card.svg"' in login_html
-    assert ">Continuar</span>" in login_html
+    assert "Enviar código no Discord" in login_html
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
-    assert "Acesso web em preparação" in script
+    assert "/api/member/auth/request" in script
+    assert "/api/member/auth/verify" in script
+    assert "/api/media?seed=" in script
+    assert 'data-media-list="moments"' in homepage
+    assert 'data-media-list="clips"' in homepage
+    assert "media-skeleton" in homepage
+    assert "/api/media" in (site_root / "_redirects").read_text(encoding="utf-8")
+    assert "Acesso web em preparação" not in script
     assert "status unavailable" not in script
     assert "fetch unavailable" not in script
     assert "request timeout" not in script
@@ -297,8 +501,13 @@ def test_public_site_files_are_complete():
     assert '/api/entry/start' in script
     assert '/api/entry/status' in script
     assert '/api/entry/repair' in script
+    assert '/api/entry/identify' in script
+    assert 'data-entry-invite-panel' in candidature_html
+    assert 'data-entry-existing' in candidature_html
+    assert 'Já sou membro' in login_html or 'Já sou membro' in entry_html
     assert 'href="/discord/"' not in candidature_html
-    assert "abrindo-discord.html" in script
+    assert 'window.open("/candidatura/abrindo-discord.html"' not in script
+    assert 'window.open(url, "_blank", "noopener,noreferrer")' in script
     assert "endpoint unavailable" not in script
     assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
     assert 'data-entry-confirm' not in candidature_html
@@ -340,6 +549,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/api/status http://141.11.237.97:25072/api/status 200!" in redirects
+    assert "/api/media http://141.11.237.97:25072/api/media 200!" in redirects
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
         assert f"{route} {route}/ 301!" not in redirects
 

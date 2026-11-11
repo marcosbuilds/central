@@ -7,9 +7,9 @@
     <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça a entrada e os espaços públicos da comunidade.">
     <title>Peace — comunidade, presença e participação</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-12">
+    <link rel="stylesheet" href="/styles.css?v=20261111-15">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-12"></script>
+    <script defer src="/script.js?v=20261111-15"></script>
   </head>
   <body data-page="home">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -108,6 +108,34 @@
           </div>
         </section>
 
+        <section class="section community-media" id="momentos" aria-labelledby="moments-title" data-media-section>
+          <div class="section-heading section-heading--split" data-reveal>
+            <div><p class="eyebrow">03 / Em movimento</p><h2 id="moments-title">O que acontece por lá, <em>fica por aqui.</em></h2></div>
+            <div class="media-intro"><p>Momentos e clipes publicados nos canais da comunidade, escolhidos com variedade para você sentir o ritmo da Peace sem sair da página.</p><p class="media-updated" data-media-updated role="status" aria-live="polite">Carregando momentos…</p></div>
+          </div>
+
+          <div class="media-feed">
+            <section class="media-column" aria-labelledby="moments-column-title" data-media-column="moments" data-reveal>
+              <div class="media-column-heading"><div><p class="eyebrow">Momentos</p><h3 id="moments-column-title">A comunidade em cena.</h3></div><button class="text-button media-refresh" type="button" data-media-refresh><span data-button-label>Atualizar</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+              <div class="media-grid" data-media-list="moments" role="list" aria-busy="true" aria-label="Momentos recentes da Peace">
+                <article class="media-skeleton" role="listitem" data-media-skeleton aria-hidden="true"><span class="media-skeleton-visual"></span><span class="media-skeleton-line media-skeleton-line--short"></span><span class="media-skeleton-line"></span><span class="media-skeleton-line media-skeleton-line--medium"></span></article>
+                <article class="media-skeleton" role="listitem" data-media-skeleton aria-hidden="true"><span class="media-skeleton-visual"></span><span class="media-skeleton-line media-skeleton-line--short"></span><span class="media-skeleton-line"></span><span class="media-skeleton-line media-skeleton-line--medium"></span></article>
+              </div>
+              <p class="media-empty" data-media-empty="moments" role="status" hidden>Os próximos momentos aparecem aqui quando a comunidade compartilhar algo novo.</p>
+            </section>
+
+            <section class="media-column" aria-labelledby="clips-column-title" data-media-column="clips" data-reveal>
+              <div class="media-column-heading"><div><p class="eyebrow">Clipes</p><h3 id="clips-column-title">Os que merecem replay.</h3></div><span class="media-column-note">Reações + variedade</span></div>
+              <div class="media-grid" data-media-list="clips" role="list" aria-busy="true" aria-label="Clipes em destaque da Peace">
+                <article class="media-skeleton" role="listitem" data-media-skeleton aria-hidden="true"><span class="media-skeleton-visual"></span><span class="media-skeleton-line media-skeleton-line--short"></span><span class="media-skeleton-line"></span><span class="media-skeleton-line media-skeleton-line--medium"></span></article>
+                <article class="media-skeleton" role="listitem" data-media-skeleton aria-hidden="true"><span class="media-skeleton-visual"></span><span class="media-skeleton-line media-skeleton-line--short"></span><span class="media-skeleton-line"></span><span class="media-skeleton-line media-skeleton-line--medium"></span></article>
+              </div>
+              <p class="media-empty" data-media-empty="clips" role="status" hidden>Os clipes entram aqui aos poucos, misturando descobertas novas e registros que continuam bons.</p>
+            </section>
+          </div>
+          <p class="media-feed-status" data-media-status aria-live="polite"></p>
+        </section>
+
         <section class="section entry" id="entrada" aria-labelledby="entry-title">
           <div class="section-heading" data-reveal>
             <p class="eyebrow">02 / Como entrar</p>
@@ -146,7 +174,7 @@
 
         <section class="section history" id="historico" aria-labelledby="history-title">
           <div class="section-heading section-heading--split" data-reveal>
-            <div><p class="eyebrow">03 / Nossa trajetória</p><h2 id="history-title">A Peace toma forma <em>com quem chega.</em></h2></div>
+            <div><p class="eyebrow">04 / Nossa trajetória</p><h2 id="history-title">A Peace toma forma <em>com quem chega.</em></h2></div>
             <p>Uma leitura curta dos marcos públicos já registrados. O detalhe e a conversa continuam nos canais autorizados do Discord.</p>
           </div>
           <div class="history-list" role="list">
@@ -157,7 +185,7 @@
         </section>
 
         <section class="section member-invite" aria-labelledby="member-invite-title">
-          <div data-reveal><p class="eyebrow">04 / Área do membro</p><h2 id="member-invite-title">Depois da entrada, <em>acompanhe sem ruído.</em></h2><p>A área reúne status, pedidos e suporte sem tirar do Discord o que pertence à conversa. O acesso permanece condicionado à sessão e às permissões reais.</p><a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a></div>
+          <div data-reveal><p class="eyebrow">05 / Área do membro</p><h2 id="member-invite-title">Depois da entrada, <em>acompanhe sem ruído.</em></h2><p>A área reúne status, pedidos e suporte sem tirar do Discord o que pertence à conversa. O acesso permanece condicionado à sessão e às permissões reais.</p><a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a></div>
           <div class="member-invite-mark" data-reveal aria-hidden="true"><span></span><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"><span></span></div>
         </section>
       </main>

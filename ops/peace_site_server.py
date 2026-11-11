@@ -20,9 +20,14 @@ SITE_DIRECTORY = Path(__file__).resolve().parents[1] / "bot" / "site"
 ACL_ORIGIN = "http://141.11.237.97:25072"
 ACL_API_ROUTES = {
     "/api/status",
+    "/api/media",
     "/api/entry/start",
     "/api/entry/status",
     "/api/entry/repair",
+    "/api/entry/identify",
+    "/api/member/auth/request",
+    "/api/member/auth/verify",
+    "/api/member/auth/session",
 }
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
 
@@ -76,7 +81,15 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         route = self.path.split("?", 1)[0]
-        if route not in {"/api/entry/start", "/api/entry/status", "/api/entry/repair"}:
+        if route not in {
+            "/api/entry/start",
+            "/api/entry/status",
+            "/api/entry/repair",
+            "/api/entry/identify",
+            "/api/member/auth/request",
+            "/api/member/auth/verify",
+            "/api/member/auth/session",
+        }:
             self.send_error(404)
             return
         self._proxy_api("POST")
@@ -95,6 +108,10 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length)
             headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
+            if route == "/api/member/auth/session":
+                authorization = self.headers.get("Authorization", "")
+                if authorization.startswith("Bearer "):
+                    headers["Authorization"] = authorization
         request = Request(
             target,
             data=body,

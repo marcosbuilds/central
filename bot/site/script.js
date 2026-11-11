@@ -18,6 +18,21 @@
     link.rel = "noopener noreferrer";
   });
 
+  document.querySelectorAll("a[href]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      if (reducedMotion || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (link.target === "_blank" || link.hasAttribute("download") || link.getAttribute("href").charAt(0) === "#") return;
+      var destination;
+      try { destination = new URL(link.href, window.location.href); } catch (error) { return; }
+      if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
+      event.preventDefault();
+      document.body.classList.add("is-leaving");
+      window.setTimeout(function () { window.location.assign(destination.href); }, 150);
+    });
+  });
+
+  window.addEventListener("pageshow", function () { document.body.classList.remove("is-leaving"); });
+
   function syncNavigationInteraction(isOpen) {
     if (!navigation) return;
     var shouldDisable = mobileNavigation.matches && !isOpen;
@@ -98,6 +113,189 @@
   }
 
   refreshServiceStatus();
+
+  function initPublicMedia() {
+    if (body.dataset.page !== "home") return;
+
+    var lists = {
+      moments: document.querySelector('[data-media-list="moments"]'),
+      clips: document.querySelector('[data-media-list="clips"]')
+    };
+    var emptyStates = {
+      moments: document.querySelector('[data-media-empty="moments"]'),
+      clips: document.querySelector('[data-media-empty="clips"]')
+    };
+    var updated = document.querySelector("[data-media-updated]");
+    var status = document.querySelector("[data-media-status]");
+    var refreshButton = document.querySelector("[data-media-refresh]");
+    var mediaTimer = null;
+    var mediaLoading = false;
+    var hasRendered = false;
+    var lastLoadAt = 0;
+    var seed = readMediaSeed();
+
+    function readMediaSeed() {
+      try {
+        var stored = Number(window.localStorage.getItem("peace.media.seed.v1"));
+        if (Number.isFinite(stored) && stored >= 0) return Math.floor(stored) % (2 ** 32);
+      } catch (error) { /* optional */ }
+      var value = Date.now() % (2 ** 32);
+      try {
+        if (window.crypto && window.crypto.getRandomValues) {
+          var buffer = new Uint32Array(1);
+          window.crypto.getRandomValues(buffer);
+          value = buffer[0];
+        }
+        window.localStorage.setItem("peace.media.seed.v1", String(value));
+      } catch (error) { /* optional */ }
+      return value;
+    }
+
+    function saveMediaSeed() {
+      try { window.localStorage.setItem("peace.media.seed.v1", String(seed)); } catch (error) { /* optional */ }
+    }
+
+    function mediaDate(value) {
+      var parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "Agora";
+      return parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(/\.$/, "");
+    }
+
+    function makeNode(tagName, className, text) {
+      var node = document.createElement(tagName);
+      if (className) node.className = className;
+      if (typeof text === "string") node.textContent = text;
+      return node;
+    }
+
+    function configureExternalLink(link, url) {
+      if (!link || !url) return;
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+
+    function mediaCard(item) {
+      var article = makeNode("article", "media-card");
+      article.setAttribute("role", "listitem");
+      var visual = makeNode("div", "media-card-visual");
+      var media = null;
+      if (item.type === "video") {
+        media = makeNode("video", "media-card-video");
+        media.controls = true;
+        media.preload = "metadata";
+        media.playsInline = true;
+        media.setAttribute("aria-label", "Reproduzir clip da Peace");
+        media.src = item.url || "";
+      } else {
+        var imageLink = makeNode("a", "media-card-media-link");
+        configureExternalLink(imageLink, item.url);
+        media = makeNode("img", "media-card-image");
+        media.loading = "lazy";
+        media.decoding = "async";
+        media.alt = item.caption || "Momento compartilhado na comunidade Peace";
+        media.src = item.url || "";
+        imageLink.appendChild(media);
+        visual.appendChild(imageLink);
+      }
+      if (item.type === "video") visual.appendChild(media);
+      var badge = makeNode("span", "media-card-badge", item.type === "video" ? "Clip" : "Momento");
+      badge.setAttribute("aria-hidden", "true");
+      visual.appendChild(badge);
+      article.appendChild(visual);
+
+      var copy = makeNode("div", "media-card-copy");
+      var engagement = Number(item.engagement || 0);
+      var metaText = mediaDate(item.created_at) + (engagement > 0 ? " · " + engagement + " reações" : "");
+      copy.appendChild(makeNode("p", "media-card-meta", metaText));
+      copy.appendChild(makeNode("p", "media-card-caption", item.caption || (item.type === "video" ? "Um clip compartilhado na comunidade." : "Um momento compartilhado na comunidade.")));
+      if (item.discord_url) {
+        var source = makeNode("a", "media-card-source", "Ver no Discord ↗");
+        configureExternalLink(source, item.discord_url);
+        copy.appendChild(source);
+      }
+      article.appendChild(copy);
+      return article;
+    }
+
+    function renderList(kind, items) {
+      var list = lists[kind];
+      var empty = emptyStates[kind];
+      if (!list) return;
+      list.replaceChildren();
+      list.setAttribute("aria-busy", "false");
+      if (!Array.isArray(items) || !items.length) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+      if (empty) empty.hidden = true;
+      items.forEach(function (item) { list.appendChild(mediaCard(item)); });
+    }
+
+    function parseMediaResponse(response) {
+      return response.text().then(function (raw) {
+        var payload = null;
+        try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+        if (!payload || payload.ok !== true) throw new Error("media unavailable");
+        return payload;
+      });
+    }
+
+    function scheduleMediaRefresh(seconds) {
+      window.clearTimeout(mediaTimer);
+      mediaTimer = window.setTimeout(function () {
+        if (document.visibilityState === "visible") loadMedia(false);
+        else scheduleMediaRefresh(120);
+      }, Math.max(60, Number(seconds) || 300) * 1000);
+    }
+
+    function loadMedia(showBusy) {
+      if (mediaLoading) return Promise.resolve();
+      mediaLoading = true;
+      if (showBusy) setButtonBusy(refreshButton, true, "Atualizando…");
+      if (!hasRendered) {
+        Object.keys(lists).forEach(function (kind) {
+          if (lists[kind]) lists[kind].setAttribute("aria-busy", "true");
+        });
+        if (updated) updated.textContent = "Carregando momentos…";
+      }
+      return attemptEndpoint("/api/media?seed=" + encodeURIComponent(String(seed)), { headers: { Accept: "application/json" } }, 12000)
+        .then(parseMediaResponse)
+        .then(function (payload) {
+          renderList("moments", payload.moments || []);
+          renderList("clips", payload.clips || []);
+          var count = (payload.moments || []).length + (payload.clips || []).length;
+          if (updated) updated.textContent = count ? "Atualizado agora · registros do Discord" : "A comunidade continua em movimento no Discord.";
+          if (status) status.textContent = count ? "Momentos atualizados." : "Os próximos registros aparecem aqui quando forem publicados.";
+          lastLoadAt = Date.now();
+          hasRendered = true;
+          scheduleMediaRefresh(payload.refresh_after);
+        })
+        .catch(function () {
+          renderList("moments", []);
+          renderList("clips", []);
+          if (updated) updated.textContent = "A comunidade continua no Discord.";
+          if (status) status.textContent = "Os momentos voltam a aparecer quando houver novos registros.";
+          lastLoadAt = Date.now();
+          hasRendered = true;
+          scheduleMediaRefresh(300);
+        })
+        .finally(function () {
+          mediaLoading = false;
+          if (showBusy) setButtonBusy(refreshButton, false);
+        });
+    }
+
+    if (refreshButton) refreshButton.addEventListener("click", function () {
+      seed = (seed + 1) % (2 ** 32);
+      saveMediaSeed();
+      loadMedia(true);
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && Date.now() - lastLoadAt > 120000) loadMedia(false);
+    });
+    loadMedia(false);
+  }
 
   function copyAllowedFrom(node) {
     var element = node && node.nodeType === 1 ? node : node && node.parentElement;
@@ -198,7 +396,19 @@
       REPAIR_THROTTLED: "Aguarde alguns segundos e tente novamente.",
       DISCORD_ID_MISMATCH: "O ID informado não corresponde à conta identificada pelo convite.",
       INVALID_DISCORD_ID: "O ID do Discord deve conter somente números.",
-      FIELD_TOO_LONG: "Revise os campos informados e tente novamente."
+      FIELD_TOO_LONG: "Revise os campos informados e tente novamente.",
+      INVALID_PEACE_ID: "O ID Peace deve conter somente números.",
+      AUTH_DENIED: "Não foi possível validar esse ID Peace. Confira os números e tente novamente.",
+      AUTH_THROTTLED: "Aguarde alguns minutos antes de solicitar outro código.",
+      DM_UNAVAILABLE: "Não consegui enviar a mensagem privada. Abra suas DMs no Discord e tente novamente.",
+      INVALID_CODE: "O código não confere ou já expirou. Confira a DM e tente novamente.",
+      AUTH_SESSION_INVALID: "Sua sessão expirou. Entre novamente.",
+      AUTH_SESSION_UNAVAILABLE: "Não foi possível concluir o acesso agora. Tente novamente.",
+      MEMBER_NOT_FOUND: "Não encontrei essa conta no servidor. Revise o username e tente novamente.",
+      MEMBER_AMBIGUOUS: "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
+      INVALID_DISCORD_PROFILE: "Informe um link de perfil válido do Discord.",
+      MEMBER_IDENTITY_MISMATCH: "O username, o ID e o link informado não pertencem à mesma conta.",
+      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente."
     };
 
     if (knownMessages[code]) return knownMessages[code];
@@ -273,6 +483,10 @@
     var connectButton = document.querySelector("[data-entry-connect]");
     var connectResult = document.querySelector("[data-entry-result]");
     var sessionNote = document.querySelector("[data-entry-session-note]");
+    var invitePanel = document.querySelector("[data-entry-invite-panel]");
+    var inviteLink = document.querySelector("[data-entry-invite-link]");
+    var inviteOpenLink = document.querySelector("[data-entry-invite-open]");
+    var inviteUrlText = document.querySelector("[data-entry-invite-url]");
     var entryUser = document.querySelector("[data-entry-user]");
     var verificationState = document.querySelector("[data-entry-verification-state]");
     var verificationTitle = document.querySelector("[data-entry-status-title]");
@@ -284,13 +498,26 @@
     var repairForm = document.querySelector("[data-entry-repair]");
     var repairSubmit = document.querySelector("[data-entry-repair-submit]");
     var repairResult = document.querySelector("[data-entry-repair-result]");
+    var existingToggle = document.querySelector("[data-entry-existing-toggle]");
+    var existingPanel = document.querySelector("[data-entry-existing-panel]");
+    var existingForm = document.querySelector("[data-entry-existing]");
+    var existingSubmit = document.querySelector("[data-entry-existing-submit]");
+    var existingResult = document.querySelector("[data-entry-existing-result]");
+    var manualEntryNote = document.querySelector("[data-entry-manual-note]");
+    var memberResult = document.querySelector("[data-entry-member-result]");
     var storageKey = "peace.candidature.v2";
     var entryStorageKey = "peace.entry.v1";
+    var entryMetaStorageKey = "peace.entry.meta.v1";
+    var manualEntryStorageKey = "peace.entry.manual.v1";
     var currentStage = 1;
     var wizardStep = 1;
     var restoring = true;
     var entrySession = null;
     var entryPollTimer = null;
+    var entryStartPromise = null;
+    var entryStatusPromise = null;
+    var inviteOpened = false;
+    var manualEntryIdentity = null;
 
     function readDraft() {
       try {
@@ -328,6 +555,86 @@
       try { window.localStorage.removeItem(entryStorageKey); } catch (error) { /* optional */ }
     }
 
+    function readManualEntry() {
+      try {
+        var raw = window.localStorage.getItem(manualEntryStorageKey);
+        if (!raw) return null;
+        var identity = JSON.parse(raw);
+        return identity && identity.version === 1 && identity.discord_username ? identity : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function saveManualEntry(identity) {
+      manualEntryIdentity = identity;
+      try { window.localStorage.setItem(manualEntryStorageKey, JSON.stringify({ version: 1, ...identity })); } catch (error) { /* optional */ }
+    }
+
+    function setManualEntryFields(identity) {
+      if (!existingForm || !identity) return;
+      ["discord_username", "discord_id", "discord_profile_url"].forEach(function (name) {
+        var field = existingForm.querySelector('[name="' + name + '"]');
+        if (field && typeof identity[name] === "string") field.value = identity[name];
+      });
+    }
+
+    function readEntryMeta(token) {
+      try {
+        var raw = window.localStorage.getItem(entryMetaStorageKey);
+        if (!raw) return false;
+        var meta = JSON.parse(raw);
+        return Boolean(meta && meta.version === 1 && meta.session_token === token && meta.invite_opened === true);
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function markInviteOpened(token) {
+      inviteOpened = true;
+      try {
+        window.localStorage.setItem(entryMetaStorageKey, JSON.stringify({
+          version: 1,
+          session_token: token,
+          invite_opened: true,
+          opened_at: Date.now()
+        }));
+      } catch (error) {
+        // The current tab remains usable when storage is unavailable.
+      }
+    }
+
+    function openEntryInvite(url, token) {
+      if (!url) return null;
+      var popup = window.open(url, "_blank", "noopener,noreferrer");
+      if (popup) markInviteOpened(token);
+      return popup;
+    }
+
+    function inviteLabel(url) {
+      try {
+        var parsed = new URL(url, window.location.href);
+        return parsed.host + parsed.pathname;
+      } catch (error) {
+        return String(url || "").replace(/^https?:\/\//i, "");
+      }
+    }
+
+    function setInviteLinks(url, token) {
+      var hasInvite = Boolean(url);
+      if (invitePanel) invitePanel.hidden = !hasInvite;
+      if (inviteOpenLink && hasInvite) {
+        inviteOpenLink.href = url;
+        inviteOpenLink.dataset.sessionToken = token || "";
+      }
+      if (inviteLink && hasInvite) {
+        inviteLink.href = url;
+        inviteLink.textContent = inviteLabel(url);
+        inviteLink.dataset.sessionToken = token || "";
+      }
+      if (inviteUrlText && hasInvite) inviteUrlText.textContent = inviteLabel(url);
+    }
+
     function setVerificationState(state, title, message) {
       if (verificationState) verificationState.dataset.state = state || "pending";
       if (verificationTitle) verificationTitle.textContent = title || "Acompanhando sua entrada";
@@ -338,6 +645,68 @@
       if (entryUser) entryUser.textContent = user && user.mention ? user.mention : "@usuário";
     }
 
+    function applyExistingMember(payload) {
+      if (!payload) return;
+      setEntryUser(payload.discord_user);
+      if (payload.status === "peace_member") {
+        var peaceMessage = payload.message || "Você já é membro da Peace. Não é necessário pedir setagem.";
+        try { window.sessionStorage.setItem("peace.member.toast.v1", peaceMessage); } catch (error) { /* optional */ }
+        window.location.assign("/acessar/?status=already-member");
+        return;
+      }
+
+      if (payload.status === "visitor_member") {
+        if (memberResult) memberResult.textContent = payload.message || "Sua entrada como Visitor foi confirmada. Continue a entrevista.";
+        setStage(3, false);
+        updateWizard(wizardStep, false);
+        return;
+      }
+
+      if (payload.status === "verification_pending") {
+        setVerificationState("pending", "Verificação pendente", payload.message || "Abra o canal #verify e conclua a verificação humana.");
+        if (manualEntryNote) manualEntryNote.textContent = "Conta encontrada. Assim que você concluir o #verify, atualize o acompanhamento aqui.";
+        if (refreshResult) refreshResult.textContent = "Aguardando sua verificação no #verify.";
+        setStage(2, false);
+        return;
+      }
+
+      setVerificationState("warning", "Cargo de entrada ausente", payload.message || "Não encontrei um cargo de entrada nesta conta.");
+      if (manualEntryNote) manualEntryNote.textContent = "Conta encontrada, mas o cargo de entrada não apareceu. Abra Estou com problemas para tentar corrigir.";
+      if (helpPanel) helpPanel.hidden = false;
+      if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
+      setStage(2, false);
+    }
+
+    function identifyExistingMember(showBusy, identityOverride) {
+      var identity = identityOverride || manualEntryIdentity;
+      if (!identity && existingForm) {
+        var formData = new FormData(existingForm);
+        identity = {
+          discord_username: String(formData.get("discord_username") || "").trim(),
+          discord_id: String(formData.get("discord_id") || "").replace(/\D/g, "").slice(0, 22),
+          discord_profile_url: String(formData.get("discord_profile_url") || "").trim()
+        };
+      }
+      if (!identity || !identity.discord_username) return Promise.reject(new Error("Informe seu username do Discord."));
+      saveManualEntry(identity);
+      if (showBusy) setButtonBusy(existingSubmit, true, "Localizando…");
+      return attemptEndpoint("/api/entry/identify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(identity)
+      }, 60000)
+        .then(parseEntryResponse)
+        .then(function (payload) {
+          applyExistingMember(payload);
+          return payload;
+        })
+        .catch(function (error) {
+          if (existingResult) existingResult.textContent = error.message || "Não foi possível encontrar sua conta agora.";
+          throw error;
+        })
+        .finally(function () { if (showBusy) setButtonBusy(existingSubmit, false); });
+    }
+
     function stopEntryPolling() {
       if (entryPollTimer) window.clearInterval(entryPollTimer);
       entryPollTimer = null;
@@ -345,7 +714,10 @@
 
     function startEntryPolling() {
       if (entryPollTimer || !entrySession || currentStage >= 3) return;
-      entryPollTimer = window.setInterval(function () { fetchEntryStatus(false); }, 4000);
+      entryPollTimer = window.setInterval(function () {
+        if (document.visibilityState && document.visibilityState !== "visible") return;
+        fetchEntryStatus(false).catch(function () { /* keep the current state quiet and retry on the next visible poll */ });
+      }, 4000);
     }
 
     function stageForEntryStatus(status) {
@@ -358,11 +730,19 @@
       if (!payload) return;
       entrySession = payload;
       saveEntryToken(payload.session_token);
+      inviteOpened = readEntryMeta(payload.session_token);
       setEntryUser(payload.discord_user);
 
       if (connectButton && payload.invite_url) {
         setButtonLabel(connectButton, "Abrir convite novamente");
         connectButton.dataset.inviteUrl = payload.invite_url;
+      }
+      setInviteLinks(payload.invite_url, payload.session_token);
+
+      if (payload.invite_url && payload.status === "waiting_invite" && connectResult && !connectResult.textContent.trim()) {
+        connectResult.textContent = inviteOpened
+          ? "Convite aberto. Entre na Peace por ele; esta página acompanha sua entrada."
+          : "Convite gerado. Abra o Discord no painel abaixo para continuar.";
       }
 
       if (payload.status === "verified") {
@@ -405,18 +785,32 @@
     }
 
     function startEntrySession() {
+      if (entryStartPromise) return entryStartPromise;
       var token = readEntryToken();
       var requestBody = token ? { session_token: token } : {};
-      return attemptEndpoint("/api/entry/start", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(requestBody) }, 60000)
+      var requestPromise = attemptEndpoint("/api/entry/start", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(requestBody) }, 60000)
         .then(parseEntryResponse)
         .then(function (payload) { applyEntryPayload(payload); return payload; });
+      entryStartPromise = requestPromise;
+      requestPromise.then(function () {
+        if (entryStartPromise === requestPromise) entryStartPromise = null;
+      }, function () {
+        if (entryStartPromise === requestPromise) entryStartPromise = null;
+      });
+      return requestPromise;
     }
 
     function fetchEntryStatus(showBusy) {
       var token = (entrySession && entrySession.session_token) || readEntryToken();
       if (!token) return Promise.resolve(null);
       if (showBusy) setButtonBusy(refreshButton, true, "Atualizando…");
-      return attemptEndpoint("/api/entry/status", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ session_token: token }) }, 60000)
+      if (entryStatusPromise) {
+        return entryStatusPromise.finally(function () {
+          if (showBusy) setButtonBusy(refreshButton, false);
+        });
+      }
+
+      var requestPromise = attemptEndpoint("/api/entry/status", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ session_token: token }) }, 60000)
         .then(parseEntryResponse)
         .then(function (payload) {
           applyEntryPayload(payload);
@@ -432,9 +826,11 @@
           }
           if (refreshResult) refreshResult.textContent = error.message || "Não foi possível atualizar agora.";
           throw error;
-        })
-        .finally(function () {
+        });
+      entryStatusPromise = requestPromise;
+      return requestPromise.finally(function () {
           if (showBusy) setButtonBusy(refreshButton, false);
+        if (entryStatusPromise === requestPromise) entryStatusPromise = null;
         });
     }
 
@@ -493,41 +889,67 @@
 
     if (connectButton) {
       connectButton.addEventListener("click", function () {
-        var popup = null;
-        var inviteLink = document.querySelector("[data-entry-invite-link]");
         if (connectButton.dataset.inviteUrl) {
-          popup = window.open(connectButton.dataset.inviteUrl, "_blank", "noopener,noreferrer");
-          if (!popup && connectResult) connectResult.textContent = "O navegador bloqueou a nova guia. Permita pop-ups para abrir o Discord.";
+          var existingPopup = openEntryInvite(connectButton.dataset.inviteUrl, entrySession && entrySession.session_token);
+          if (connectResult) connectResult.textContent = existingPopup
+            ? "Convite aberto em uma nova guia. Entre na Peace por ele e volte para acompanhar."
+            : "Permita novas guias no navegador ou abra o convite pelo link abaixo.";
           startEntryPolling();
           return;
         }
-        popup = window.open("/candidatura/abrindo-discord.html", "_blank");
-        if (popup) popup.opener = null;
         if (connectResult) connectResult.textContent = "Gerando seu convite individual…";
         setButtonBusy(connectButton, true, "Gerando convite…");
         startEntrySession().then(function (payload) {
-          if (inviteLink && payload.invite_url) {
-            inviteLink.href = payload.invite_url;
-            inviteLink.hidden = false;
-          }
-          if (popup && !popup.closed && payload.invite_url) popup.location.replace(payload.invite_url);
-          else if (payload.invite_url) popup = window.open(payload.invite_url, "_blank", "noopener,noreferrer");
+          var popup = openEntryInvite(payload.invite_url, payload.session_token);
           setButtonBusy(connectButton, false);
           setButtonLabel(connectButton, "Abrir convite novamente");
-          if (connectResult) connectResult.textContent = popup ? "Convite aberto em uma nova guia. Entre na Peace por ele e volte para acompanhar." : "Convite pronto. Abra pelo link abaixo e volte para acompanhar.";
+          if (connectResult) connectResult.textContent = popup ? "Convite aberto em uma nova guia. Entre na Peace por ele e volte para acompanhar." : "Convite pronto. Abra o Discord no painel abaixo e volte para acompanhar.";
           startEntryPolling();
         }).catch(function (error) {
           setButtonBusy(connectButton, false);
-          if (popup && !popup.closed) popup.location.replace("/candidatura/abrindo-discord.html?state=error");
           setButtonLabel(connectButton, "Tentar gerar convite");
           if (connectResult) connectResult.textContent = error.message || "Não foi possível gerar o convite agora.";
         });
       });
     }
 
+    if (existingToggle && existingPanel) {
+      existingToggle.addEventListener("click", function () {
+        var open = existingPanel.hidden;
+        existingPanel.hidden = !open;
+        existingToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+          var usernameField = existingPanel.querySelector('[name="discord_username"]');
+          if (usernameField) usernameField.focus();
+        }
+      });
+    }
+
+    if (existingForm) existingForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!existingForm.checkValidity()) {
+        existingForm.reportValidity();
+        return;
+      }
+      identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
+    });
+
+    [inviteOpenLink, inviteLink].forEach(function (link) {
+      if (!link) return;
+      link.addEventListener("click", function () {
+        markInviteOpened(link.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
+        if (connectResult) connectResult.textContent = "Discord aberto em uma nova guia. Entre na Peace e volte para acompanhar.";
+        startEntryPolling();
+      });
+    });
+
     if (refreshButton) {
       refreshButton.addEventListener("click", function () {
         if (refreshResult) refreshResult.textContent = "";
+        if (!entrySession && manualEntryIdentity) {
+          identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
+          return;
+        }
         fetchEntryStatus(true).catch(function () { /* message is visible in the live region */ });
       });
     }
@@ -674,22 +1096,62 @@
     });
     updateReview();
     updateWizard(draft && draft.wizardStep ? draft.wizardStep : 1, false);
-    setStage(1, false);
+    setStage(draft && draft.stage ? draft.stage : 1, false);
     restoring = false;
+
+    manualEntryIdentity = readManualEntry();
+    setManualEntryFields(manualEntryIdentity);
 
     if (readEntryToken()) {
       startEntrySession().catch(function () {
         if (sessionNote) sessionNote.textContent = "Não consegui retomar o convite agora. Tente abrir um novo link.";
       });
+    } else if (manualEntryIdentity) {
+      identifyExistingMember(false, manualEntryIdentity).catch(function () { /* draft remains available for a manual retry */ });
     }
+
+    function refreshEntryAfterReturn() {
+      if (document.visibilityState && document.visibilityState !== "visible") return;
+      if ((entrySession && entrySession.session_token) || readEntryToken()) {
+        fetchEntryStatus(false).catch(function () { /* the current state remains visible */ });
+      }
+    }
+
+    window.addEventListener("focus", refreshEntryAfterReturn);
+    window.addEventListener("pageshow", refreshEntryAfterReturn);
+    document.addEventListener("visibilitychange", refreshEntryAfterReturn);
   }
 
   function initLogin() {
     if (body.dataset.page !== "login") return;
 
     var requestForm = document.querySelector("[data-login-request]");
+    var verifyForm = document.querySelector("[data-login-verify]");
     var status = document.querySelector("[data-login-status]");
+    var requestButton = requestForm && requestForm.querySelector("button[type=submit]");
+    var verifyButton = verifyForm && verifyForm.querySelector("button[type=submit]");
+    var result = verifyForm && verifyForm.querySelector("[data-login-result]");
     var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
+    var codeInput = verifyForm && verifyForm.querySelector('[name="access-code"]');
+    var requestedPeaceId = "";
+
+    function parseLoginResponse(response) {
+      return response.text().then(function (raw) {
+        var payload = null;
+        try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+        if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível continuar o acesso.");
+        return payload;
+      });
+    }
+
+    function syncCodeCells() {
+      if (!codeInput) return;
+      var value = codeInput.value.replace(/\D/g, "").slice(0, 6);
+      codeInput.value = value;
+      document.querySelectorAll("[data-code-cell]").forEach(function (cell, index) {
+        cell.textContent = value.charAt(index) || "";
+      });
+    }
 
     if (idInput) {
       idInput.addEventListener("input", function () {
@@ -704,8 +1166,63 @@
         if (idInput) { idInput.setCustomValidity("Use somente números, de 1 a 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
         return;
       }
-      setStatusMessage(status, "Acesso web em preparação", "A autenticação do membro acontece pelo Discord. Use Fazer parte para continuar.", "pending");
+      requestedPeaceId = idInput.value.trim();
+      if (result) result.textContent = "";
+      setButtonBusy(requestButton, true, "Enviando código…");
+      attemptEndpoint("/api/member/auth/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ peace_id: requestedPeaceId })
+      }, 60000)
+        .then(parseLoginResponse)
+        .then(function (payload) {
+          var memberName = payload.member_name ? " para " + payload.member_name : "";
+          setStatusMessage(status, "Código enviado", "Enviamos um código de 6 números para sua DM no Discord" + memberName + ".", "success");
+          if (verifyForm) verifyForm.hidden = false;
+          if (codeInput) codeInput.focus();
+        })
+        .catch(function (error) {
+          setStatusMessage(status, "Não foi possível continuar", error.message || "Tente novamente.", "warning");
+        })
+        .finally(function () { setButtonBusy(requestButton, false); });
     });
+
+    if (codeInput) {
+      codeInput.addEventListener("input", syncCodeCells);
+      codeInput.addEventListener("paste", function () { window.setTimeout(syncCodeCells, 0); });
+      syncCodeCells();
+    }
+
+    if (verifyForm) verifyForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      syncCodeCells();
+      if (!/^\d{6}$/.test(codeInput ? codeInput.value : "") || !/^\d{1,19}$/.test(requestedPeaceId)) {
+        if (codeInput) { codeInput.setCustomValidity("Digite os 6 números recebidos no Discord."); codeInput.reportValidity(); codeInput.setCustomValidity(""); }
+        return;
+      }
+      setButtonBusy(verifyButton, true, "Validando…");
+      if (result) result.textContent = "";
+      attemptEndpoint("/api/member/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ peace_id: requestedPeaceId, code: codeInput.value })
+      }, 60000)
+        .then(parseLoginResponse)
+        .then(function (payload) {
+          try { window.localStorage.setItem("peace.member.session.v1", payload.session.token); } catch (error) { /* optional */ }
+          setStatusMessage(status, "Acesso confirmado", "Abrindo sua área da Peace…", "success");
+          window.setTimeout(function () { window.location.assign("/area/"); }, 260);
+        })
+        .catch(function (error) {
+          if (result) result.textContent = error.message || "Não foi possível validar o código.";
+        })
+        .finally(function () { setButtonBusy(verifyButton, false); });
+    });
+
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("status") === "already-member") {
+      setStatusMessage(status, "Você já é membro", "Não é necessário pedir setagem. Entre com seu ID Peace para continuar.", "success");
+    }
   }
 
   function setMemberTab(name, moveFocus) {
@@ -732,6 +1249,12 @@
     if (body.dataset.page !== "member") return;
 
     var gate = document.querySelector("[data-member-gate]");
+    var authenticated = document.querySelector("[data-member-authenticated]");
+    var authSkeleton = document.querySelector("[data-member-auth-skeleton]");
+    var authContent = authenticated && authenticated.querySelector("[data-member-auth-content]");
+    var memberName = authenticated && authenticated.querySelector("[data-member-name]");
+    var memberId = authenticated && authenticated.querySelector("[data-member-id]");
+    var logoutButton = authenticated && authenticated.querySelector("[data-member-logout]");
     var preview = document.querySelector("[data-member-preview]");
     var previewOpeners = document.querySelectorAll("[data-preview-toggle]");
     var previewCloser = document.querySelector("[data-preview-close]");
@@ -744,6 +1267,41 @@
     var workspaceMenu = document.querySelector("[data-workspace-menu]");
     var previewFeedback = document.querySelector("[data-preview-feedback]");
     var feedbackTimer;
+
+    function loadMemberSession() {
+      var token = "";
+      try { token = window.localStorage.getItem("peace.member.session.v1") || ""; } catch (error) { token = ""; }
+      if (!token || !authenticated) return;
+
+      authenticated.hidden = false;
+      authenticated.classList.add("is-visible");
+      if (authSkeleton) authSkeleton.hidden = false;
+      if (authContent) authContent.hidden = true;
+      attemptEndpoint("/api/member/auth/session", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: "{}"
+      }, 60000)
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            var payload = null;
+            try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+            if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível validar sua sessão.");
+            return payload;
+          });
+        })
+        .then(function (payload) {
+          if (gate) gate.hidden = true;
+          if (authSkeleton) authSkeleton.hidden = true;
+          if (authContent) authContent.hidden = false;
+          if (memberName) memberName.textContent = payload.session.member_name || "membro.";
+          if (memberId) memberId.textContent = String(payload.session.peace_id || "—");
+        })
+        .catch(function () {
+          try { window.localStorage.removeItem("peace.member.session.v1"); } catch (error) { /* optional */ }
+          if (authenticated) authenticated.hidden = true;
+        });
+    }
 
     function showPreviewFeedback(message) {
       if (!previewFeedback) return;
@@ -814,6 +1372,11 @@
 
     previewOpeners.forEach(function (opener) { opener.addEventListener("click", openPreview); });
     if (previewCloser) previewCloser.addEventListener("click", closePreview);
+    if (logoutButton) logoutButton.addEventListener("click", function () {
+      try { window.localStorage.removeItem("peace.member.session.v1"); } catch (error) { /* optional */ }
+      if (authenticated) authenticated.hidden = true;
+      if (gate) gate.hidden = false;
+    });
 
     document.querySelectorAll("[data-preview-screen-target]").forEach(function (item) {
       item.addEventListener("click", function () {
@@ -861,6 +1424,7 @@
     });
 
     syncWorkspaceMenu(false, false);
+    loadMemberSession();
 
     if (urlPreview || query.get("preview") === "investigativa") {
       openPreview(null, requestedPreview);
@@ -870,6 +1434,7 @@
     }
   }
 
+  initPublicMedia();
   initMemberArea();
   initCandidature();
   initLogin();

@@ -159,6 +159,9 @@ class Settings:
     automod_channel_id: int | None
     afk_channel_id: int | None
     website_url: str
+    website_media_channel_id: int | None
+    website_clips_channel_id: int | None
+    website_media_cache_seconds: int
     api_enabled: bool
     api_host: str
     api_port: int
@@ -223,6 +226,9 @@ class Settings:
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
             afk_channel_id=_int_env("DISCORD_AFK_CHANNEL_ID", None),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
+            website_media_channel_id=_int_env("PEACE_SITE_MEDIA_CHANNEL_ID", None),
+            website_clips_channel_id=_int_env("PEACE_SITE_CLIPS_CHANNEL_ID", None),
+            website_media_cache_seconds=max(30, _int_env("PEACE_SITE_MEDIA_CACHE_SECONDS", 300)),
             api_enabled=_bool_env("PEACE_API_ENABLED", True),
             api_host=os.getenv("PEACE_API_HOST", "0.0.0.0").strip() or "0.0.0.0",
             api_port=_int_env("PEACE_API_PORT", _int_env("PORT", 8080)),

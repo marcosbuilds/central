@@ -5,6 +5,7 @@ import json
 import re
 import asyncio
 import io
+import random
 import secrets
 import sqlite3
 import struct
@@ -41,6 +42,9 @@ log = logging.getLogger("peace")
 ROOT = Path(__file__).resolve().parent.parent if __package__ == "bot" else Path(__file__).resolve().parent
 CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
 CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
+PUBLIC_MEMBER_AUTH_CLIENT_ID = "peacegg-web"
+PUBLIC_MEMBER_AUTH_DENIAL = "Não foi possível validar esse ID Peace."
+PUBLIC_MEMBER_AUTH_THROTTLED = "Aguarde alguns minutos antes de solicitar outro código."
 PUBLIC_API_ORIGINS = frozenset(
     {
         "https://peacegg.com.br",
@@ -79,6 +83,17 @@ MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
+PUBLIC_MEDIA_HISTORY_LIMIT = 80
+PUBLIC_MEDIA_SELECTION_LIMIT = 6
+PUBLIC_MEDIA_ALLOWED_HOSTS = frozenset(
+    {
+        "cdn.discordapp.com",
+        "media.discordapp.net",
+        "images-ext-1.discordapp.net",
+    }
+)
+PUBLIC_MEDIA_IMAGE_EXTENSIONS = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+PUBLIC_MEDIA_VIDEO_EXTENSIONS = {".m4v", ".mov", ".mp4", ".webm"}
 CAPTCHA_FONT = {
     "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
     "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
@@ -450,6 +465,14 @@ class EntryInviteSession:
     discord_username: str = ""
     status: str = "waiting_invite"
     last_repair_at: float = 0.0
+
+
+@dataclass(frozen=True)
+class PublicMediaCache:
+    """Short-lived cache for the intentionally public Discord media feed."""
+
+    refreshed_at: float
+    items: tuple[dict[str, object], ...]
 
 
 class VerificationCaptchaView(discord.ui.View):
@@ -2272,6 +2295,8 @@ class PeaceBot(commands.Bot):
         self.return_approval_views: dict[int, ReturnApprovalView] = {}
         self.developer_approval_views: dict[int, DeveloperApprovalView] = {}
         self.announcement_collectors: set[int] = set()
+        self.public_media_cache: dict[str, PublicMediaCache] = {}
+        self.public_media_cache_lock = asyncio.Lock()
         self.booster_tasks: set[int] = set()
         self.managed_peace_role_removals: set[int] = set()
         self.member_mutation_locks: dict[int, asyncio.Lock] = {}
@@ -2446,10 +2471,25 @@ class PeaceBot(commands.Bot):
         ]
         if not sessions:
             return
-        try:
-            invites = await member.guild.invites()
-        except (discord.Forbidden, discord.HTTPException, AttributeError):
-            log.info("Não consegui consultar os convites para acompanhar a entrada pública")
+
+        # The invite is created in #verify. Reading the guild-wide list requires
+        # Manage Server, while reading the channel list requires Manage Channel.
+        # Prefer the narrower channel endpoint so a bot that can operate the
+        # verification channel does not silently lose the join association.
+        verification_channel = self.entry_verification_channel(member.guild)
+        invite_sources = [verification_channel, member.guild]
+        invites = None
+        for source in invite_sources:
+            list_invites = getattr(source, "invites", None)
+            if not callable(list_invites):
+                continue
+            try:
+                invites = await list_invites()
+                break
+            except (discord.Forbidden, discord.HTTPException, AttributeError):
+                continue
+        if invites is None:
+            log.info("Não consegui consultar os convites do canal de verificação para acompanhar a entrada pública")
             return
         by_code = {self.entry_invite_code(invite): invite for invite in invites}
         for session in sessions:
@@ -2639,6 +2679,434 @@ class PeaceBot(commands.Bot):
         session.status = "verification_pending"
         return web.json_response({"ok": True, "code": "ROLE_READY", "message": "Sua conta está pronta. Abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
 
+    async def public_member_auth_request(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
+
+        peace_id = self.public_peace_id(payload.get("peace_id"))
+        if peace_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_PEACE_ID", "message": "O ID Peace deve conter somente números."}, status=400)
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        member = await self.public_auth_member(peace_id)
+        if member is None:
+            return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
+        if not self.database.central_login_request_allowed(
+            discord_user_id=member.id,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            max_user_requests=3,
+            max_client_requests=60,
+        ):
+            return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
+        issued = await self.issue_public_auth_code(member, peace_id)
+        if issued is None:
+            return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
+        if not issued:
+            return web.json_response({"ok": False, "code": "DM_UNAVAILABLE", "message": "Não consegui enviar a mensagem privada. Abra suas DMs no Discord."}, status=502)
+        display_name = str(getattr(member, "display_name", None) or getattr(member, "name", "membro"))[:80]
+        return web.json_response({"ok": True, "message": "Código enviado para a sua DM no Discord.", "member_name": display_name})
+
+    async def public_member_auth_verify(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
+
+        peace_id = self.public_peace_id(payload.get("peace_id"))
+        code = str(payload.get("code", "")).strip()
+        if peace_id is None or not re.fullmatch(r"\d{6}", code):
+            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "Digite o código de 6 números recebido no Discord."}, status=400)
+        member = await self.public_auth_member(peace_id)
+        if member is None:
+            return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
+        valid = self.database.consume_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            code=code,
+        )
+        if not valid:
+            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
+        ttl_seconds = max(60, int(getattr(self.settings, "central_auth_session_ttl_seconds", 1800)))
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+        token = self.database.create_central_login_session(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            project_id=None,
+            scope="peace:member",
+            expires_at=expires_at.isoformat(),
+        )
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+        )
+        if row is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_UNAVAILABLE", "message": "Não foi possível concluir o acesso agora."}, status=503)
+        return web.json_response({"ok": True, "message": "Acesso confirmado.", "session": self.public_auth_session_payload(row, member=member, token=token)})
+
+    async def public_member_auth_session(self, request: web.Request) -> web.Response:
+        token = self.central_bearer_token(request)
+        if token is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão expirou. Entre novamente."}, status=401)
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+        )
+        if row is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão expirou. Entre novamente."}, status=401)
+        member = await self.public_auth_member(int(row["peace_id"]))
+        if member is None:
+            self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão não está mais disponível."}, status=403)
+        return web.json_response({"ok": True, "message": "Sessão válida.", "session": self.public_auth_session_payload(row, member=member)})
+
+    @staticmethod
+    def public_discord_id_from_profile(value: object) -> int | None:
+        parsed = urlsplit(str(value or "").strip())
+        if parsed.scheme != "https" or parsed.hostname not in {"discord.com", "discordapp.com", "www.discord.com"}:
+            return None
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) != 2 or parts[0].casefold() != "users" or not re.fullmatch(r"\d{15,22}", parts[1]):
+            return None
+        return int(parts[1])
+
+    @staticmethod
+    def public_member_names(member: discord.Member) -> set[str]:
+        return {
+            str(value).strip().casefold()
+            for value in (
+                getattr(member, "name", None),
+                getattr(member, "global_name", None),
+                getattr(member, "display_name", None),
+                getattr(member, "nick", None),
+            )
+            if str(value or "").strip()
+        }
+
+    def public_member_role_named(self, member: discord.Member, role_id: int | None, *names: str) -> bool:
+        if role_id is not None and role_member(member, role_id):
+            return True
+        candidates = {name.casefold().strip() for name in names}
+        return any(str(getattr(role, "name", "")).casefold().strip() in candidates for role in getattr(member, "roles", ()))
+
+    async def public_member_by_identity(
+        self,
+        *,
+        username: str,
+        discord_id: int | None,
+        profile_id: int | None,
+    ) -> tuple[discord.Member | None, str | None]:
+        guild = self.entry_guild()
+        if guild is None:
+            return None, "ENTRY_MEMBER_NOT_FOUND"
+        if discord_id is not None and profile_id is not None and discord_id != profile_id:
+            return None, "MEMBER_IDENTITY_MISMATCH"
+        target_id = discord_id or profile_id
+        candidates: list[discord.Member] = []
+        if target_id is not None:
+            get_member = getattr(guild, "get_member", None)
+            member = get_member(target_id) if callable(get_member) else None
+            if member is None:
+                fetch_member = getattr(guild, "fetch_member", None)
+                if callable(fetch_member):
+                    try:
+                        member = await fetch_member(target_id)
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                        member = None
+            if member is not None:
+                candidates.append(member)
+        else:
+            wanted = username.casefold()
+            candidates = [
+                member
+                for member in getattr(guild, "members", ())
+                if wanted in self.public_member_names(member) and not getattr(member, "bot", False)
+            ]
+        if not candidates:
+            return None, "ENTRY_MEMBER_NOT_FOUND"
+        if len(candidates) > 1:
+            return None, "MEMBER_AMBIGUOUS"
+        member = candidates[0]
+        if username.casefold() not in self.public_member_names(member):
+            return None, "MEMBER_IDENTITY_MISMATCH"
+        return member, None
+
+    async def public_entry_identify_member(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de identificação inválidos."}, status=400)
+        username = str(payload.get("discord_username", "")).strip()
+        if not username or len(username) > 80:
+            return web.json_response({"ok": False, "code": "INVALID_USERNAME", "message": "Informe um username do Discord válido."}, status=400)
+        supplied_id = str(payload.get("discord_id", "")).strip()
+        discord_id = None
+        if supplied_id:
+            if not re.fullmatch(r"\d{15,22}", supplied_id):
+                return web.json_response({"ok": False, "code": "INVALID_DISCORD_ID", "message": "O ID do Discord deve conter somente números."}, status=400)
+            discord_id = int(supplied_id)
+        profile_value = str(payload.get("discord_profile_url", "")).strip()
+        profile_id = None
+        if profile_value:
+            profile_id = self.public_discord_id_from_profile(profile_value)
+            if profile_id is None:
+                return web.json_response({"ok": False, "code": "INVALID_DISCORD_PROFILE", "message": "Informe um link de perfil válido do Discord."}, status=400)
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        member, error_code = await self.public_member_by_identity(
+            username=username,
+            discord_id=discord_id,
+            profile_id=profile_id,
+        )
+        if member is None:
+            messages = {
+                "MEMBER_AMBIGUOUS": "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
+                "MEMBER_IDENTITY_MISMATCH": "O username, o ID e o link informado não pertencem à mesma conta.",
+                "ENTRY_MEMBER_NOT_FOUND": "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
+            }
+            return web.json_response({"ok": False, "code": error_code or "ENTRY_MEMBER_NOT_FOUND", "message": messages.get(error_code, messages["ENTRY_MEMBER_NOT_FOUND"])}, status=409 if error_code == "MEMBER_AMBIGUOUS" else 404)
+
+        display_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "membro"))[:80]
+        discord_user = {"username": display_name, "mention": f"@{display_name}"}
+        peace_member = self.public_member_has_peace_role(member)
+        visitor = self.public_member_role_named(member, getattr(self.settings, "visitor_role_id", None), "Visitor")
+        not_verified = self.public_member_role_named(member, getattr(self.settings, "not_verified_role_id", None), NOT_VERIFIED_ROLE_NAME, "Não verificado", "Nao verificado")
+        self.database.initialize()
+        record = self.database.get_member(member.id)
+        peace_id = int(record["peace_id"]) if record is not None else self.public_nickname_peace_id(getattr(member, "nick", None) or display_name)
+        if peace_member:
+            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user, "peace_id": peace_id})
+        if visitor:
+            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitor foi confirmada. Continue a entrevista.", "discord_user": discord_user})
+        if not_verified:
+            return web.json_response({"ok": True, "status": "verification_pending", "next_stage": 2, "message": "Sua conta está no servidor. Conclua a verificação humana no canal #verify.", "discord_user": discord_user})
+        return web.json_response({"ok": True, "status": "role_missing", "next_stage": 2, "message": "Sua conta está no servidor, mas o cargo de entrada não foi localizado.", "discord_user": discord_user})
+
+    @staticmethod
+    def public_media_url(value: object) -> str | None:
+        """Keep the public feed limited to Discord-hosted HTTPS media."""
+        candidate = str(value or "").strip()
+        parsed = urlsplit(candidate)
+        if parsed.scheme != "https" or parsed.hostname not in PUBLIC_MEDIA_ALLOWED_HOSTS:
+            return None
+        return candidate[:2000]
+
+    @staticmethod
+    def public_media_type(attachment: object, url: str) -> str | None:
+        content_type = str(getattr(attachment, "content_type", "") or "").split(";", 1)[0].casefold()
+        suffix = Path(urlsplit(url).path).suffix.casefold()
+        if content_type.startswith("image/") or suffix in PUBLIC_MEDIA_IMAGE_EXTENSIONS:
+            return "image"
+        if content_type.startswith("video/") or suffix in PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+            return "video"
+        return None
+
+    @staticmethod
+    def public_media_caption(message: object) -> str:
+        caption = str(getattr(message, "content", "") or "")
+        caption = re.sub(r"<@!?\d+>|<@&\d+>|@everyone|@here", "", caption, flags=re.IGNORECASE)
+        caption = re.sub(r"\s+", " ", caption).strip()
+        return caption[:180]
+
+    @classmethod
+    def public_media_items_from_message(
+        cls,
+        message: object,
+        channel_kind: str,
+    ) -> list[dict[str, object]]:
+        created_at = getattr(message, "created_at", None)
+        if not isinstance(created_at, datetime):
+            created_at = datetime.now(timezone.utc)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        reactions = 0
+        for reaction in getattr(message, "reactions", ()) or ():
+            try:
+                reactions += max(0, int(getattr(reaction, "count", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+
+        message_id = str(getattr(message, "id", "") or "")
+        jump_url = str(getattr(message, "jump_url", "") or "")
+        if not jump_url.startswith("https://discord.com/"):
+            jump_url = ""
+        caption = cls.public_media_caption(message)
+        items: list[dict[str, object]] = []
+        for index, attachment in enumerate(getattr(message, "attachments", ()) or ()):
+            url = cls.public_media_url(getattr(attachment, "url", ""))
+            media_type = cls.public_media_type(attachment, url or "") if url else None
+            if not url or media_type is None:
+                continue
+            try:
+                size = int(getattr(attachment, "size", 0) or 0)
+            except (TypeError, ValueError):
+                size = 0
+            if size > 50 * 1024 * 1024:
+                continue
+            items.append(
+                {
+                    "id": f"{message_id}:{index}" if message_id else f"{channel_kind}:{index}:{url}",
+                    "type": media_type,
+                    "url": url,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+        return items
+
+    async def collect_public_media(self, channel_kind: str) -> list[dict[str, object]]:
+        setting_name = {
+            "moments": "website_media_channel_id",
+            "clips": "website_clips_channel_id",
+        }.get(channel_kind)
+        channel_id = getattr(self.settings, setting_name, None) if setting_name else None
+        guild = self.entry_guild()
+        if guild is None or channel_id is None:
+            return []
+        get_channel = getattr(guild, "get_channel", None)
+        channel = get_channel(int(channel_id)) if callable(get_channel) else None
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return []
+        bot_member = getattr(guild, "me", None)
+        permissions_for = getattr(channel, "permissions_for", None)
+        if bot_member is not None and callable(permissions_for):
+            try:
+                permissions = permissions_for(bot_member)
+                if not getattr(permissions, "view_channel", True) or not getattr(permissions, "read_message_history", True):
+                    return []
+            except (AttributeError, TypeError):
+                return []
+        items: list[dict[str, object]] = []
+        try:
+            async for message in history(limit=PUBLIC_MEDIA_HISTORY_LIMIT):
+                items.extend(self.public_media_items_from_message(message, channel_kind))
+                if len(items) >= PUBLIC_MEDIA_HISTORY_LIMIT:
+                    break
+        except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
+            log.info("Não consegui ler a mídia pública do canal %s", channel_kind)
+            return []
+        return items[:PUBLIC_MEDIA_HISTORY_LIMIT]
+
+    async def public_media_items(self, channel_kind: str) -> list[dict[str, object]]:
+        now = time.monotonic()
+        try:
+            cache_seconds = max(30, int(getattr(self.settings, "website_media_cache_seconds", 300)))
+        except (TypeError, ValueError):
+            cache_seconds = 300
+        cached = self.public_media_cache.get(channel_kind)
+        if cached is not None and now - cached.refreshed_at < cache_seconds:
+            return [dict(item) for item in cached.items]
+
+        async with self.public_media_cache_lock:
+            now = time.monotonic()
+            cached = self.public_media_cache.get(channel_kind)
+            if cached is not None and now - cached.refreshed_at < cache_seconds:
+                return [dict(item) for item in cached.items]
+            items = await self.collect_public_media(channel_kind)
+            self.public_media_cache[channel_kind] = PublicMediaCache(
+                refreshed_at=now,
+                items=tuple(dict(item) for item in items),
+            )
+            return [dict(item) for item in items]
+
+    @staticmethod
+    def select_public_media(
+        items: list[dict[str, object]],
+        channel_kind: str,
+        seed: int,
+    ) -> list[dict[str, object]]:
+        ordered = sorted(
+            items,
+            key=lambda item: int(item.get("created_at_unix", 0) or 0),
+            reverse=True,
+        )
+        if not ordered:
+            return []
+        selected: list[dict[str, object]] = []
+        selected_ids: set[str] = set()
+
+        def add(pool: list[dict[str, object]], offset: int = 0) -> None:
+            if not pool:
+                return
+            item = pool[offset % len(pool)]
+            item_id = str(item.get("id", ""))
+            if item_id not in selected_ids:
+                selected.append(item)
+                selected_ids.add(item_id)
+
+        if channel_kind == "clips":
+            ranked = sorted(
+                ordered,
+                key=lambda item: (
+                    int(item.get("engagement", 0) or 0),
+                    int(item.get("created_at_unix", 0) or 0),
+                ),
+                reverse=True,
+            )
+            add(ranked[:18], seed)
+            add(ordered[:18], seed // 3 + 1)
+            add(ordered[18:], seed // 5 + 2)
+            candidates = ranked[:30] + ordered[:30]
+        else:
+            recent = ordered[:18]
+            archive = ordered[18:]
+            add(recent, seed)
+            add(archive, seed // 3 + 1)
+            candidates = recent + archive
+
+        # Keep the selection deterministic for one browser while avoiding the
+        # same ordering for every visitor. The salt separates both channels.
+        rng = random.Random(seed + (0xC11 if channel_kind == "clips" else 0xA17))
+        remaining = [item for item in candidates if str(item.get("id", "")) not in selected_ids]
+        rng.shuffle(remaining)
+        for item in remaining:
+            if len(selected) >= PUBLIC_MEDIA_SELECTION_LIMIT:
+                break
+            item_id = str(item.get("id", ""))
+            if item_id in selected_ids:
+                continue
+            selected.append(item)
+            selected_ids.add(item_id)
+        return selected[:PUBLIC_MEDIA_SELECTION_LIMIT]
+
+    async def public_api_media(self, request: web.Request) -> web.Response:
+        raw_seed = request.query.get("seed", "")
+        try:
+            seed = abs(int(raw_seed)) % (2**32) if raw_seed else secrets.randbelow(2**32)
+        except (TypeError, ValueError):
+            seed = secrets.randbelow(2**32)
+        moments, clips = await asyncio.gather(
+            self.public_media_items("moments"),
+            self.public_media_items("clips"),
+        )
+        response = web.json_response(
+            {
+                "ok": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "refresh_after": max(30, int(getattr(self.settings, "website_media_cache_seconds", 300) or 300)),
+                "moments": self.select_public_media(moments, "moments", seed),
+                "clips": self.select_public_media(clips, "clips", seed),
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @staticmethod
     @web.middleware
     async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
@@ -2647,7 +3115,7 @@ class PeaceBot(commands.Bot):
         if origin in PUBLIC_API_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
             response.headers["Vary"] = "Origin"
         return response
 
@@ -2679,11 +3147,26 @@ class PeaceBot(commands.Bot):
         app = web.Application(middlewares=(self.public_api_cors,))
         app.router.add_get("/healthz", self.public_api_health)
         app.router.add_get("/api/status", self.public_api_status)
+        app.router.add_get("/api/media", self.public_api_media)
         app.router.add_post("/api/entry/start", self.public_api_entry_start)
         app.router.add_get("/api/entry/status", self.public_api_entry_status)
         app.router.add_post("/api/entry/status", self.public_api_entry_status)
         app.router.add_post("/api/entry/repair", self.public_api_entry_repair)
-        for route in ("/api/status", "/api/entry/start", "/api/entry/status", "/api/entry/repair"):
+        app.router.add_post("/api/entry/identify", self.public_entry_identify_member)
+        app.router.add_post("/api/member/auth/request", self.public_member_auth_request)
+        app.router.add_post("/api/member/auth/verify", self.public_member_auth_verify)
+        app.router.add_post("/api/member/auth/session", self.public_member_auth_session)
+        for route in (
+            "/api/status",
+            "/api/media",
+            "/api/entry/start",
+            "/api/entry/status",
+            "/api/entry/repair",
+            "/api/entry/identify",
+            "/api/member/auth/request",
+            "/api/member/auth/verify",
+            "/api/member/auth/session",
+        ):
             app.router.add_route("OPTIONS", route, self.public_api_options)
         return app
 
@@ -2777,6 +3260,7 @@ class PeaceBot(commands.Bot):
         return match.group(1) if match else None
 
     async def central_auth_member(self, peace_id: int) -> discord.Member | None:
+        self.database.initialize()
         record = self.database.member_by_peace_id(peace_id)
         if record is None:
             return None
@@ -2792,6 +3276,114 @@ class PeaceBot(commands.Bot):
         if member is None or not role_member(member, self.settings.central_access_role_id):
             return None
         return member
+
+    @staticmethod
+    def public_peace_id(value: object) -> int | None:
+        text = str(value or "").strip()
+        if not re.fullmatch(r"[0-9]{1,19}", text):
+            return None
+        peace_id = int(text)
+        return peace_id if peace_id > 0 else None
+
+    @staticmethod
+    def public_nickname_peace_id(value: object) -> int | None:
+        match = re.search(r"(?:^|\s)([0-9]{1,19})\s*$", str(value or "").strip())
+        return int(match.group(1)) if match else None
+
+    def public_member_has_peace_role(self, member: discord.Member) -> bool:
+        role_id = getattr(self.settings, "peace_role_id", None)
+        if role_id is not None and role_member(member, role_id):
+            return True
+        return any(
+            str(getattr(role, "name", "")).casefold().strip() == "peace"
+            for role in getattr(member, "roles", ())
+        )
+
+    async def public_auth_member(self, peace_id: int) -> discord.Member | None:
+        """Resolve one active Peace member without exposing lookup details."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+
+        self.database.initialize()
+        record = self.database.member_by_peace_id(peace_id)
+        member = None
+        if record is not None:
+            member_id = int(record["discord_user_id"])
+            get_member = getattr(guild, "get_member", None)
+            member = get_member(member_id) if callable(get_member) else None
+            if member is None:
+                fetch_member = getattr(guild, "fetch_member", None)
+                if callable(fetch_member):
+                    try:
+                        member = await fetch_member(member_id)
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                        member = None
+
+        if member is None:
+            for candidate in getattr(guild, "members", ()):
+                nickname = getattr(candidate, "nick", None) or getattr(candidate, "display_name", None)
+                if self.public_nickname_peace_id(nickname) == peace_id:
+                    member = candidate
+                    break
+
+        if member is None or not self.public_member_has_peace_role(member):
+            return None
+        return member
+
+    @staticmethod
+    def public_auth_session_payload(
+        row,
+        *,
+        member: discord.Member | None = None,
+        token: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "peace_id": int(row["peace_id"]),
+            "member_name": str(
+                getattr(member, "display_name", None)
+                or getattr(member, "global_name", None)
+                or getattr(member, "name", "membro")
+            )[:80] if member is not None else "membro",
+            "expires_at": row["expires_at"],
+        }
+        if token is not None:
+            payload["token"] = token
+        return payload
+
+    async def issue_public_auth_code(self, member: discord.Member, peace_id: int) -> bool | None:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        ttl_seconds = max(60, int(getattr(self.settings, "central_auth_code_ttl_seconds", 600)))
+        challenge_id = self.database.try_create_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            code=code,
+            expires_at=(datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat(),
+            max_user_requests=3,
+            max_client_requests=60,
+        )
+        if challenge_id is None:
+            return None
+        display_name = str(
+            getattr(member, "display_name", None)
+            or getattr(member, "global_name", None)
+            or getattr(member, "name", "membro")
+        )[:80]
+        try:
+            await member.send(
+                "Peace · código de acesso\n\n"
+                f"Olá, {display_name}.\n"
+                f"ID Peace: `{peace_id}`\n"
+                f"Código: `{code}`\n"
+                f"Validade: {ttl_seconds // 60} minutos.\n\n"
+                "Digite este código somente no site oficial da Peace. Não compartilhe este código."
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            self.database.revoke_central_login_challenges(member.id, PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            log.info("DM fechada para o código de acesso público do membro %s", member.id)
+            return False
+        return True
 
     @staticmethod
     def central_denied() -> web.Response:

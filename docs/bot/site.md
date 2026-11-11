@@ -8,8 +8,19 @@ The public Peace home is a static single-page experience. It keeps the first
 view within the viewport, uses the official Peace bird as a transparent PNG,
 and provides a short public history based on the three curated milestones
 already represented in the tracked site. It does not read Discord at request
-time and does not expose member data or operational logs. Avisos and parceiros
-are separate public interfaces rather than sections embedded in the home.
+time for the editorial sections and does not expose member data or operational
+logs. Avisos and parceiros are separate public interfaces rather than sections
+embedded in the home.
+
+The home also has a bounded community-media feed. The bot reads only image and
+video attachments from the configured public media and clips channels, keeps a
+short in-memory cache, and exposes a small selection through `/api/media`.
+Moments mix recent and older records; clips prefer real Discord reaction counts
+and recency while keeping some age variety. Discord does not expose public click
+counts for messages, so the site does not invent them. A browser-local random
+seed gives visitors different deterministic selections without identifying or
+tracking them. Media URLs are accepted only from Discord's HTTPS CDN hosts,
+and the feed contains no private channel history or bot logs.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
 UI. The first candidature action asks ACLClouds for a single-use Discord invite
@@ -20,15 +31,19 @@ Discord display name, and exposes the verification state from the member's
 `Not Verified`, `Visitor`, or `Peace` role. The interface advances to the
 interview only after `Visitor` or `Peace` is observed; it never treats the
 public service-health check as proof of a member identity and it does not
-create a Discord OAuth session. `/acessar/` keeps the compact Peace ID surface
-for the future member login, but does not call a remote code endpoint until the
-documented web-session contract exists. The page explains that authentication
-continues through Discord instead of exposing a broken request or pretending
-that a web session was created. No static page creates an application,
-approval, or member record.
+create a Discord OAuth session. If the visitor already belongs to the server,
+the candidature flow can identify the existing member by required username and
+optional Discord ID/profile URL, then route `Visitor` to the interview or
+route an existing `Peace` member to `/acessar/` without requesting a new
+setagem. `/acessar/` validates the numeric Peace ID against the runtime member
+record or Peace nickname, requires the Peace role, sends a short-lived
+single-use code to that member's Discord DM, and creates a short-lived web
+session only after the code is consumed. No static page creates an
+application, approval, or member record.
 
-The `/area/` route is the member-area UI shell. Without a future authenticated
-session it shows an access gate. The query strings `?preview=member` and
+The `/area/` route is the member-area UI shell. Without a valid authenticated
+session it shows an access gate; with the public member session it validates the
+bearer token and shows the confirmed member identity. The query strings `?preview=member` and
 `?preview=investigativa` are local-only visual previews populated with synthetic
 records; they are not login paths, do not contact the bot, and must never be
 described as member or case data.
@@ -37,15 +52,18 @@ Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
 to the public Discord invite with a temporary redirect. It also proxies the
 bounded status and entry routes to the fixed public ACLClouds endpoint at
-`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. Bot
-credentials and provider settings remain outside the repository.
+`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. The
+member-session proxy forwards only the short-lived bearer header on its
+dedicated session route. Bot credentials and provider settings remain outside
+the repository.
 
 For local review, run `python ops/peace_site_server.py --port 4173`. The
 localhost-only server mirrors the route contract needed by the static front:
 `/discord` redirects to the public invite, the public flow aliases normalize to
-their trailing-slash directories, and the bounded status/entry routes proxy to
-the fixed ACLClouds origin. It does not proxy cookies, authorization headers,
-arbitrary member routes, or administrative actions. The repair route can only
+their trailing-slash directories, and the bounded status/entry/member-auth
+routes proxy to the fixed ACLClouds origin. It does not proxy cookies, arbitrary
+member routes, or administrative actions; only the member-session route
+forwards its bearer header. The repair route can only
 inspect and, when Discord permits it, restore `Not Verified` for the member
 already bound to that opaque entry token; it cannot look up an arbitrary ID.
 If ACLClouds cannot be resolved or reached, the local route returns a truthful
@@ -76,14 +94,23 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |
+| Netlify `/api/media` | proxies the bounded public Discord media feed |
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
 | Netlify `/api/entry/status` | returns the invite/member/verification state for the opaque flow token |
 | Netlify `/api/entry/repair` | repairs only the linked member's `Not Verified` entry role when safe |
+| Netlify `/api/entry/identify` | identifies an existing server member and reports the confirmed role state |
+| Netlify `/api/member/auth/request` | validates a Peace ID and sends a one-time code to the linked member's Discord DM |
+| Netlify `/api/member/auth/verify` | consumes the one-time code and creates a short-lived member session |
+| Netlify `/api/member/auth/session` | validates the short-lived member session |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
 | ACLClouds `/api/status` | returns bot readiness without member data or secrets |
 | ACLClouds `/api/entry/start` | creates/resumes the 30-minute invite in the verification channel |
 | ACLClouds `/api/entry/status` | returns bounded flow state, not cookies or OAuth data |
 | ACLClouds `/api/entry/repair` | validates the linked session before the narrow role repair |
+| ACLClouds `/api/entry/identify` | matches required username plus optional identity hints against current guild membership |
+| ACLClouds `/api/member/auth/request` | validates an active Peace member and sends the short-lived DM code |
+| ACLClouds `/api/member/auth/verify` | consumes the code once and issues a bounded member session |
+| ACLClouds `/api/member/auth/session` | rechecks the session and current Peace role |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -99,6 +126,12 @@ repository. The committed `.env.example` contains placeholders only for the
  invite URL and API listener port. The canonical public URL is configured as
 `PEACE_SITE_URL` so Discord buttons and external documentation can reference it
 without coupling the code to a provider hostname.
+
+`PEACE_SITE_MEDIA_CHANNEL_ID` and `PEACE_SITE_CLIPS_CHANNEL_ID` identify the two
+Discord channels intentionally exposed to the public home. They are optional;
+when absent, the feed remains empty rather than guessing a channel. The bot
+refreshes each channel cache after `PEACE_SITE_MEDIA_CACHE_SECONDS` (minimum 30
+seconds, default 300).
 
 ## Visual and accessibility contract
 
@@ -173,10 +206,15 @@ browser-level friction, not a security boundary: source inspection, DevTools,
 OCR, screenshots, and assistive technology remain outside the control of a
 static site.
 
-When the individual invite is being generated, the browser opens a Peace-owned
-waiting page in a new tab instead of exposing an `about:blank` tab. The page is
-replaced by the Discord invite only after the API confirms the link; a failed
-request leaves a plain retry message and the Peace tab remains available.
+The home media region uses skeleton cards during its first request, a truthful
+empty state when either configured channel has no eligible attachments, and a
+quiet refresh status. It refreshes while the tab is visible according to the
+backend cache hint; it does not autoplay media or create a continuous ticker.
+
+When the individual invite is being generated, the browser keeps the Peace page
+in place and shows an accessible loading state. A new tab is opened only after
+the API confirms a valid Discord invite; if the browser blocks the popup, the
+same invite is exposed as a manual link and the Peace tab remains available.
 
 The entry surfaces keep one next action in view. `/acessar/` contains only the
 Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
@@ -190,9 +228,11 @@ optional username, ID, and profile link fields, but the backend binds every
 repair to the member already identified by that invite. Remote actions use a
 60-second timeout, expose a button loading state with `aria-busy`, and return to
 a retryable state without showing internal routes or technical integration
-logs. The required terms remain on the final review step, while the draft is
-persisted silently on input, step changes, and page hide. The candidature header
-is intentionally mobile-only; desktop keeps the return link beside the title.
+logs. Member authentication shows a loading state while the session is checked
+and uses a skeleton before authenticated content is revealed. The required
+terms remain on the final review step, while the draft is persisted silently on
+input, step changes, and page hide. The candidature header is hidden on desktop
+and mobile; the desktop return link remains beside the title.
 
 ## Verification
 
@@ -206,11 +246,12 @@ git diff --check
 ```
 
 The public route tests exercise the Netlify artifact contract, the ACL API
-allowlist, CORS behavior, health response, and the fixed status proxy rule
-without contacting Discord or a production provider. A production smoke check
-should verify the Netlify homepage, `/discord`, `/entrar/`, `/candidatura/`,
-`/acessar/`, `/avisos/`, `/parceiros/`, `/area/`, and `/api/status`, followed
-by the direct ACL `/healthz` and `/api/status` routes. Custom-domain TLS
+allowlist, CORS behavior, health response, media filtering, and the fixed
+status proxy rule without contacting Discord or a production provider. A
+production smoke check should verify the Netlify homepage, `/discord`,
+`/entrar/`, `/candidatura/`, `/acessar/`, `/avisos/`, `/parceiros/`, `/area/`,
+`/api/status`, and `/api/media`, followed by the direct ACL `/healthz`,
+`/api/status`, and `/api/media` routes. Custom-domain TLS
 remains controlled by Netlify after DNS propagation. The current redesign is
 not considered production-published until that smoke check is repeated after
 an explicitly authorized deploy.

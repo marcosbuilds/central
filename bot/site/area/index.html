@@ -7,9 +7,9 @@
     <meta name="description" content="Área da comunidade Peace: acompanhe entrada, pedidos e próximos passos quando a sessão autorizada estiver disponível.">
     <title>Peace — área da comunidade</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261111-12">
+    <link rel="stylesheet" href="../styles.css?v=20261111-15">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="../script.js?v=20261111-12"></script>
+    <script defer src="../script.js?v=20261111-15"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -52,6 +52,18 @@
               <li><span>03</span><strong>Acompanhar a rotina</strong><small>Pedidos e suporte aparecem quando houver sessão.</small></li>
             </ol>
           </aside>
+        </section>
+
+        <section class="member-authenticated" data-member-authenticated hidden aria-labelledby="member-auth-title" data-reveal>
+          <div class="member-auth-skeleton" data-member-auth-skeleton aria-busy="true" aria-label="Carregando área do membro">
+            <span></span><span></span><span></span>
+          </div>
+          <div data-member-auth-content hidden>
+            <p class="eyebrow">Sessão Peace ativa</p>
+            <h2 id="member-auth-title">Bem-vindo, <em data-member-name>membro.</em></h2>
+            <p class="hero-lede">Seu acesso foi confirmado pelo código enviado no Discord. O ID Peace <strong data-member-id>—</strong> está vinculado a esta sessão.</p>
+            <div class="gate-actions"><a class="button button--light button--large" href="../discord"><img class="discord-icon" src="../assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span>Continuar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a><button class="text-button" type="button" data-member-logout>Sair desta sessão</button></div>
+          </div>
         </section>
 
         <section class="member-preview" id="member-preview" data-member-preview hidden aria-labelledby="preview-title">
