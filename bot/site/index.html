@@ -3,34 +3,35 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#e7f0f5">
-    <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça o caminho de entrada e acompanhe a história pública do servidor.">
-    <title>Peace — comunidade, contexto e participação</title>
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça a entrada e os espaços públicos da comunidade.">
+    <title>Peace — comunidade, presença e participação</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
     <link rel="stylesheet" href="/styles.css">
-    <script>document.documentElement.classList.add('js');</script>
+    <script>document.documentElement.classList.add("js");</script>
     <script defer src="/script.js"></script>
   </head>
   <body data-page="home">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
     <div class="site-shell">
       <header class="site-header">
         <a class="brand" href="#top" aria-label="Peace — início">
-          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="52" height="52"></span>
-          <span class="brand-name">Peace</span>
+          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span>
         </a>
 
         <nav class="site-nav" id="site-nav" aria-label="Navegação principal">
-          <a href="#como-funciona">Entrada</a>
-          <a href="#historico">Histórico</a>
+          <a href="#sobre">A Peace</a>
+          <a href="#entrada">Como entrar</a>
           <a href="#avisos">Avisos</a>
-          <a href="/area/">Área do membro</a>
+          <a href="#parceiros">Parceiros</a>
         </nav>
 
         <div class="header-actions">
-          <a class="text-link header-member-link" href="/area/">Área do membro <span aria-hidden="true">↗</span></a>
-          <a class="button button--dark header-cta" href="/discord">
-            <span>Entrar no Discord</span>
+          <a class="header-login" href="/area/">Acessar</a>
+          <a class="button button--outline header-cta" href="/discord">
+            <span>Entrar para Peace</span>
             <span class="button-icon" aria-hidden="true">↗</span>
           </a>
         </div>
@@ -43,172 +44,135 @@
 
       <main id="conteudo">
         <section class="hero" id="top" aria-labelledby="hero-title">
-          <div class="hero-copy" data-reveal="hero-copy">
-            <p class="eyebrow">Comunidade Peace</p>
-            <h1 id="hero-title">Um lugar para <em>continuar em comunidade.</em></h1>
-            <p class="hero-lede">A Peace reúne conversa, jogos, calls, suporte e espaço para construir. O Discord é o ponto de encontro; esta página guarda o contexto antes da entrada.</p>
+          <div class="hero-orbit hero-orbit--outer" aria-hidden="true"></div>
+          <div class="hero-orbit hero-orbit--middle" aria-hidden="true"></div>
+          <div class="hero-orbit hero-orbit--inner" aria-hidden="true"></div>
+          <div class="hero-grid" aria-hidden="true"></div>
+          <svg class="flight-mark flight-mark--one" viewBox="0 0 110 68" aria-hidden="true"><path d="M4 43c15-1 23-20 31-29 3 12 10 21 20 25 11-5 17-15 22-29 6 18 13 27 29 31-23-1-35-10-50-12-16 6-30 14-52 14Z"/><path d="M14 40c10-5 17-13 24-22m34 0c6 11 14 18 27 23M55 38v17m-5-16 5 24 5-24"/></svg>
+          <svg class="flight-mark flight-mark--two" viewBox="0 0 110 68" aria-hidden="true"><path d="M4 43c15-1 23-20 31-29 3 12 10 21 20 25 11-5 17-15 22-29 6 18 13 27 29 31-23-1-35-10-50-12-16 6-30 14-52 14Z"/><path d="M14 40c10-5 17-13 24-22m34 0c6 11 14 18 27 23M55 38v17m-5-16 5 24 5-24"/></svg>
+          <svg class="flight-mark flight-mark--three" viewBox="0 0 110 68" aria-hidden="true"><path d="M4 43c15-1 23-20 31-29 3 12 10 21 20 25 11-5 17-15 22-29 6 18 13 27 29 31-23-1-35-10-50-12-16 6-30 14-52 14Z"/><path d="M14 40c10-5 17-13 24-22m34 0c6 11 14 18 27 23M55 38v17m-5-16 5 24 5-24"/></svg>
+          <svg class="flight-mark flight-mark--four" viewBox="0 0 110 68" aria-hidden="true"><path d="M4 43c15-1 23-20 31-29 3 12 10 21 20 25 11-5 17-15 22-29 6 18 13 27 29 31-23-1-35-10-50-12-16 6-30 14-52 14Z"/><path d="M14 40c10-5 17-13 24-22m34 0c6 11 14 18 27 23M55 38v17m-5-16 5 24 5-24"/></svg>
+          <div class="hero-art" aria-hidden="true">
+            <div class="hero-art-ring hero-art-ring--one"></div>
+            <div class="hero-art-ring hero-art-ring--two"></div>
+            <img class="hero-bird" src="/assets/peace-bird.png" alt="" width="1254" height="1254">
+          </div>
+
+          <div class="hero-content" data-reveal="hero-copy">
+            <p class="eyebrow eyebrow--center">Uma comunidade em movimento</p>
+            <h1 id="hero-title">O seu espaço.<br><em>Nosso jeito.</em></h1>
+            <p class="hero-lede">Uma comunidade feita de presença, conversa e respeito. Sem precisar ser mais complicado que isso.</p>
             <div class="hero-actions">
-              <a class="button button--dark button--large" href="/discord">
-                <span>Começar no Discord</span>
+              <a class="button button--outline button--large" href="#sobre">
+                <span>Conhecer a Peace</span>
+                <span class="button-icon" aria-hidden="true">↓</span>
+              </a>
+              <a class="button button--light button--large" href="/discord">
+                <span>Entrar para Peace</span>
                 <span class="button-icon" aria-hidden="true">↗</span>
               </a>
-              <a class="text-link" href="#como-funciona">Entender o caminho <span aria-hidden="true">↓</span></a>
             </div>
-            <div class="hero-meta">
-              <div class="hero-note">
-                <span class="signal-dot" aria-hidden="true"></span>
-                <p>Entrada curta, conversa aberta e os próximos passos no lugar certo.</p>
-              </div>
-              <div class="service-line" data-service-status data-state="checking" role="status" aria-live="polite">
-                <span class="signal-dot" aria-hidden="true"></span>
-                <span data-service-status-label>Verificando Peace Tools...</span>
-              </div>
+            <div class="hero-status" data-service-status data-state="checking" role="status" aria-live="polite">
+              <span class="signal-dot" aria-hidden="true"></span>
+              <span data-service-status-label>Verificando Peace Tools...</span>
             </div>
           </div>
 
-          <div class="hero-art" data-reveal="hero-art" aria-label="Identidade visual da Peace">
-            <div class="art-shell">
-              <div class="art-core">
-                <span class="art-ring art-ring--outer" aria-hidden="true"></span>
-                <span class="art-ring art-ring--inner" aria-hidden="true"></span>
-                <img src="/assets/peace-bird.png" alt="" width="1024" height="1024">
-                <span class="art-axis art-axis--vertical" aria-hidden="true"></span>
-                <span class="art-axis art-axis--horizontal" aria-hidden="true"></span>
-              </div>
-              <div class="art-caption">
-                <span>O ponto de encontro</span>
-                <span>Peace / comunidade</span>
-              </div>
-            </div>
-          </div>
-
-          <a class="scroll-cue" href="#como-funciona" aria-label="Rolar para conhecer como a Peace funciona">
-            <span>Descer</span>
+          <a class="scroll-cue" href="#sobre" aria-label="Rolar para conhecer a Peace">
+            <span>Continue explorando</span>
             <span class="scroll-cue-line" aria-hidden="true"></span>
           </a>
         </section>
 
-        <section class="section entry" id="como-funciona" aria-labelledby="entry-title">
+        <section class="section intro" id="sobre" aria-labelledby="about-title">
           <div class="section-heading" data-reveal>
-            <p class="eyebrow">Como a entrada funciona</p>
+            <p class="eyebrow">01 / A Peace</p>
+            <h2 id="about-title">Tem espaço para jogar, conversar e <em>construir.</em></h2>
+            <p>O Discord continua sendo a nossa casa. O site organiza o caminho: quem chega entende a comunidade, encontra o próximo passo e sabe onde a conversa acontece.</p>
+          </div>
+          <div class="intro-rule" data-reveal aria-hidden="true"><span></span><small>presença · conversa · respeito</small><span></span></div>
+        </section>
+
+        <section class="section entry" id="entrada" aria-labelledby="entry-title">
+          <div class="section-heading" data-reveal>
+            <p class="eyebrow">02 / Como entrar</p>
             <h2 id="entry-title">O caminho é curto.<br><em>O espaço continua aberto.</em></h2>
-            <p>O servidor organiza cada etapa para que você saiba onde está e o que fazer depois, sem transformar a chegada em um labirinto.</p>
+            <p>O servidor organiza a chegada em etapas claras. A liberação de acesso e qualquer decisão continuam sob autoridade do Discord e do Peace Tools.</p>
           </div>
 
-          <div class="step-list" role="list">
-            <article class="step-row" role="listitem" data-reveal>
-              <span class="step-index" aria-hidden="true">01</span>
-              <div class="step-copy">
-                <h3>Conheça o espaço</h3>
-                <p>Entre no Discord, leia as regras e veja como a comunidade se organiza.</p>
-              </div>
+          <ol class="step-list" aria-label="Etapas públicas de entrada">
+            <li class="step-row" data-reveal>
+              <span class="step-index">01</span>
+              <div class="step-copy"><h3>Conheça o espaço</h3><p>Entre no Discord, leia as regras e veja como a comunidade se organiza.</p></div>
               <span class="step-state">Discord</span>
-            </article>
-            <article class="step-row" role="listitem" data-reveal>
-              <span class="step-index" aria-hidden="true">02</span>
-              <div class="step-copy">
-                <h3>Faça a verificação</h3>
-                <p>O bot conduz uma seleção curta no canal de verificação e libera o acesso de visitante quando a resposta está correta.</p>
-              </div>
-              <span class="step-state">CAPTCHA do bot</span>
-            </article>
-            <article class="step-row" role="listitem" data-reveal>
-              <span class="step-index" aria-hidden="true">03</span>
-              <div class="step-copy">
-                <h3>Escolha como participar</h3>
-                <p>Converse, abra um ticket, acompanhe os avisos ou peça um set quando esse for o seu próximo passo.</p>
-              </div>
-              <span class="step-state">Comunidade</span>
-            </article>
-          </div>
+            </li>
+            <li class="step-row" data-reveal>
+              <span class="step-index">02</span>
+              <div class="step-copy"><h3>Faça a verificação</h3><p>O bot conduz a verificação humana no canal correto antes de qualquer acesso adicional.</p></div>
+              <span class="step-state">Peace Tools</span>
+            </li>
+            <li class="step-row" data-reveal>
+              <span class="step-index">03</span>
+              <div class="step-copy"><h3>Conte como participar</h3><p>Quando esse for o seu próximo passo, a setagem acontece no fluxo indicado pela equipe.</p></div>
+              <span class="step-state">Setagem</span>
+            </li>
+            <li class="step-row" data-reveal>
+              <span class="step-index">04</span>
+              <div class="step-copy"><h3>Aguarde a revisão</h3><p>O pedido é analisado pela equipe. Nenhum status de aprovação é inventado pela página.</p></div>
+              <span class="step-state">Equipe</span>
+            </li>
+          </ol>
 
           <div class="section-action" data-reveal>
-            <p>Já conhece o caminho?</p>
-            <a class="text-link" href="/discord">Participar da Peace <span aria-hidden="true">↗</span></a>
+            <span>Já conhece o caminho?</span>
+            <a class="text-link" href="/discord">Entrar no Discord <span aria-hidden="true">↗</span></a>
           </div>
         </section>
 
         <section class="section history" id="historico" aria-labelledby="history-title">
-          <div class="history-heading" data-reveal>
-            <div>
-              <p class="eyebrow">Histórico público · leitura editorial</p>
-              <h2 id="history-title">A Peace foi tomando forma <em>nos próprios avisos.</em></h2>
-            </div>
-            <p>Uma leitura curta dos marcos públicos que orientaram a comunidade: recomeço, temporada e ferramentas para sustentar o ritmo.</p>
+          <div class="section-heading section-heading--split" data-reveal>
+            <div><p class="eyebrow">03 / Nossa trajetória</p><h2 id="history-title">A Peace toma forma <em>com quem chega.</em></h2></div>
+            <p>Uma leitura curta dos marcos públicos já registrados. O detalhe e a conversa continuam nos canais autorizados do Discord.</p>
           </div>
-
-          <div class="timeline" role="list">
-            <article class="timeline-entry" role="listitem" data-reveal>
-              <div class="timeline-date"><time datetime="2026-04-29">29 abr 2026</time><span>Aviso</span></div>
-              <div class="timeline-marker" aria-hidden="true"></div>
-              <div class="timeline-content">
-                <h3>Um novo ciclo na comunidade</h3>
-                <p>Os avisos abriram um recomeço e reforçaram presença nos canais, alinhamento e atenção às orientações da equipe.</p>
-                <a class="text-link" href="/discord">Acompanhar no Discord <span aria-hidden="true">↗</span></a>
-              </div>
-            </article>
-
-            <article class="timeline-entry" role="listitem" data-reveal>
-              <div class="timeline-date"><time datetime="2026-04-30">30 abr 2026</time><span>Temporada</span></div>
-              <div class="timeline-marker" aria-hidden="true"></div>
-              <div class="timeline-content">
-                <h3>O ranking foi zerado para começar de novo</h3>
-                <p>Uma nova temporada passou a valorizar metas entregues e participação organizada, dando ao trabalho coletivo um marco visível.</p>
-                <a class="text-link" href="/discord">Acompanhar no Discord <span aria-hidden="true">↗</span></a>
-              </div>
-            </article>
-
-            <article class="timeline-entry" role="listitem" data-reveal>
-              <div class="timeline-date"><time datetime="2026-05-02">02 mai 2026</time><span>Ferramenta</span></div>
-              <div class="timeline-marker" aria-hidden="true"></div>
-              <div class="timeline-content">
-                <h3>A rotina operacional ganhou um lugar próprio</h3>
-                <p>O dashboard do Peace Tools passou a organizar ponto, acompanhamento, encerramento e os marcos enviados para os logs.</p>
-                <a class="text-link" href="/discord">Acompanhar no Discord <span aria-hidden="true">↗</span></a>
-              </div>
-            </article>
+          <div class="history-list" role="list">
+            <article class="history-row" role="listitem" data-reveal><time datetime="2026-04-29">29 abr 2026</time><div><span>Aviso</span><h3>Um novo ciclo na comunidade</h3><p>Um recomeço para reforçar presença nos canais, alinhamento e atenção às orientações da equipe.</p></div><a class="row-arrow" href="/discord" aria-label="Acompanhar no Discord">↗</a></article>
+            <article class="history-row" role="listitem" data-reveal><time datetime="2026-04-30">30 abr 2026</time><div><span>Temporada</span><h3>O ritmo coletivo ganhou um marco</h3><p>Uma nova temporada passou a valorizar metas entregues e participação organizada.</p></div><a class="row-arrow" href="/discord" aria-label="Acompanhar no Discord">↗</a></article>
+            <article class="history-row" role="listitem" data-reveal><time datetime="2026-05-02">02 mai 2026</time><div><span>Ferramenta</span><h3>A rotina operacional ganhou um lugar próprio</h3><p>O Peace Tools passou a organizar ponto, acompanhamento e os marcos enviados para os logs.</p></div><a class="row-arrow" href="/discord" aria-label="Acompanhar no Discord">↗</a></article>
           </div>
         </section>
 
         <section class="section notices" id="avisos" aria-labelledby="notices-title">
           <div class="notice-frame" data-reveal>
             <div class="notice-copy">
-              <p class="eyebrow eyebrow--light">Avisos da Peace</p>
-              <h2 id="notices-title">Se é importante, aparece primeiro <em>no Discord.</em></h2>
-              <p>Temporadas, metas, oportunidades e ajustes de rotina ficam no canal de avisos. A página guarda a leitura geral; o servidor guarda o detalhe e a conversa.</p>
-              <a class="button button--light button--large" href="/discord">
-                <span>Acompanhar os avisos</span>
-                <span class="button-icon" aria-hidden="true">↗</span>
-              </a>
+              <p class="eyebrow">04 / Avisos</p>
+              <h2 id="notices-title">O que é importante aparece <em>no lugar certo.</em></h2>
+              <p>Os avisos públicos da equipe serão publicados aqui quando a integração autorizada estiver disponível. Até lá, o Discord continua sendo a fonte oficial.</p>
+              <a class="button button--light" href="/discord"><span>Acompanhar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a>
             </div>
-            <div class="notice-ledger" aria-label="Como ler os avisos">
-              <div class="notice-line"><span>Contexto</span><p>O que mudou e por quê.</p></div>
-              <div class="notice-line"><span>Ritmo</span><p>O que começa, termina ou retorna.</p></div>
-              <div class="notice-line"><span>Próximo passo</span><p>Onde a comunidade continua.</p></div>
+            <div class="notice-ledger" aria-label="Estado atual dos avisos">
+              <div class="notice-line"><span>Fonte</span><strong>Canal autorizado</strong><small>integração planejada</small></div>
+              <div class="notice-line"><span>Privacidade</span><strong>Sem conversa privada</strong><small>somente conteúdo público</small></div>
+              <div class="notice-line"><span>Agora</span><strong>Nenhum aviso sincronizado</strong><small>estado honesto da prévia</small></div>
             </div>
           </div>
         </section>
 
-        <section class="section member-invite" id="area" aria-labelledby="member-invite-title">
-          <div class="member-invite-copy" data-reveal>
-            <p class="eyebrow">Área da comunidade</p>
-            <h2 id="member-invite-title">Depois da entrada, acompanhe tudo em um só lugar.</h2>
-            <p>A futura área do membro reúne status de entrada, pedidos e próximos passos sem substituir o Discord. O acesso é sempre condicionado à sua sessão e às permissões reais do servidor.</p>
-            <a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a>
+        <section class="section partners" id="parceiros" aria-labelledby="partners-title">
+          <div class="section-heading section-heading--split" data-reveal>
+            <div><p class="eyebrow">05 / Parceiros</p><h2 id="partners-title">Espaços aprovados, <em>sem excesso.</em></h2></div>
+            <p>Parceiros ativos entram aqui apenas depois de cadastro e curadoria da gestão. Nenhum nome é inventado nesta prévia.</p>
           </div>
-          <div class="member-invite-rule" data-reveal aria-hidden="true">
-            <span class="rule-line"></span>
-            <img src="/assets/peace-bird.png" alt="" width="84" height="84">
-            <span class="rule-line"></span>
-          </div>
+          <div class="partners-empty" data-reveal><span class="status-mark" aria-hidden="true"></span><strong>Nenhum parceiro publicado nesta versão.</strong><span>Quando houver, esta faixa será atualizada pela gestão.</span></div>
+        </section>
+
+        <section class="section member-invite" aria-labelledby="member-invite-title">
+          <div data-reveal><p class="eyebrow">06 / Área do membro</p><h2 id="member-invite-title">Depois da entrada, <em>acompanhe sem ruído.</em></h2><p>A futura área reúne status, pedidos e suporte sem tirar do Discord o que pertence à conversa. O acesso permanece condicionado à sessão e às permissões reais.</p><a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a></div>
+          <div class="member-invite-mark" data-reveal aria-hidden="true"><span></span><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"><span></span></div>
         </section>
       </main>
 
       <footer class="site-footer">
-        <a class="brand brand--footer" href="#top" aria-label="Peace — voltar ao início">
-          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="44" height="44"></span>
-          <span class="brand-name">Peace</span>
-        </a>
+        <a class="brand brand--footer" href="#top" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span></a>
         <p>Uma comunidade para conversar, criar e participar.</p>
         <a class="footer-link" href="/discord">Discord <span aria-hidden="true">↗</span></a>
       </footer>

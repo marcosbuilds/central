@@ -3,36 +3,34 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#e7f0f5">
-    <meta name="description" content="Área da comunidade Peace: acompanhe entrada, pedidos e próximos passos quando a sessão do Discord estiver conectada.">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Área da comunidade Peace: acompanhe entrada, pedidos e próximos passos quando a sessão autorizada estiver disponível.">
     <title>Peace — área da comunidade</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
     <link rel="stylesheet" href="../styles.css">
-    <script>document.documentElement.classList.add('js');</script>
+    <script>document.documentElement.classList.add("js");</script>
     <script defer src="../script.js"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
     <div class="site-shell">
       <header class="site-header site-header--area">
         <a class="brand" href="../" aria-label="Peace — início">
-          <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="52" height="52"></span>
-          <span class="brand-name">Peace</span>
+          <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span>
         </a>
 
         <nav class="site-nav" id="site-nav" aria-label="Navegação da área da comunidade">
-          <a href="../#como-funciona">Entrada</a>
-          <a href="../#historico">Histórico</a>
+          <a href="../#sobre">A Peace</a>
+          <a href="../#entrada">Como entrar</a>
           <a href="../#avisos">Avisos</a>
           <a href="./" aria-current="page">Área do membro</a>
         </nav>
 
         <div class="header-actions">
-          <a class="text-link header-member-link" href="../">Voltar à home <span aria-hidden="true">↗</span></a>
-          <a class="button button--dark header-cta" href="../discord">
-            <span>Entrar no Discord</span>
-            <span class="button-icon" aria-hidden="true">↗</span>
-          </a>
+          <a class="header-login" href="../">Voltar à home</a>
+          <a class="button button--outline header-cta" href="../discord"><span>Entrar para Peace</span><span class="button-icon" aria-hidden="true">↗</span></a>
         </div>
 
         <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
@@ -48,141 +46,85 @@
             <h1 id="member-title">Seu próximo passo, <em>sem ruído.</em></h1>
             <p class="hero-lede">Um lugar para acompanhar entrada, pedidos e suporte sem tirar do Discord o que pertence à conversa.</p>
           </div>
-          <div class="member-intro-aside" data-reveal>
-            <span class="status-mark" aria-hidden="true"></span>
-            <p><strong>Acesso condicionado ao Discord</strong><br>O painel só mostra dados depois de uma sessão autorizada.</p>
-          </div>
+          <div class="member-intro-aside" data-reveal><span class="status-mark" aria-hidden="true"></span><p><strong>Acesso condicionado ao Discord</strong><br>O painel só mostra dados depois de uma sessão autorizada.</p></div>
         </section>
 
         <section class="member-gate" data-member-gate aria-labelledby="gate-title" data-reveal>
           <div class="gate-copy">
             <p class="eyebrow">Acesso do membro</p>
             <h2 id="gate-title">Entre pelo Discord para continuar.</h2>
-            <p>Hoje, a verificação e a liberação de cargos continuam sob autoridade do Peace Tools dentro do servidor. A área web não altera cargos e não substitui o CAPTCHA do bot.</p>
-            <div class="gate-actions">
-              <a class="button button--dark button--large" href="../discord">
-                <span>Entrar no Discord</span>
-                <span class="button-icon" aria-hidden="true">↗</span>
-              </a>
-              <button class="text-link text-button" type="button" data-preview-toggle aria-controls="member-preview">Ver prévia local <span aria-hidden="true">→</span></button>
-            </div>
+            <p>Hoje, a verificação e a liberação de cargos continuam sob autoridade do Peace Tools dentro do servidor. A área web não altera cargos e não substitui a verificação do bot.</p>
+            <div class="gate-actions"><a class="button button--light button--large" href="../discord"><span>Entrar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a><button class="text-link text-button" type="button" data-preview-toggle aria-controls="member-preview">Ver prévia local <span aria-hidden="true">→</span></button></div>
           </div>
           <aside class="gate-note" aria-label="O que acontece depois">
             <p class="eyebrow">Depois da entrada</p>
             <ol class="entry-sequence">
               <li><span>01</span><strong>Entrar no servidor</strong><small>O Discord mantém a identidade.</small></li>
-              <li><span>02</span><strong>Concluir o CAPTCHA</strong><small>O bot libera Visitor quando aprovado.</small></li>
+              <li><span>02</span><strong>Concluir a verificação</strong><small>O bot confirma a entrada.</small></li>
               <li><span>03</span><strong>Acompanhar a rotina</strong><small>Pedidos e suporte aparecem quando houver sessão.</small></li>
             </ol>
           </aside>
         </section>
 
         <section class="member-preview" id="member-preview" data-member-preview hidden aria-labelledby="preview-title">
-          <div class="preview-banner">
-            <span class="preview-dot" aria-hidden="true"></span>
-            <p><strong>Prévia local.</strong> Os registros abaixo são sintéticos e existem apenas para validar a interface.</p>
-            <button class="text-button" type="button" data-preview-close>Fechar prévia</button>
-          </div>
+          <div class="preview-banner"><span class="preview-dot" aria-hidden="true"></span><p><strong>Prévia local.</strong> Os registros abaixo são sintéticos e existem apenas para validar a interface.</p><button class="text-button" type="button" data-preview-close>Fechar prévia</button></div>
 
-          <div class="member-topbar">
-            <div class="member-identity">
-              <span class="member-avatar"><img src="../assets/peace-bird.png" alt="" width="64" height="64"></span>
-              <div>
-                <p class="eyebrow">Prévia de interface</p>
-                <h2 id="preview-title" tabindex="-1">Visão geral</h2>
-              </div>
-            </div>
-            <a class="text-link" href="../discord">Continuar no Discord <span aria-hidden="true">↗</span></a>
-          </div>
+          <div class="workspace-shell" data-workspace-shell>
+            <aside class="workspace-sidebar" id="workspace-sidebar" aria-label="Navegação da prévia">
+              <div class="workspace-sidebar-heading"><span class="eyebrow">Peace Workspace</span><span class="workspace-preview-label">prévia</span></div>
+              <nav class="workspace-nav" aria-label="Áreas do workspace">
+                <button class="workspace-nav-item is-active" type="button" data-preview-screen-target="workspace"><span class="nav-icon" aria-hidden="true">⌗</span>Visão geral</button>
+                <button class="workspace-nav-item" type="button" data-preview-screen-target="workspace" data-preview-message="Avisos reais entram aqui somente após uma integração autorizada com o Discord."><span class="nav-icon" aria-hidden="true">≡</span>Avisos</button>
+                <button class="workspace-nav-item" type="button" data-preview-screen-target="workspace" data-preview-message="Playlists comunitárias são uma capacidade planejada; esta prévia não grava links."><span class="nav-icon" aria-hidden="true">♫</span>Playlists</button>
+                <button class="workspace-nav-item" type="button" data-preview-screen-target="workspace" data-preview-message="Parceiros aparecem aqui após cadastro e curadoria da gestão."><span class="nav-icon" aria-hidden="true">⌁</span>Parceiros</button>
+              </nav>
+              <div class="workspace-nav-group"><span class="eyebrow">Áreas propostas</span><button class="workspace-nav-item" type="button" data-preview-screen-target="investigativa"><span class="nav-icon" aria-hidden="true">⌕</span>Investigações<small>proposta</small></button></div>
+              <div class="workspace-sidebar-user"><span class="user-avatar">P</span><div><strong>Prévia da Peace</strong><small>Conta ilustrativa · sem login</small></div></div>
+            </aside>
 
-          <nav class="member-tabs" aria-label="Seções da área do membro" role="tablist">
-            <button class="member-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-member-tab="overview">Visão geral</button>
-            <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-entry" id="tab-entry" data-member-tab="entry">Entrada</button>
-            <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-requests" id="tab-requests" data-member-tab="requests">Pedidos</button>
-            <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-support" id="tab-support" data-member-tab="support">Suporte</button>
-          </nav>
+            <div class="workspace-main">
+              <div class="workspace-mobile-bar"><button class="workspace-menu-toggle" type="button" data-workspace-menu aria-expanded="false" aria-controls="workspace-sidebar"><span class="menu-toggle-lines" aria-hidden="true"><i></i><i></i></span><span>Menu da área</span></button><span class="workspace-mobile-context">Prévia local</span></div>
+              <div class="preview-feedback" data-preview-feedback role="status" aria-live="polite" hidden></div>
 
-          <div class="member-panels">
-            <section class="member-panel is-active" id="panel-overview" role="tabpanel" tabindex="0" aria-labelledby="tab-overview" data-member-panel="overview">
-              <div class="member-status-strip" aria-label="Resumo da prévia">
-                <div><span>Entrada</span><strong>Visitor</strong><small>exemplo local</small></div>
-                <div><span>Pedido de set</span><strong>Não iniciado</strong><small>aguarda ação</small></div>
-                <div><span>Peace Tools</span><strong>Conectado</strong><small>estado sintético</small></div>
-              </div>
-              <div class="member-grid">
-                <div class="member-main-column">
-                  <section class="member-block member-next-step">
-                    <div class="block-heading"><p class="eyebrow">Próximo passo</p><span class="block-index">01</span></div>
-                    <h3>Conheça o espaço antes de pedir um set.</h3>
-                    <p>Leia as regras, acompanhe os avisos e converse como visitante. Quando fizer sentido, o pedido é iniciado no canal correto do Discord.</p>
-                    <a class="button button--dark" href="../discord"><span>Continuar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a>
+              <section class="workspace-screen is-active" data-preview-screen="workspace" aria-labelledby="preview-title">
+                <div class="workspace-topline"><span>Workspace <b aria-hidden="true">/</b> Visão geral</span><span class="workspace-search" aria-label="Busca demonstrativa">Buscar no Peace <kbd>Ctrl K</kbd></span></div>
+                <div class="workspace-title"><p class="eyebrow">Bem-vindo de volta</p><h2 id="preview-title" tabindex="-1">Seu espaço, em ordem.</h2><p>Acompanhe o que acontece na Peace e siga de onde parou.</p></div>
+
+                <nav class="member-tabs" aria-label="Seções da área do membro" role="tablist">
+                  <button class="member-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-member-tab="overview">Visão geral</button>
+                  <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-entry" id="tab-entry" data-member-tab="entry">Entrada</button>
+                  <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-requests" id="tab-requests" data-member-tab="requests">Pedidos</button>
+                  <button class="member-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-support" id="tab-support" data-member-tab="support">Suporte</button>
+                </nav>
+
+                <div class="member-panels">
+                  <section class="member-panel is-active" id="panel-overview" role="tabpanel" tabindex="0" aria-labelledby="tab-overview" data-member-panel="overview">
+                    <div class="member-status-strip" aria-label="Resumo da prévia"><div><span>Entrada</span><strong>Visitor</strong><small>exemplo local</small></div><div><span>Pedido de set</span><strong>Não iniciado</strong><small>aguarda ação</small></div><div><span>Peace Tools</span><strong>Conectado</strong><small>estado sintético</small></div></div>
+                    <div class="member-grid"><div class="member-main-column"><section class="member-block member-next-step"><div class="block-heading"><p class="eyebrow">Próximo passo</p><span class="block-index">01</span></div><h3>Conheça o espaço antes de pedir um set.</h3><p>Leia as regras, acompanhe os avisos e converse como visitante. Quando fizer sentido, o pedido começa no canal correto do Discord.</p><a class="button button--light" href="../discord"><span>Continuar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a></section><section class="member-block"><div class="block-heading"><p class="eyebrow">Atividade recente</p><span class="block-note">prévia</span></div><ol class="activity-list"><li><time datetime="2026-05-02">02 mai</time><span><strong>Peace Tools</strong> registrou a abertura do dashboard.</span></li><li><time datetime="2026-04-30">30 abr</time><span><strong>Temporada</strong> foi reiniciada nos avisos.</span></li><li><time datetime="2026-04-29">29 abr</time><span><strong>Comunidade</strong> iniciou um novo ciclo.</span></li></ol></section></div><aside class="member-side-column"><section class="member-block member-quick-actions"><div class="block-heading"><p class="eyebrow">Ações</p><span class="block-note">Discord</span></div><a class="inline-action" href="../discord"><span>Ver regras</span><span aria-hidden="true">↗</span></a><a class="inline-action" href="../discord"><span>Acompanhar avisos</span><span aria-hidden="true">↗</span></a><a class="inline-action" href="../discord"><span>Abrir suporte</span><span aria-hidden="true">↗</span></a></section><section class="member-block member-boundary"><p class="eyebrow">Limite da área web</p><p>A conversa, a verificação e a decisão de cargo continuam no Discord e no bot. O painel só acompanha estados autorizados.</p></section></aside></div>
                   </section>
-                  <section class="member-block">
-                    <div class="block-heading"><p class="eyebrow">Atividade recente</p><span class="block-note">prévia</span></div>
-                    <ol class="activity-list">
-                      <li><time datetime="2026-05-02">02 mai</time><span><strong>Peace Tools</strong> registrou a abertura do dashboard.</span></li>
-                      <li><time datetime="2026-04-30">30 abr</time><span><strong>Temporada</strong> foi reiniciada nos avisos.</span></li>
-                      <li><time datetime="2026-04-29">29 abr</time><span><strong>Comunidade</strong> iniciou um novo ciclo.</span></li>
-                    </ol>
-                  </section>
+
+                  <section class="member-panel" id="panel-entry" role="tabpanel" tabindex="0" aria-labelledby="tab-entry" data-member-panel="entry" hidden><div class="panel-heading"><p class="eyebrow">Entrada</p><h3>O status que importa antes de qualquer pedido.</h3><p>O painel deve mostrar apenas o estado que o backend confirmou: sessão, papel de entrada e próximo passo permitido.</p></div><ol class="entry-progress"><li class="is-done"><span>01</span><div><strong>Entrar no servidor</strong><small>Identidade vinculada ao Discord.</small></div><b>Concluído</b></li><li class="is-current"><span>02</span><div><strong>Concluir verificação</strong><small>Verificação executada pelo Peace Tools.</small></div><b>Próximo</b></li><li><span>03</span><div><strong>Participar como Visitor</strong><small>Acesso liberado pelo bot após aprovação.</small></div><b>Aguardando</b></li></ol></section>
+                  <section class="member-panel" id="panel-requests" role="tabpanel" tabindex="0" aria-labelledby="tab-requests" data-member-panel="requests" hidden><div class="panel-heading"><p class="eyebrow">Pedidos</p><h3>Um histórico simples, sem expor a conversa privada.</h3><p>Quando a API estiver conectada, este espaço mostrará status, data e próximo passo dos pedidos do próprio membro.</p></div><div class="empty-panel"><span class="empty-mark" aria-hidden="true">—</span><h4>Nenhum pedido nesta prévia</h4><p>O formulário de set continua no Discord, com revisão manual de Staff ou Management.</p><a class="text-link" href="../discord">Ir para o canal correto <span aria-hidden="true">↗</span></a></div></section>
+                  <section class="member-panel" id="panel-support" role="tabpanel" tabindex="0" aria-labelledby="tab-support" data-member-panel="support" hidden><div class="panel-heading"><p class="eyebrow">Suporte</p><h3>Ajuda com contexto e próximo passo.</h3><p>Tickets continuam privados no Discord. A área web pode resumir o status autorizado, nunca republicar o conteúdo da conversa.</p></div><div class="support-links"><a class="inline-action" href="../discord"><span>Abrir um ticket no Discord</span><span aria-hidden="true">↗</span></a><a class="inline-action" href="../discord"><span>Consultar as regras de suporte</span><span aria-hidden="true">↗</span></a></div></section>
                 </div>
-                <aside class="member-side-column">
-                  <section class="member-block member-quick-actions">
-                    <div class="block-heading"><p class="eyebrow">Ações</p><span class="block-note">Discord</span></div>
-                    <a class="inline-action" href="../discord"><span>Ver regras</span><span aria-hidden="true">↗</span></a>
-                    <a class="inline-action" href="../discord"><span>Acompanhar avisos</span><span aria-hidden="true">↗</span></a>
-                    <a class="inline-action" href="../discord"><span>Abrir suporte</span><span aria-hidden="true">↗</span></a>
-                  </section>
-                  <section class="member-block member-boundary">
-                    <p class="eyebrow">Limite da área web</p>
-                    <p>A conversa, o CAPTCHA e a decisão de cargo continuam no Discord e no bot. O painel só acompanha estados autorizados.</p>
-                  </section>
-                </aside>
-              </div>
-            </section>
+              </section>
 
-            <section class="member-panel" id="panel-entry" role="tabpanel" tabindex="0" aria-labelledby="tab-entry" data-member-panel="entry" hidden>
-              <div class="panel-heading"><p class="eyebrow">Entrada</p><h3>O status que importa antes de qualquer pedido.</h3><p>O painel deve mostrar apenas o estado que o backend confirmou: sessão, papel de entrada e próximo passo permitido.</p></div>
-              <ol class="entry-progress">
-                <li class="is-done"><span>01</span><div><strong>Entrar no servidor</strong><small>Identidade vinculada ao Discord.</small></div><b>Concluído</b></li>
-                <li class="is-current"><span>02</span><div><strong>Concluir verificação</strong><small>CAPTCHA executado pelo Peace Tools no canal verify.</small></div><b>Próximo</b></li>
-                <li><span>03</span><div><strong>Participar como Visitor</strong><small>Acesso liberado pelo bot após aprovação.</small></div><b>Aguardando</b></li>
-              </ol>
-            </section>
-
-            <section class="member-panel" id="panel-requests" role="tabpanel" tabindex="0" aria-labelledby="tab-requests" data-member-panel="requests" hidden>
-              <div class="panel-heading"><p class="eyebrow">Pedidos</p><h3>Um histórico simples, sem expor a conversa privada.</h3><p>Quando a API estiver conectada, este espaço mostrará status, data e próximo passo dos pedidos do próprio membro.</p></div>
-              <div class="empty-panel"><span class="empty-mark" aria-hidden="true">—</span><h4>Nenhum pedido nesta prévia</h4><p>O formulário de set continua no Discord, com revisão manual de Staff ou Management.</p><a class="text-link" href="../discord">Ir para o canal correto <span aria-hidden="true">↗</span></a></div>
-            </section>
-
-            <section class="member-panel" id="panel-support" role="tabpanel" tabindex="0" aria-labelledby="tab-support" data-member-panel="support" hidden>
-              <div class="panel-heading"><p class="eyebrow">Suporte</p><h3>Ajuda com contexto e próximo passo.</h3><p>Tickets continuam privados no Discord. A área web pode resumir o status autorizado, nunca republicar o conteúdo da conversa.</p></div>
-              <div class="support-links"><a class="inline-action" href="../discord"><span>Abrir um ticket no Discord</span><span aria-hidden="true">↗</span></a><a class="inline-action" href="../discord"><span>Consultar as regras de suporte</span><span aria-hidden="true">↗</span></a></div>
-            </section>
+              <section class="workspace-screen investigative-screen" data-preview-screen="investigativa" aria-labelledby="investigative-title" hidden>
+                <div class="workspace-topline"><span>Investigativa <b aria-hidden="true">/</b> Casos <b aria-hidden="true">/</b> Demonstração</span><span class="eyebrow">Área restrita · proposta</span></div>
+                <div class="investigative-heading"><div class="investigative-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></div><div><p class="eyebrow">Apenas para investigadores autorizados</p><h2 id="investigative-title" tabindex="-1">Investigativa.</h2><p>Fatos, evidências e decisões. Cada coisa no seu lugar.</p></div></div>
+                <div class="case-heading"><div><p class="eyebrow">Caso demonstrativo · não real</p><h3>PI-EXEMPLO / Dossiê de referência</h3><p>Estrutura ilustrativa para mostrar a organização de um caso dentro do RP.</p></div><span class="state-tag">Visualização restrita</span></div>
+                <div class="case-tabs" role="tablist" aria-label="Seções do dossiê demonstrativo"><button class="is-active" type="button" role="tab" aria-selected="true">Fatos</button><button type="button" role="tab" aria-selected="false" data-preview-message="Evidências fazem parte da proposta investigativa; nenhum arquivo real é carregado nesta prévia.">Evidências</button><button type="button" role="tab" aria-selected="false" data-preview-message="A linha do tempo separa o momento do evento da data de registro na implementação planejada.">Linha do tempo</button><button type="button" role="tab" aria-selected="false" data-preview-message="Relações entre entidades exigem fonte e justificativa; o grafo ainda não está conectado.">Relações</button><button type="button" role="tab" aria-selected="false" data-preview-message="Pedidos de operação só existem após autorização e revisão no backend.">Pedidos</button></div>
+                <div class="case-grid"><div class="fact-list"><p class="eyebrow">Fatos registrados · estrutura sugerida</p><article class="fact-row"><code>FT-001</code><div><h4>Registro de acontecimento</h4><p>O investigador descreve o que ocorreu no jogo, onde, quando e quem estava envolvido. Cada alegação indica sua fonte.</p></div><span>Relatado</span></article><article class="fact-row"><code>FT-002</code><div><h4>Ligação entre fatos</h4><p>Pistas são relacionadas sem substituir os arquivos originais. A justificativa do vínculo é obrigatória.</p></div><span>Em análise</span></article><article class="fact-row"><code>FT-003</code><div><h4>Solicitação para revisão</h4><p>Pedidos de ação no RP têm responsável, fundamento, evidências anexadas e uma decisão com validade.</p></div><span>Pendente</span></article></div><aside class="evidence-panel"><p class="eyebrow">Evidência vinculada</p><div class="evidence-placeholder" aria-hidden="true">⌁</div><h3>Contexto antes da imagem.</h3><p>Fotos, links e clipes devem informar de onde vieram, o que mostram e por que se conectam ao fato.</p><div class="evidence-foot">Original preservado · revisões auditáveis</div></aside></div>
+                <div class="preview-note">Os fatos acima são exemplos de interface, não correspondem a eventos da Paradise Roleplay.</div>
+              </section>
+            </div>
           </div>
         </section>
 
-        <section class="member-principles" aria-labelledby="principles-title">
-          <div data-reveal>
-            <p class="eyebrow">O que esta área deve resolver</p>
-            <h2 id="principles-title">Menos caça ao canal.<br><em>Mais clareza sobre o próximo passo.</em></h2>
-          </div>
-          <div class="principle-list" role="list" data-reveal>
-            <div role="listitem"><span>01</span><p><strong>Status.</strong> Saber se a entrada foi concluída e qual etapa vem depois.</p></div>
-            <div role="listitem"><span>02</span><p><strong>Histórico.</strong> Encontrar pedidos e mudanças do próprio membro em ordem.</p></div>
-            <div role="listitem"><span>03</span><p><strong>Limite.</strong> Entender quando a ação pertence ao Discord, ao bot ou à staff.</p></div>
-          </div>
-        </section>
+        <section class="member-principles" aria-labelledby="principles-title"><div data-reveal><p class="eyebrow">O que esta área deve resolver</p><h2 id="principles-title">Menos caça ao canal.<br><em>Mais clareza sobre o próximo passo.</em></h2></div><div class="principle-list" role="list" data-reveal><div role="listitem"><span>01</span><p><strong>Status.</strong> Saber se a entrada foi concluída e qual etapa vem depois.</p></div><div role="listitem"><span>02</span><p><strong>Histórico.</strong> Encontrar pedidos e mudanças do próprio membro em ordem.</p></div><div role="listitem"><span>03</span><p><strong>Limite.</strong> Entender quando a ação pertence ao Discord, ao bot ou à staff.</p></div></div></section>
       </main>
 
-      <footer class="site-footer">
-        <a class="brand brand--footer" href="../" aria-label="Peace — voltar ao início">
-          <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="44" height="44"></span>
-          <span class="brand-name">Peace</span>
-        </a>
-        <p>Área da comunidade — o Discord continua sendo o ponto de encontro.</p>
-        <a class="footer-link" href="../discord">Discord <span aria-hidden="true">↗</span></a>
-      </footer>
+      <footer class="site-footer"><a class="brand brand--footer" href="../" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>COMMUNITY</small></span></a><p>Área da comunidade — o Discord continua sendo o ponto de encontro.</p><a class="footer-link" href="../discord">Discord <span aria-hidden="true">↗</span></a></footer>
     </div>
   </body>
 </html>

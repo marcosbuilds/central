@@ -36,29 +36,17 @@
     });
 
     navigation.querySelectorAll("a").forEach(function (link) {
-      link.addEventListener("click", function () {
-        closeMenu(false);
-      });
-    });
-
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && header.classList.contains("menu-open")) closeMenu(true);
+      link.addEventListener("click", function () { closeMenu(false); });
     });
 
     document.addEventListener("click", function (event) {
-      if (header.classList.contains("menu-open") && !header.contains(event.target)) {
-        closeMenu(true);
-      }
+      if (header.classList.contains("menu-open") && !header.contains(event.target)) closeMenu(true);
     });
 
-    mobileNavigation.addEventListener("change", function () {
-      closeMenu(false);
-    });
+    mobileNavigation.addEventListener("change", function () { closeMenu(false); });
   }
 
-  function reveal(element) {
-    element.classList.add("is-visible");
-  }
+  function reveal(element) { element.classList.add("is-visible"); }
 
   if (reducedMotion || !("IntersectionObserver" in window)) {
     revealItems.forEach(reveal);
@@ -71,9 +59,7 @@
       });
     }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
 
-    revealItems.forEach(function (element) {
-      observer.observe(element);
-    });
+    revealItems.forEach(function (element) { observer.observe(element); });
   }
 
   function setServiceStatus(state, label) {
@@ -89,29 +75,18 @@
 
     var localPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 
-    window.fetch("/api/status", {
-      headers: { Accept: "application/json" },
-      cache: "no-store"
-    }).then(function (response) {
-      if (!response.ok) throw new Error("status unavailable");
-      return response.json();
-    }).then(function (payload) {
-      var connected = Boolean(
-        payload &&
-        payload.discord &&
-        payload.discord.connected === true &&
-        payload.status === "ok"
-      );
-      setServiceStatus(
-        connected ? "online" : "checking",
-        connected ? "Peace Tools conectado" : "Peace Tools iniciando"
-      );
-    }).catch(function () {
-      setServiceStatus(
-        localPreview ? "preview" : "offline",
-        localPreview ? "Prévia local · API não conectada" : "Peace Tools indisponível no momento"
-      );
-    });
+    window.fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("status unavailable");
+        return response.json();
+      })
+      .then(function (payload) {
+        var connected = Boolean(payload && payload.discord && payload.discord.connected === true && payload.status === "ok");
+        setServiceStatus(connected ? "online" : "checking", connected ? "Peace Tools conectado" : "Peace Tools iniciando");
+      })
+      .catch(function () {
+        setServiceStatus(localPreview ? "preview" : "offline", localPreview ? "Prévia local · API não conectada" : "Peace Tools indisponível no momento");
+      });
   }
 
   refreshServiceStatus();
@@ -143,17 +118,61 @@
     var preview = document.querySelector("[data-member-preview]");
     var previewOpeners = document.querySelectorAll("[data-preview-toggle]");
     var previewCloser = document.querySelector("[data-preview-close]");
-    var urlPreview = new URLSearchParams(window.location.search).get("preview") === "member";
+    var query = new URLSearchParams(window.location.search);
+    var urlPreview = query.get("preview") === "member";
+    var requestedPreview = query.get("preview") === "investigativa" ? "investigativa" : "workspace";
     var lastPreviewOpener = null;
+    var workspaceShell = document.querySelector("[data-workspace-shell]");
+    var workspaceMenu = document.querySelector("[data-workspace-menu]");
+    var previewFeedback = document.querySelector("[data-preview-feedback]");
+    var feedbackTimer;
 
-    function openPreview(event) {
+    function showPreviewFeedback(message) {
+      if (!previewFeedback) return;
+      previewFeedback.textContent = message;
+      previewFeedback.hidden = false;
+      window.clearTimeout(feedbackTimer);
+      feedbackTimer = window.setTimeout(function () { previewFeedback.hidden = true; }, 5200);
+    }
+
+    function setPreviewScreen(name, moveFocus) {
+      var screens = Array.prototype.slice.call(document.querySelectorAll("[data-preview-screen]"));
+      if (!screens.length) return;
+
+      screens.forEach(function (screen) {
+        var active = screen.dataset.previewScreen === name;
+        screen.classList.toggle("is-active", active);
+        screen.hidden = !active;
+      });
+
+      var activeNav = document.querySelector('[data-preview-screen-target="' + name + '"]');
+      document.querySelectorAll("[data-preview-screen-target]").forEach(function (item) { item.classList.remove("is-active"); });
+      if (activeNav) activeNav.classList.add("is-active");
+
+      if (moveFocus) {
+        window.setTimeout(function () {
+          var heading = name === "investigativa" ? document.querySelector("#investigative-title") : document.querySelector("#preview-title");
+          if (heading) heading.focus({ preventScroll: true });
+        }, 0);
+      }
+    }
+
+    function syncWorkspaceMenu(isOpen, restoreFocus) {
+      if (!workspaceShell || !workspaceMenu) return;
+      workspaceShell.classList.toggle("menu-open", isOpen);
+      workspaceMenu.setAttribute("aria-expanded", String(isOpen));
+      if (!isOpen && restoreFocus) workspaceMenu.focus();
+    }
+
+    function openPreview(event, mode) {
       if (!preview) return;
       lastPreviewOpener = event && event.currentTarget ? event.currentTarget : lastPreviewOpener;
       preview.hidden = false;
       preview.setAttribute("data-preview-state", "open");
       if (gate) gate.setAttribute("data-preview-state", "open");
+      setPreviewScreen(mode || "workspace", true);
       window.setTimeout(function () {
-        var heading = document.querySelector("#preview-title");
+        var heading = (mode || "workspace") === "investigativa" ? document.querySelector("#investigative-title") : document.querySelector("#preview-title");
         if (heading) heading.focus({ preventScroll: true });
       }, 0);
     }
@@ -163,24 +182,36 @@
       preview.hidden = true;
       preview.removeAttribute("data-preview-state");
       if (gate) gate.removeAttribute("data-preview-state");
+      syncWorkspaceMenu(false, false);
       if (lastPreviewOpener) {
         lastPreviewOpener.focus();
         lastPreviewOpener = null;
       }
     }
 
-    previewOpeners.forEach(function (opener) {
-      opener.addEventListener("click", openPreview);
+    previewOpeners.forEach(function (opener) { opener.addEventListener("click", openPreview); });
+    if (previewCloser) previewCloser.addEventListener("click", closePreview);
+
+    document.querySelectorAll("[data-preview-screen-target]").forEach(function (item) {
+      item.addEventListener("click", function () {
+        setPreviewScreen(item.dataset.previewScreenTarget, true);
+        syncWorkspaceMenu(false, false);
+        if (item.dataset.previewMessage) showPreviewFeedback(item.dataset.previewMessage);
+      });
     });
 
-    if (previewCloser) previewCloser.addEventListener("click", closePreview);
-    if (urlPreview) openPreview();
+    document.querySelectorAll("[data-preview-message]").forEach(function (item) {
+      item.addEventListener("click", function () { showPreviewFeedback(item.dataset.previewMessage); });
+    });
+
+    if (workspaceMenu) {
+      workspaceMenu.addEventListener("click", function () {
+        syncWorkspaceMenu(!workspaceShell.classList.contains("menu-open"), false);
+      });
+    }
 
     document.querySelectorAll("[data-member-tab]").forEach(function (tab) {
-      tab.addEventListener("click", function () {
-        setMemberTab(tab.dataset.memberTab, false);
-      });
-
+      tab.addEventListener("click", function () { setMemberTab(tab.dataset.memberTab, false); });
       tab.addEventListener("keydown", function (event) {
         var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-member-tab]"));
         var index = tabs.indexOf(tab);
@@ -192,6 +223,24 @@
         setMemberTab(tabs[nextIndex].dataset.memberTab, true);
       });
     });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        syncWorkspaceMenu(false, true);
+        if (header && header.classList.contains("menu-open")) closeMenu(true);
+      }
+    });
+
+    document.addEventListener("click", function (event) {
+      if (workspaceShell && workspaceShell.classList.contains("menu-open") && !workspaceShell.contains(event.target)) syncWorkspaceMenu(false, true);
+    });
+
+    if (urlPreview || query.get("preview") === "investigativa") {
+      openPreview(null, requestedPreview);
+      window.setTimeout(function () {
+        if (preview) preview.scrollIntoView({ block: "start" });
+      }, 0);
+    }
   }
 
   initMemberArea();

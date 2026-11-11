@@ -27,9 +27,9 @@ spam-control artwork is a strict panel contract. The legacy
 longer selected for new welcome messages.
 
 The public Peace home consumes `bot/site/assets/peace-bird.png`, a transparent
-RGBA cutout of the official bird mark. It is site runtime artwork rather than a
-documentation visual, and its source image is intentionally excluded from the
-repository.
+RGBA cutout of the Peace bird supplied for the public-site redesign. It is site
+runtime artwork rather than a documentation visual; the original attachment is
+not a runtime dependency.
 
 ## Change rules
 

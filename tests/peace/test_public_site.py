@@ -118,7 +118,10 @@ def test_public_site_files_are_complete():
     assert (member_root / "index.html").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
-    assert "#nl-badge-frame" in (site_root / "styles.css").read_text(encoding="utf-8")
+    stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
+    homepage = (site_root / "index.html").read_text(encoding="utf-8")
+    assert "--canvas: #050607" in stylesheet
+    assert "O seu espaço." in homepage
 
 
 def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
@@ -131,6 +134,7 @@ def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
     assert "data-member-preview" in member_html
+    assert 'data-preview-screen="investigativa"' in member_html
     assert "registros abaixo são sintéticos" in member_html
     assert 'get("preview") === "member"' in script
     assert "grant" not in script.lower()

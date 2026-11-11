@@ -11,9 +11,10 @@ already represented in the tracked site. It does not read Discord at request
 time and does not expose member data or operational logs.
 
 The `/area/` route is the member-area UI shell. Without a future authenticated
-session it shows an access gate. The query string `?preview=member` is a
-local-only visual preview populated with synthetic records; it is not a login,
-does not contact the bot, and must never be described as member data.
+session it shows an access gate. The query strings `?preview=member` and
+`?preview=investigativa` are local-only visual previews populated with synthetic
+records; they are not login paths, do not contact the bot, and must never be
+described as member or case data.
 
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
@@ -60,23 +61,20 @@ without coupling the code to a provider hostname.
 
 ## Visual and accessibility contract
 
-The pages use a cool neutral palette derived from the official bird: an
-ice-blue canvas, feather-white surfaces, slate-blue editorial accents, and
-navy action/contrast surfaces. CSS-only radial and line textures echo the
-logo's wing geometry without introducing a second background asset. The pages
-also keep visible focus states, semantic headings, skip links,
-keyboard-accessible mobile navigation and member tabs, and a
-`prefers-reduced-motion` path. The reveal behavior uses `IntersectionObserver`
-without an external motion dependency, continuous scroll listener, ticker, or
-auto-scrolling content.
+The pages use a dark editorial palette derived from the supplied Peace mark:
+graphite canvas, restrained slate surfaces, feather-white text, and cold blue
+accents. CSS-only radial, grid, and line textures echo flight geometry without
+introducing a second background asset. The pages also keep visible focus states,
+semantic headings, skip links, keyboard-accessible mobile navigation, member
+tabs, and a `prefers-reduced-motion` path. The reveal behavior uses
+`IntersectionObserver` without an external motion dependency, continuous scroll
+listener, ticker, or auto-scrolling content.
 
-`bot/site/assets/peace-bird.png` is the official logo extracted from the
-server's public `media` channel and processed into a transparent RGBA PNG. The
-source image is intentionally not committed: only the runtime asset with a
-stable purpose is part of the public tree. The background treatment is
-project-owned CSS derived from the logo's blue-gray feathers and navy outline;
-it is not presented as an original Discord background or a separately sourced
-brand asset.
+`bot/site/assets/peace-bird.png` is the transparent RGBA Peace logo supplied for
+this redesign and stored at a stable runtime path. The original attachment is
+not a runtime dependency. The background treatment is project-owned CSS derived
+from the logo's blue-gray feathers and navy outline; it is not presented as an
+original Discord background or a separately sourced brand asset.
 
 ## Verification
 
@@ -85,6 +83,7 @@ Run the bot tests and compile check from the repository root:
 ```powershell
 python -m pytest tests/peace -q
 python -m compileall bot
+node --check bot/site/script.js
 git diff --check
 ```
 
