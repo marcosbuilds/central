@@ -101,7 +101,7 @@ def test_access_roles_do_not_create_prefixes_but_visual_roles_do(tmp_path):
         role_names=("AIs",),
         founder_user_id=1,
         default="N",
-    ) == "D"
+    ) == "A"
     assert prefix_for_roles(
         user_id=10,
         role_names=("Peace", "Streamer"),
@@ -157,6 +157,25 @@ def test_live_display_separation_filters_visual_prefixes_but_not_founder():
         role_positions={"Founder Peace": 100},
         role_hoist={"Founder Peace": False},
     ) == "F"
+
+
+def test_live_visual_role_uses_first_letter_and_ignores_hoisted_access_roles():
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Intern", "Rookie ⎰ Agent"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 4, "Intern": 8, "Rookie ⎰ Agent": 12},
+        role_hoist={"Peace": False, "Intern": True, "Rookie ⎰ Agent": True},
+    ) == "R"
+    assert prefix_for_roles(
+        user_id=10,
+        role_names=("Peace", "Manager ⎰ Deputy Delegate", "Staff"),
+        founder_user_id=1,
+        default="N",
+        role_positions={"Peace": 4, "Manager ⎰ Deputy Delegate": 30, "Staff": 40},
+        role_hoist={"Peace": False, "Manager ⎰ Deputy Delegate": True, "Staff": True},
+    ) == "N"
 
 
 def test_member_role_update_rebuilds_nickname_from_live_visual_priority(tmp_path):

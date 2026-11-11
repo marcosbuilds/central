@@ -6,29 +6,48 @@ import re
 from collections.abc import Iterable, Mapping
 
 
-# These are presentation labels only. Access roles such as Peace, Dev, Staff,
-# Management and Visitor must never produce a nickname prefix.
+# These are presentation labels only. Access/status roles must never produce a
+# nickname prefix, even when Discord's ``hoist`` flag is enabled on them. The
+# prefix is the first letter of the highest live visual role.
+NON_VISUAL_ROLE_NAMES = frozenset(
+    {
+        "peace",
+        "dev",
+        "staff",
+        "management",
+        "gerência",
+        "gerencia",
+        "manager ⎰ deputy delegate",
+        "visitor",
+        "not verified",
+        "não verificado",
+        "nao verificado",
+        "booster",
+        "call montenegro",
+    }
+)
+
 VISUAL_ROLE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "D",
         (
             "developer",
             "desenvolvedor",
-            "frontend",
-            "backend",
             "documentation",
             "documentação",
             "documentacao",
-            "a is",
-            "ais",
-            "ai & bots",
-            "ia & bots",
-            "general director",
-            "diretor geral",
         ),
     ),
+    ("F", ("frontend",)),
+    ("B", ("backend", "bot")),
+    ("A", ("a is", "ais", "ai & bots", "ia & bots")),
+    ("G", ("general director", "diretor geral")),
+    ("S", ("superintendent",)),
+    ("E", ("elite", "elite ⎰ special agent")),
+    ("M", ("member", "member ⎰ recruit")),
+    ("R", ("rookie", "rookie ⎰ agent", "recrutador")),
+    ("I", ("intern", "estagiário", "estagiario")),
     ("S", ("streamer",)),
-    ("R", ("recrutador",)),
 )
 
 
@@ -59,8 +78,8 @@ def prefix_for_roles(
     Founder is an explicit product rule. Every other prefix must come from the
     allowlisted visual-role names above; when ``role_hoist`` is supplied by a
     live Discord snapshot, the matching role must also be displayed separately.
-    Permission roles are intentionally not matched by substring so names such
-    as ``Dev`` and ``Management`` cannot acquire a prefix by accident.
+    Permission roles are explicitly excluded so names such as ``Dev`` and
+    ``Management`` cannot acquire a prefix by accident.
     """
 
     names: set[str] = set()
@@ -87,7 +106,11 @@ def prefix_for_roles(
             hoist_by_name[candidate] = bool(is_hoisted)
 
     for precedence, (prefix, visual_names) in enumerate(VISUAL_ROLE_PREFIXES):
-        matched_names = names.intersection(visual_names)
+        matched_names = {
+            name
+            for name in names.intersection(visual_names)
+            if name not in NON_VISUAL_ROLE_NAMES
+        }
         if role_hoist is not None:
             # Discord's ``hoist`` flag is the live source of truth for whether
             # a role is presented separately. Access/status roles remain out

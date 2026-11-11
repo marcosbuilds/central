@@ -73,15 +73,13 @@ the old ID remains reserved, with no automatic duplicate card.
 ## Nickname policy
 
 `bot/core/identity.py` is the single prefix policy. Founder receives `F`.
-Access roles do not generate prefixes. Only the explicit visual-role allowlist
-can generate the existing presentation prefixes `D`, `S`, and `R`; when live
-Discord role metadata is available, the role must also have `hoist` enabled
-(“display members of this role separately”). Runtime sync, snapshot import,
-return approval, and `peace-nick` share the same helper. When a member has more
-than one matching visual role, the live Discord role position selects the
-highest one; `Peace`, `Staff`, `Management`, `Dev`, `Visitor`, and status roles
-remain outside the allowlist and never compete for that prefix. Founder remains
-the explicit `F` exception.
+Access/status roles do not generate prefixes. For the known visual-role
+allowlist, live Discord metadata must also show “display members of this role
+separately” (`hoist`); the prefix is the first letter of the highest matching
+role. Runtime sync, snapshot import, return approval, and `peace-nick` share the
+same helper. `Peace`, `Staff`, `Management`, `Manager ⎰ Deputy Delegate`, `Dev`,
+`Visitor`, and status roles remain outside the allowlist and never compete for
+that prefix. Founder remains the explicit `F` exception.
 
 ## Compatibility and verification
 

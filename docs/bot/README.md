@@ -81,17 +81,17 @@ grants `Peace` and the visual `Intern` role, with no global permissions on the
 latter.
 
 Peace nicknames use `F` for Founder. Access and status roles such as `Peace`,
-`Dev`, `Staff`, `Management`, `Visitor`, and `Not Verified` do not create a
-prefix. Only the explicit visual-role allowlist can produce the existing
-presentation prefixes (`D`, `S`, or `R`), and a live role must also have
-Discord's “display members of this role separately” (`hoist`) flag enabled.
-When more than one matching visual role is present, the highest live Discord
-role wins. The same rule is used by runtime synchronization, snapshots, return
-approval, and `peace-nick`; offline name-only data keeps the existing allowlist
-fallback so historical records remain readable. Startup reconciliation runs the
-nickname repair before panel history reconciliation and merges the gateway
-cache with Discord's complete member iterator, so existing members are repaired
-even when a slow panel sync would otherwise delay or prevent the backfill.
+`Dev`, `Staff`, `Management`, `Manager ⎰ Deputy Delegate`, `Visitor`, and
+`Not Verified` do not create a prefix. For the remaining known visual roles, a
+live role must have Discord's “display members of this role separately”
+(`hoist`) flag enabled, and the prefix is the first letter of the highest live
+visual role (`Intern` → `I`, `Rookie ⎰ Agent` → `R`, `Streamer` → `S`). The
+same rule is used by runtime synchronization, snapshots, return approval, and
+`peace-nick`; offline name-only data keeps the known visual-role fallback so
+historical records remain readable. Startup reconciliation runs the nickname
+repair before panel history reconciliation and merges the gateway cache with
+Discord's complete member iterator, so existing members are repaired even when
+a slow panel sync would otherwise delay or prevent the backfill.
 
 When a member leaves with Peace, or loses Peace while remaining in the server,
 the ID is marked `reserved` and is never silently reused. The bot records the
