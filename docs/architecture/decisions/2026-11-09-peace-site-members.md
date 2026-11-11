@@ -37,6 +37,9 @@ The public HTTP process currently exposes only `/healthz` and `/api/status`.
 There is no remote OAuth callback, browser session, member overview endpoint,
 or web CAPTCHA contract. The site therefore does not show a real name, avatar,
 Peace ID, role, request, ticket, operation, log, or Discord message.
+The `/candidatura/` route may preserve an in-progress draft, including its
+review step and local terms, in the current browser only; it does not create a
+server-side application or imply that a submission was received.
 
 The historical copy on the public home is editorially curated from the three
 milestones already represented in the tracked site: the 29 April cycle
@@ -129,6 +132,6 @@ git diff --check
 
 Manual local review must cover `/`, `/area/`, and `/area/?preview=member` at
 320, 768, 1024, and 1440 CSS pixels; keyboard navigation; 400% zoom; reduced
-motion; menu close with Escape; member tab arrow navigation; and a console-free
-load. These checks validate the static UI only. They do not prove OAuth,
+motion; menu close with Escape; member tab arrow navigation; candidature reload
+at the review step; and a console-free load. These checks validate the static UI only. They do not prove OAuth,
 production TLS, DNS, API authorization, or Discord availability.

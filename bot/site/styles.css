@@ -116,7 +116,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   gap: 0.8rem;
   padding: 0.7rem 1rem;
   border: 1px solid transparent;
-  border-radius: 0.45rem;
+  border-radius: 0.72rem;
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 700;
@@ -602,25 +602,25 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .flow-header-cta { justify-self: end; min-height: 2.5rem; }
 .flow-header-cta .peace-icon { width: 1rem; height: 1rem; }
 .flow-main { width: min(100%, var(--content)); margin: 0 auto; padding: clamp(3.5rem, 8vw, 7rem) 1.25rem clamp(5rem, 9vw, 8rem); }
-.flow-main--entry { padding-top: clamp(4rem, 10vw, 8rem); }
+.flow-main--entry { padding-top: clamp(2.75rem, 5vw, 5rem); padding-bottom: clamp(3rem, 5vw, 4.5rem); }
 .flow-main--application { padding-top: clamp(2.8rem, 6vw, 5.5rem); }
 .flow-main--login { padding-top: clamp(3rem, 7vw, 5.5rem); }
 .flow-main--public { padding-top: clamp(3.5rem, 8vw, 7rem); }
-.flow-hero, .login-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr); align-items: start; gap: clamp(3rem, 8vw, 8rem); }
-.login-layout--focused { display: block; max-width: 36rem; margin: 0 auto; }
+.flow-hero, .login-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr); align-items: start; gap: clamp(2rem, 5vw, 5.25rem); }
+.login-layout--focused { display: grid; grid-template-columns: 1fr; gap: clamp(2.5rem, 5vw, 3.75rem); max-width: 34rem; margin: 0 auto; }
 .flow-copy { max-width: 48rem; }
 .login-layout--focused .flow-copy { max-width: none; }
 .flow-copy h1, .flow-intro h1, .public-hero h1 { max-width: 49rem; margin: 0; font-size: clamp(3.4rem, 7vw, 7rem); letter-spacing: -0.075em; line-height: 0.9; }
 .login-layout--focused .flow-copy h1 { max-width: 30rem; font-size: clamp(2.8rem, 6vw, 5.2rem); }
 .flow-copy h1 em, .flow-intro h1 em, .public-hero h1 em { color: var(--accent); font-style: normal; }
 .flow-lede { max-width: 38rem; margin: 1.8rem 0 0; color: var(--muted); font-size: 1rem; line-height: 1.8; }
-.flow-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 2.2rem; }
+.flow-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 1.75rem; }
 .flow-login-action { color: var(--text); }
 .flow-footnote { display: flex; max-width: 32rem; align-items: flex-start; gap: 0.65rem; margin: 2.5rem 0 0; color: var(--quiet); font-size: 0.7rem; line-height: 1.65; }
-.flow-visual { padding: clamp(1.4rem, 4vw, 2.6rem); border: 1px solid var(--border); background: var(--surface); }
-.flow-visual-mark { display: grid; width: 4.8rem; height: 4.8rem; place-items: center; margin-bottom: 2.8rem; border: 1px solid var(--border); background: #101a20; }
+.flow-visual { padding: clamp(1.25rem, 3vw, 2.2rem); border: 1px solid var(--border); background: var(--surface); }
+.flow-visual-mark { display: grid; width: 4.8rem; height: 4.8rem; place-items: center; margin-bottom: 1.75rem; border: 1px solid var(--border); background: #101a20; }
 .flow-visual-mark img { width: 4.25rem; height: 4.25rem; object-fit: contain; filter: grayscale(1) brightness(1.3); }
-.flow-visual h2 { margin: 0 0 1.8rem; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -0.065em; line-height: 0.95; }
+.flow-visual h2 { margin: 0 0 1.25rem; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -0.065em; line-height: 0.95; }
 .flow-visual h2 em { color: var(--accent); font-style: normal; }
 .flow-sequence, .state-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
 .flow-sequence li { display: grid; grid-template-columns: 2.1rem minmax(0, 1fr); gap: 0.75rem; padding: 0.95rem 0; border-top: 1px solid var(--border); }
@@ -628,6 +628,9 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .flow-sequence strong, .flow-sequence small, .state-list strong, .state-list small { display: block; }
 .flow-sequence strong { color: var(--text); font-size: 0.8rem; }
 .flow-sequence small { margin-top: 0.22rem; color: var(--muted); font-size: 0.7rem; line-height: 1.5; }
+.flow-sequence-link { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.45rem; color: var(--accent); font-size: 0.68rem; font-weight: 700; }
+.flow-sequence-link:hover, .flow-sequence-link:focus-visible { color: var(--text); }
+.flow-sequence-link .discord-icon { filter: grayscale(1) brightness(1.45); }
 .flow-sequence .is-current > span, .flow-sequence .is-current strong { color: var(--accent); }
 .flow-boundary { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; gap: 2rem; margin-top: clamp(4rem, 8vw, 7rem); padding: 1.35rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .flow-boundary > div { display: grid; gap: 0.45rem; }
@@ -645,7 +648,8 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .flow-progress-step.is-current { border-top-color: var(--accent); }
 .flow-progress-step.is-preview > span, .flow-progress-step.is-preview strong { color: var(--accent); }
 .application-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; max-width: 64rem; }
-.application-card, .login-card { min-width: 0; padding: clamp(1.25rem, 4vw, 2.4rem); border: 1px solid var(--border); background: var(--surface); }
+.application-card { min-width: 0; padding: clamp(1.25rem, 4vw, 2.4rem); border: 1px solid var(--border); background: var(--surface); }
+.login-card { min-width: 0; padding: clamp(1.35rem, 4vw, 2.5rem); border: 1px solid rgba(185, 202, 211, 0.18); border-radius: 1.35rem; background: rgba(12, 16, 20, 0.54); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1.5rem 3.5rem rgba(0, 0, 0, 0.14); backdrop-filter: blur(20px) saturate(115%); }
 .integration-banner { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: start; padding: 0.95rem 1rem; border-left: 2px solid var(--warning); background: rgba(223, 190, 125, 0.08); }
 .integration-banner[hidden] { display: none; }
 .integration-banner strong { color: var(--text); font-size: 0.8rem; }
@@ -677,11 +681,11 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .form-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field { display: grid; gap: 0.42rem; margin-top: 1.15rem; color: var(--text); font-size: 0.78rem; font-weight: 600; }
 .field > span em { color: var(--quiet); font-style: normal; font-weight: 400; }
-.field input, .field textarea { width: 100%; min-width: 0; padding: 0.78rem 0.85rem; border: 1px solid var(--border); border-radius: 0.35rem; outline: 0; background: var(--surface-soft); color: var(--text); font: inherit; font-weight: 400; line-height: 1.5; transition: border-color 180ms var(--ease-fast), background 180ms var(--ease-fast); }
+.field input, .field textarea { width: 100%; min-width: 0; padding: 0.78rem 0.85rem; border: 1px solid var(--border); border-radius: 0.85rem; outline: 0; background: var(--surface-soft); color: var(--text); font: inherit; font-weight: 400; line-height: 1.5; transition: border-color 180ms var(--ease-fast), background 180ms var(--ease-fast), box-shadow 180ms var(--ease-fast); }
 .field input { min-height: 3rem; }
 .field textarea { min-height: 8rem; resize: vertical; }
 .field input::placeholder, .field textarea::placeholder { color: var(--quiet); }
-.field input:focus, .field textarea:focus { border-color: var(--accent); background: #0e151a; }
+.field input:focus, .field textarea:focus { border-color: var(--accent); background: #0e151a; box-shadow: 0 0 0 3px rgba(185, 202, 211, 0.09); }
 .field input[readonly] { color: var(--quiet); }
 .field small, .field-note { color: var(--quiet); font-size: 0.67rem; font-weight: 400; line-height: 1.5; }
 .field-note { max-width: 35rem; margin: 1rem 0 0; }
@@ -709,10 +713,12 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .login-boundary .flow-symbol { width: 2.4rem; height: 2.4rem; flex: 0 0 auto; margin: 0; }
 .login-boundary strong { color: var(--text); font-size: 0.8rem; }
 .login-boundary p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.72rem; line-height: 1.6; }
-.auth-form { display: grid; gap: 0.2rem; margin-top: 1.8rem; }
+.auth-form { display: grid; gap: 1rem; margin-top: 1.8rem; }
 .login-layout--focused .auth-form { margin-top: 0; }
 .auth-form .button { width: 100%; }
-.code-form { margin-top: 2rem; padding-top: 1.8rem; border-top: 1px solid var(--border); }
+.login-card .field { margin-top: 0; }
+.login-card .button { border-radius: 0.85rem; }
+.code-form { margin-top: 2rem; padding-top: 1.8rem; border-top: 0; }
 .login-layout--focused .code-form { margin-top: 1.6rem; }
 .code-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .code-heading .eyebrow { margin: 0 0 0.65rem; }
@@ -722,12 +728,13 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .otp-input { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; border: 0 !important; background: transparent !important; color: transparent !important; caret-color: var(--accent); letter-spacing: 0.8em; text-align: center; }
 .otp-input:focus { outline: 0; }
 .otp-cells { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; min-height: 4rem; pointer-events: none; }
-.otp-cells span { display: grid; place-items: center; border: 1px solid var(--border); background: var(--surface-soft); color: var(--text); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 1.15rem; }
+.otp-cells span { display: grid; place-items: center; border: 1px solid var(--border); border-radius: 0.75rem; background: rgba(10, 14, 18, 0.62); color: var(--text); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 1.15rem; }
 .otp-shell:focus-within .otp-cells span { border-color: var(--accent); }
 .auth-note { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1.6rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .auth-note p { margin: 0; color: var(--quiet); font-size: 0.69rem; line-height: 1.6; }
 .login-switch { margin: 1.25rem 0 0; color: var(--quiet); font-size: 0.72rem; line-height: 1.5; text-align: center; }
 .login-switch a { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 0.16em; }
+.local-save-status { margin: 0.85rem 0 0; color: var(--quiet); font-size: 0.68rem; line-height: 1.5; }
 .flow-footer--minimal { display: flex; justify-content: flex-end; }
 .public-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.9fr); align-items: end; gap: clamp(3rem, 8vw, 8rem); }
 .public-hero .eyebrow { margin-bottom: 1rem; }

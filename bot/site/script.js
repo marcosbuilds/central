@@ -162,25 +162,85 @@
     var stageButtons = Array.prototype.slice.call(document.querySelectorAll("[data-stage-preview]"));
     var stages = Array.prototype.slice.call(document.querySelectorAll("[data-entry-stage]"));
     var integrationBanner = document.querySelector("[data-integration-status]");
+    var saveStatus = document.querySelector("[data-candidature-save-status]");
+    var wizard = document.querySelector("[data-wizard]");
+    var wizardPanels = wizard ? Array.prototype.slice.call(wizard.querySelectorAll("[data-wizard-panel]")) : [];
+    var wizardNext = wizard && wizard.querySelector("[data-wizard-next]");
+    var wizardBack = wizard && wizard.querySelector("[data-wizard-back]");
+    var wizardLabel = wizard && wizard.querySelector("[data-wizard-label]");
+    var wizardPercent = wizard && wizard.querySelector("[data-wizard-progress]");
+    var wizardTrack = wizard && wizard.querySelector("[data-wizard-track]");
+    var storageKey = "peace.candidature.v2";
     var currentStage = 1;
+    var wizardStep = 1;
+    var restoring = true;
+
+    function setSaveStatus(message) {
+      if (!saveStatus) return;
+      saveStatus.textContent = message;
+      saveStatus.hidden = !message;
+    }
+
+    function readDraft() {
+      try {
+        var raw = window.localStorage.getItem(storageKey);
+        if (!raw) return null;
+        var draft = JSON.parse(raw);
+        return draft && draft.version === 2 ? draft : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function getField(name) {
+      return wizard && wizard.querySelector('[name="' + name + '"]');
+    }
+
+    function saveDraft(message) {
+      if (!wizard) return;
+      var draft = {
+        version: 2,
+        stage: currentStage,
+        wizardStep: wizardStep,
+        values: {
+          nickname: getField("nickname") ? getField("nickname").value : "",
+          discovery: getField("discovery") ? getField("discovery").value : "",
+          motivation: getField("motivation") ? getField("motivation").value : ""
+        },
+        terms: {
+          city: Boolean(getField("terms-city") && getField("terms-city").checked),
+          discord: Boolean(getField("terms-discord") && getField("terms-discord").checked),
+          conduct: Boolean(getField("terms-conduct") && getField("terms-conduct").checked)
+        },
+        savedAt: Date.now()
+      };
+
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(draft));
+        setSaveStatus(message || "Progresso salvo neste navegador.");
+      } catch (error) {
+        setSaveStatus("");
+      }
+    }
 
     function setStage(stage, isPreview) {
-      currentStage = stage;
+      currentStage = Math.min(4, Math.max(1, Number(stage) || 1));
       stages.forEach(function (item) {
-        var active = Number(item.dataset.entryStage) === stage;
+        var active = Number(item.dataset.entryStage) === currentStage;
         item.hidden = !active;
         item.classList.toggle("is-active", active);
       });
       stageButtons.forEach(function (button) {
-        var active = Number(button.dataset.stagePreview) === stage;
+        var active = Number(button.dataset.stagePreview) === currentStage;
         button.classList.toggle("is-current", active);
-        button.classList.toggle("is-preview", Boolean(isPreview && active && stage > 1));
+        button.classList.toggle("is-preview", Boolean(isPreview && active && currentStage > 1));
         if (active) button.setAttribute("aria-current", "step");
         else button.removeAttribute("aria-current");
       });
-      if (isPreview && stage > 1) {
+      if (isPreview && currentStage > 1) {
         setIntegrationMessage(integrationBanner, "Prévia", "Etapa ainda não confirmada.", "preview");
       }
+      if (!restoring) saveDraft();
     }
 
     stageButtons.forEach(function (button) {
@@ -209,32 +269,24 @@
       });
     }
 
-    var wizard = document.querySelector("[data-wizard]");
-    if (!wizard) return;
-    var wizardPanels = Array.prototype.slice.call(wizard.querySelectorAll("[data-wizard-panel]"));
-    var wizardNext = wizard.querySelector("[data-wizard-next]");
-    var wizardBack = wizard.querySelector("[data-wizard-back]");
-    var wizardLabel = wizard.querySelector("[data-wizard-label]");
-    var wizardPercent = wizard.querySelector("[data-wizard-progress]");
-    var wizardTrack = wizard.querySelector("[data-wizard-track]");
-    var wizardStep = 1;
-
     function updateWizard(step, moveFocus) {
-      wizardStep = step;
+      if (!wizard) return;
+      wizardStep = Math.min(4, Math.max(1, Number(step) || 1));
       wizardPanels.forEach(function (panel) {
-        var active = Number(panel.dataset.wizardPanel) === step;
+        var active = Number(panel.dataset.wizardPanel) === wizardStep;
         panel.hidden = !active;
         panel.classList.toggle("is-active", active);
       });
-      if (wizardLabel) wizardLabel.textContent = "Passo " + step + " de 4";
-      if (wizardPercent) wizardPercent.textContent = String(Math.round((step / 4) * 100)) + "%";
-      if (wizardTrack) wizardTrack.style.width = String((step / 4) * 100) + "%";
-      if (wizardBack) wizardBack.hidden = step === 1;
-      if (wizardNext) wizardNext.hidden = step === 4;
+      if (wizardLabel) wizardLabel.textContent = "Passo " + wizardStep + " de 4";
+      if (wizardPercent) wizardPercent.textContent = String(Math.round((wizardStep / 4) * 100)) + "%";
+      if (wizardTrack) wizardTrack.style.width = String((wizardStep / 4) * 100) + "%";
+      if (wizardBack) wizardBack.hidden = wizardStep === 1;
+      if (wizardNext) wizardNext.hidden = wizardStep === 4;
       if (moveFocus) {
-        var heading = wizard.querySelector('[data-wizard-panel="' + step + '"] h3');
+        var heading = wizard.querySelector('[data-wizard-panel="' + wizardStep + '"] h3');
         if (heading) heading.focus({ preventScroll: true });
       }
+      if (!restoring) saveDraft();
     }
 
     function updateReview() {
@@ -249,6 +301,12 @@
       if (reviewMotivation) reviewMotivation.textContent = motivation && motivation.value.trim() ? motivation.value.trim().slice(0, 140) + (motivation.value.trim().length > 140 ? "…" : "") : "Ainda não preenchida.";
     }
 
+    if (!wizard) {
+      setStage(currentStage, false);
+      restoring = false;
+      return;
+    }
+
     wizard.querySelectorAll("[data-character-count-for]").forEach(function (counter) {
       var field = wizard.querySelector('[name="' + counter.dataset.characterCountFor + '"]');
       if (!field) return;
@@ -256,6 +314,12 @@
       field.addEventListener("input", syncCounter);
       syncCounter();
     });
+
+    wizard.querySelectorAll("input, textarea").forEach(function (field) {
+      field.addEventListener("input", function () { saveDraft(); });
+      field.addEventListener("change", function () { saveDraft(); });
+    });
+
     if (wizardNext) wizardNext.addEventListener("click", function () {
       if (wizardStep < 4) {
         var currentPanel = wizard.querySelector('[data-wizard-panel="' + wizardStep + '"]');
@@ -285,12 +349,31 @@
         missingTerm.focus();
         return;
       }
+      saveDraft("Revisão salva neste navegador.");
       if (result) result.textContent = "Envio indisponível nesta instalação: a API ainda não está conectada. Nenhuma candidatura foi criada.";
       setIntegrationMessage(integrationBanner, "Candidatura não enviada", "A API de candidatura ainda não está conectada a esta instalação.", "offline");
     });
 
-    updateWizard(1, false);
-    setStage(currentStage, false);
+    var draft = readDraft();
+    var draftValues = draft && draft.values ? draft.values : {};
+    var draftTerms = draft && draft.terms ? draft.terms : {};
+    if (typeof draftValues.nickname === "string") getField("nickname").value = draftValues.nickname;
+    if (typeof draftValues.discovery === "string") getField("discovery").value = draftValues.discovery;
+    if (typeof draftValues.motivation === "string") getField("motivation").value = draftValues.motivation;
+    if (getField("terms-city")) getField("terms-city").checked = draftTerms.city === true;
+    if (getField("terms-discord")) getField("terms-discord").checked = draftTerms.discord === true;
+    if (getField("terms-conduct")) getField("terms-conduct").checked = draftTerms.conduct === true;
+    wizard.querySelectorAll("[data-character-count-for]").forEach(function (counter) {
+      var field = wizard.querySelector('[name="' + counter.dataset.characterCountFor + '"]');
+      if (field) counter.textContent = String(field.value.length);
+    });
+    updateReview();
+    updateWizard(draft && draft.wizardStep ? draft.wizardStep : 1, false);
+    setStage(draft && draft.stage ? draft.stage : 1, false);
+    restoring = false;
+    if (draft) {
+      setSaveStatus(currentStage === 4 || (currentStage === 3 && wizardStep === 4) ? "Revisão restaurada neste navegador." : "Progresso restaurado neste navegador.");
+    }
   }
 
   function initLogin() {
