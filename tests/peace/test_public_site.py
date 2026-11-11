@@ -118,13 +118,32 @@ def test_public_site_files_are_complete():
     assert (site_root / "script.js").is_file()
     assert (site_root / "assets" / "peace-bird.png").is_file()
     assert (site_root / "assets" / "discord.svg").is_file()
+    assert (site_root / "assets" / "shield-check.svg").is_file()
     assert (member_root / "index.html").is_file()
+    for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
+        assert (site_root / route / "index.html").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "/api/entry/start" in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "/api/auth/code/request" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
     assert "--canvas: #050607" in stylesheet
     assert "O seu espaço." in homepage
+    assert 'class="peace-icon"' in homepage
+    assert 'id="avisos"' not in homepage
+    assert 'id="parceiros"' not in homepage
+    header_cta = homepage.split('class="button button--outline header-cta"', 1)[1].split("</a>", 1)[0]
+    hero_cta = homepage.split('class="button button--light button--large"', 1)[1].split("</a>", 1)[0]
+    assert "peace-icon" in header_cta and "discord-icon" not in header_cta
+    assert "peace-icon" in hero_cta and "discord-icon" not in hero_cta
+
+    entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
+    candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
+    assert "Começar minha entrada" in entry_html
+    assert "peace-icon" in entry_html
+    assert "Conectar Discord" in candidature_html
+    assert "discord-icon" in candidature_html
 
 
 def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
@@ -153,10 +172,12 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
-    assert "/entrar https://discord.gg/qUkQH8XmcN 302!" in redirects
-    assert "/entrar/ https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/entrar /entrar/ 301!" in redirects
+    assert "/candidatura /candidatura/ 301!" in redirects
     assert "/area /area/ 301!" in redirects
-    assert "/acessar /area/ 301!" in redirects
+    assert "/acessar /acessar/ 301!" in redirects
+    assert "/avisos /avisos/ 301!" in redirects
+    assert "/parceiros /parceiros/ 301!" in redirects
     assert "/api/status http://api.peacegg.com.br:25072/api/status 200!" in redirects
 
 
@@ -173,8 +194,16 @@ def test_local_site_server_handles_static_and_entry_routes():
         for path, expected_status, expected_location in (
             ("/", 200, None),
             ("/discord", 302, "https://discord.gg/qUkQH8XmcN"),
-            ("/entrar", 302, "https://discord.gg/qUkQH8XmcN"),
-            ("/acessar", 301, "/area/"),
+            ("/entrar", 301, "/entrar/"),
+            ("/candidatura", 301, "/candidatura/"),
+            ("/acessar", 301, "/acessar/"),
+            ("/avisos", 301, "/avisos/"),
+            ("/parceiros", 301, "/parceiros/"),
+            ("/entrar/", 200, None),
+            ("/candidatura/", 200, None),
+            ("/acessar/", 200, None),
+            ("/avisos/", 200, None),
+            ("/parceiros/", 200, None),
         ):
             connection.request("GET", path)
             response = connection.getresponse()

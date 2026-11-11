@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR" data-page="login">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Acesse o workspace da Peace com seu ID e código de acesso.">
+    <title>Acessar — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261111-4">
+    <script>document.documentElement.classList.add("js");</script>
+    <script defer src="/script.js?v=20261111-4"></script>
+  </head>
+  <body data-page="login">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page">
+      <header class="flow-header" aria-label="Acesso de membro">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início">
+          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
+        </a>
+        <div class="flow-header-context"><span class="status-mark" aria-hidden="true"></span><span>Acesso de membro</span></div>
+        <a class="flow-header-link" href="/entrar/">Fazer parte <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <main id="conteudo" class="flow-main flow-main--login">
+        <section class="login-layout" aria-labelledby="login-title">
+          <div class="flow-copy" data-reveal>
+            <p class="eyebrow">Acessar / Peace ID</p>
+            <h1 id="login-title">Seu espaço continua <em>aqui.</em></h1>
+            <p class="flow-lede">Use o ID Peace que já está vinculado à sua conta. O código de 6 dígitos é enviado por DM e expira em 10 minutos.</p>
+            <div class="login-boundary"><img class="flow-symbol" src="/assets/shield-check.svg" alt="" width="24" height="24"><div><strong>Um ID não é uma senha.</strong><p>O nome de usuário não prova identidade. A API confirma o vínculo e o cargo antes de criar a sessão.</p></div></div>
+          </div>
+
+          <section class="login-card" aria-label="Formulário de acesso">
+            <div class="integration-banner" data-login-status role="status" aria-live="polite"><span class="status-mark" aria-hidden="true"></span><div><strong>Login seguro por código</strong><p>Se o ID estiver ativo e vinculado, o código será enviado por mensagem privada.</p></div></div>
+            <form class="auth-form" data-login-request novalidate>
+              <label class="field"><span>ID Peace</span><input name="peace-id" type="text" required autocomplete="username" autocapitalize="characters" spellcheck="false" placeholder="Digite seu ID Peace" aria-describedby="peace-id-help"><small id="peace-id-help">Não usamos nome como prova de identidade.</small></label>
+              <button class="button button--light button--large" type="submit">Enviar código <span class="button-icon" aria-hidden="true">→</span></button>
+            </form>
+
+            <form class="auth-form code-form" data-login-verify hidden novalidate>
+              <div class="code-heading"><div><p class="eyebrow">Segundo passo</p><h2>Digite o código da DM.</h2></div><span>6 dígitos</span></div>
+              <label class="field code-field"><span>Código de acesso</span><div class="otp-shell"><input class="otp-input" name="access-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-describedby="code-help" aria-label="Código de acesso de 6 dígitos"><div class="otp-cells" aria-hidden="true"><span data-code-cell="0"></span><span data-code-cell="1"></span><span data-code-cell="2"></span><span data-code-cell="3"></span><span data-code-cell="4"></span><span data-code-cell="5"></span></div></div><small id="code-help">Um único campo semântico para colar ou digitar os seis números.</small></label>
+              <button class="button button--light button--large" type="submit">Validar acesso <span class="button-icon" aria-hidden="true">→</span></button>
+              <p class="form-status" data-login-result role="status" aria-live="polite"></p>
+            </form>
+
+            <div class="auth-note"><span class="status-mark" aria-hidden="true"></span><p>Se não recebeu a DM, aguarde o cooldown ou use o suporte. A página não revela se um ID existe.</p></div>
+          </section>
+        </section>
+
+        <section class="flow-boundary" data-reveal aria-label="Alternativa de entrada">
+          <div><span class="eyebrow">Ainda não é membro?</span><strong>Comece a entrada da Peace.</strong></div>
+          <a class="button button--outline" href="/entrar/"><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">Fazer parte da Peace <span class="button-icon" aria-hidden="true">↗</span></a>
+        </section>
+      </main>
+
+      <footer class="site-footer flow-footer">
+        <a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
+        <p>Acesso condicionado à sessão e às permissões reais.</p>
+        <a class="footer-link" href="/">Voltar ao site <span aria-hidden="true">↗</span></a>
+      </footer>
+    </div>
+  </body>
+</html>

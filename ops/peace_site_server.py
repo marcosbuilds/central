@@ -36,12 +36,16 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         route = self.path.split("?", 1)[0]
 
-        if route in {"/discord", "/discord/", "/entrar", "/entrar/"}:
+        if route in {"/discord", "/discord/"}:
             self._redirect(DISCORD_INVITE, 302)
             return
 
-        if route in {"/area", "/acessar", "/acessar/"}:
+        if route == "/area":
             self._redirect("/area/", 301)
+            return
+
+        if route in {"/entrar", "/candidatura", "/acessar", "/avisos", "/parceiros"}:
+            self._redirect(route + "/", 301)
             return
 
         if route == "/api/status":

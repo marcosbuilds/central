@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR" data-page="candidatura">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Fluxo de candidatura para fazer parte da Peace.">
+    <title>Candidatura — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261111-4">
+    <script>document.documentElement.classList.add("js");</script>
+    <script defer src="/script.js?v=20261111-4"></script>
+  </head>
+  <body data-page="candidatura">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page">
+      <header class="flow-header" aria-label="Candidatura Peace">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início">
+          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
+        </a>
+        <div class="flow-header-context"><span class="status-mark" aria-hidden="true"></span><span>Candidatura</span><small>fluxo em quatro etapas</small></div>
+        <a class="flow-header-link" href="/entrar/">Voltar para entrada <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <main id="conteudo" class="flow-main flow-main--application">
+        <section class="flow-intro" data-reveal>
+          <div>
+            <p class="eyebrow">02 / Fazer parte</p>
+            <h1>Seu caminho de entrada, <em>passo a passo.</em></h1>
+          </div>
+          <p>A candidatura só avança quando o backend confirma cada etapa. As telas abaixo já estão organizadas para o fluxo documentado, mas esta instalação ainda não cria sessão, convite ou candidatura real.</p>
+        </section>
+
+        <nav class="flow-progress" aria-label="Etapas da candidatura" data-flow-progress>
+          <button class="flow-progress-step is-current" type="button" data-stage-preview="1" aria-current="step"><span>01</span><strong>Conectar</strong><small>Discord</small></button>
+          <button class="flow-progress-step" type="button" data-stage-preview="2"><span>02</span><strong>Verificar</strong><small>Presença humana</small></button>
+          <button class="flow-progress-step" type="button" data-stage-preview="3"><span>03</span><strong>Setagem</strong><small>Suas respostas</small></button>
+          <button class="flow-progress-step" type="button" data-stage-preview="4"><span>04</span><strong>Revisão</strong><small>Equipe Peace</small></button>
+        </nav>
+
+        <div class="application-layout">
+          <section class="application-card" aria-labelledby="application-stage-title">
+            <div class="integration-banner" data-integration-status role="status" aria-live="polite">
+              <span class="status-mark" aria-hidden="true"></span>
+              <div><strong>Integração pendente</strong><p>O front está pronto; o backend ainda não expõe o vínculo com o Discord neste ambiente.</p></div>
+            </div>
+
+            <section class="application-stage is-active" data-entry-stage="1" aria-labelledby="application-stage-title">
+              <p class="eyebrow">Etapa 01 / Conectar conta</p>
+              <h2 id="application-stage-title">Comece com a sua conta Discord.</h2>
+              <p class="stage-lede">A Peace usa OAuth2 com <code>identify</code>, PKCE e <code>state</code> para confirmar que a candidatura pertence à pessoa certa. Um convite individual só é criado depois dessa conexão.</p>
+              <div class="stage-actions">
+                <button class="button button--light button--large" type="button" data-entry-connect>
+                  <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
+                  <span>Conectar Discord</span>
+                  <span class="button-icon" aria-hidden="true">↗</span>
+                </button>
+                <a class="text-link" href="/discord/"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Abrir convite geral <span aria-hidden="true">↗</span></a>
+              </div>
+              <p class="stage-note"><span class="status-mark" aria-hidden="true"></span>Não é possível avançar visualmente como se a conta estivesse conectada. A API precisa confirmar o retorno do Discord.</p>
+            </section>
+
+            <section class="application-stage" data-entry-stage="2" aria-labelledby="verification-stage-title" hidden>
+              <div class="stage-icon"><img src="/assets/shield-check.svg" alt="" width="24" height="24"></div>
+              <p class="eyebrow">Etapa 02 / Verificação</p>
+              <h2 id="verification-stage-title">Confirme que você chegou pelo caminho certo.</h2>
+              <p class="stage-lede">Depois da conexão, o bot entrega um convite individual de uso único. No Discord, a verificação humana acontece em <code>verification/verify</code>; só a confirmação do bot libera a setagem.</p>
+              <div class="verification-state"><span class="status-mark" aria-hidden="true"></span><div><strong>Aguardando confirmação do Discord</strong><small>A interface não destrava esta etapa por conta própria.</small></div></div>
+              <button class="button button--outline" type="button" data-entry-refresh>Atualizar status</button>
+              <p class="stage-note">Esta visualização é uma prévia de interface. Nenhum convite individual foi criado.</p>
+            </section>
+
+            <section class="application-stage" data-entry-stage="3" aria-labelledby="set-stage-title" hidden>
+              <div class="preview-label"><span>Prévia de interface</span><small>sem rascunho salvo</small></div>
+              <p class="eyebrow">Etapa 03 / Setagem</p>
+              <h2 id="set-stage-title">Conte como você quer participar.</h2>
+              <p class="stage-lede">O wizard abaixo reflete a proposta do planejamento. Nesta prévia, os valores ficam somente na página e não chegam ao backend.</p>
+
+              <div class="wizard" data-wizard>
+                <div class="wizard-topline"><span data-wizard-label>Passo 1 de 4</span><span class="wizard-progress-text" data-wizard-progress>25%</span></div>
+                <div class="wizard-track" aria-hidden="true"><span data-wizard-track></span></div>
+
+                <section class="wizard-panel is-active" data-wizard-panel="1" aria-labelledby="wizard-profile-title">
+                  <p class="eyebrow">Perfil inicial</p>
+                  <h3 id="wizard-profile-title">Como a comunidade deve reconhecer você?</h3>
+                  <div class="form-grid form-grid--two">
+                    <label class="field"><span>Apelido in-game</span><input name="nickname" type="text" minlength="3" maxlength="32" autocomplete="nickname" placeholder="3 a 32 caracteres"><small>Sem caracteres de controle ou impersonação.</small></label>
+                    <label class="field"><span>Nome do personagem <em>(opcional)</em></span><input name="character" type="text" maxlength="64" placeholder="Se for diferente do apelido"></label>
+                  </div>
+                  <label class="field"><span>ID Discord</span><input type="text" value="Aguardando conexão" readonly aria-describedby="discord-id-help"><small id="discord-id-help">Preenchido pelo backend após o OAuth.</small></label>
+                </section>
+
+                <section class="wizard-panel" data-wizard-panel="2" aria-labelledby="wizard-convivencia-title" hidden>
+                  <p class="eyebrow">Convivência</p>
+                  <h3 id="wizard-convivencia-title">Mostre como você cuida do espaço.</h3>
+                  <label class="field"><span>Você está brincando com alguém e a pessoa pede para parar. Como você reage?</span><textarea name="coexistence-stop" minlength="60" maxlength="400" rows="5" placeholder="Escreva de 60 a 400 caracteres."></textarea><small>Resposta aberta · 60 a 400 caracteres.</small></label>
+                  <label class="field"><span>Você quer usar um canal ou entrar numa call. Como evita atrapalhar quem já está lá?</span><textarea name="coexistence-channel" minlength="60" maxlength="400" rows="5" placeholder="Escreva de 60 a 400 caracteres."></textarea><small>Resposta aberta · 60 a 400 caracteres.</small></label>
+                </section>
+
+                <section class="wizard-panel" data-wizard-panel="3" aria-labelledby="wizard-motivation-title" hidden>
+                  <p class="eyebrow">Motivação</p>
+                  <h3 id="wizard-motivation-title">Por que quer fazer parte da Peace?</h3>
+                  <label class="field"><span>Sua resposta</span><textarea name="motivation" minlength="120" maxlength="700" rows="8" placeholder="Conte o que trouxe você até aqui."></textarea><small><span data-character-count>0</span>/700 caracteres · mínimo de 120.</small></label>
+                  <p class="field-note">Não inclua nome real, documentos, telefone, CPF ou informações pessoais que não sejam necessárias para a entrada.</p>
+                </section>
+
+                <section class="wizard-panel" data-wizard-panel="4" aria-labelledby="wizard-review-title" hidden>
+                  <p class="eyebrow">Revisão</p>
+                  <h3 id="wizard-review-title">Confira antes de enviar.</h3>
+                  <dl class="review-list"><div><dt>Perfil</dt><dd data-review-nickname>Ainda não preenchido.</dd></div><div><dt>Convivência</dt><dd>2 respostas abertas.</dd></div><div><dt>Motivação</dt><dd data-review-motivation>Ainda não preenchida.</dd></div></dl>
+                  <label class="check-field"><input type="checkbox" name="rules-consent"><span>Li as regras da Peace e entendo que a candidatura passa por revisão da equipe.</span></label>
+                  <button class="button button--light" type="button" data-application-submit>Enviar setagem</button>
+                  <p class="stage-note" data-application-result role="status" aria-live="polite"></p>
+                </section>
+
+                <div class="wizard-actions"><button class="button button--outline" type="button" data-wizard-back>Voltar</button><button class="button button--light" type="button" data-wizard-next>Continuar <span class="button-icon" aria-hidden="true">→</span></button></div>
+              </div>
+            </section>
+
+            <section class="application-stage" data-entry-stage="4" aria-labelledby="review-stage-title" hidden>
+              <div class="stage-icon"><img src="/assets/shield-check.svg" alt="" width="24" height="24"></div>
+              <p class="eyebrow">Etapa 04 / Revisão</p>
+              <h2 id="review-stage-title">A equipe revisa. A página não promete aprovação.</h2>
+              <p class="stage-lede">Depois do envio real, a candidatura passa pelos estados documentados: enviada, em análise, informações solicitadas, aprovada ou reprovada.</p>
+              <div class="review-state"><span class="status-mark" aria-hidden="true"></span><div><strong>Aguardando uma candidatura real</strong><small>Esta instalação ainda não tem API de candidatura conectada.</small></div></div>
+            </section>
+          </section>
+
+          <aside class="application-aside" aria-label="Estado autorizado do fluxo">
+            <div class="aside-block"><p class="eyebrow">Estado real</p><h2>Sem atalhos de confiança.</h2><p>O front só muda de etapa após uma confirmação do backend. Um link compartilhado, um clique ou uma aparência verde não aprovam ninguém.</p></div>
+            <div class="aside-block"><p class="eyebrow">Você verá</p><ul class="state-list"><li><span>01</span><strong>Conexão</strong><small>OAuth2 + PKCE + state</small></li><li><span>02</span><strong>Presença</strong><small>convite individual e bot</small></li><li><span>03</span><strong>Rascunho</strong><small>salvo pelo servidor</small></li><li><span>04</span><strong>Decisão</strong><small>revisão da equipe</small></li></ul></div>
+            <a class="aside-link" href="/avisos/">Ver avisos públicos <span aria-hidden="true">↗</span></a>
+          </aside>
+        </div>
+      </main>
+
+      <footer class="site-footer flow-footer">
+        <a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
+        <p>Fluxo preparado para integração segura.</p>
+        <a class="footer-link" href="/acessar/">Acessar membro <span aria-hidden="true">↗</span></a>
+      </footer>
+    </div>
+  </body>
+</html>

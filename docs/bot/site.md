@@ -8,7 +8,15 @@ The public Peace home is a static single-page experience. It keeps the first
 view within the viewport, uses the official Peace bird as a transparent PNG,
 and provides a short public history based on the three curated milestones
 already represented in the tracked site. It does not read Discord at request
-time and does not expose member data or operational logs.
+time and does not expose member data or operational logs. Avisos and parceiros
+are separate public interfaces rather than sections embedded in the home.
+
+The `/entrar/` and `/candidatura/` routes are the public entry and candidature
+UI. They model the documented Discord OAuth, verification, setagem and staff
+review states without pretending that those future APIs exist. `/acessar/` is
+the member login UI for Peace ID plus a six-digit DM code; it also remains
+honest when the code endpoints are unavailable. No static page creates a
+session, invitation, application, approval, or member record.
 
 The `/area/` route is the member-area UI shell. Without a future authenticated
 session it shows an access gate. The query strings `?preview=member` and
@@ -24,9 +32,9 @@ browser keeps a same-origin HTTPS request. The invite is public by design; bot
 credentials and provider settings remain outside the repository.
 
 For local review, run `python ops/peace_site_server.py --port 4173`. The
-localhost-only server mirrors the small route contract needed by the static
-front: `/discord` and `/entrar` redirect to the public invite, `/acessar` and
-`/area` normalize to `/area/`, and `GET /api/status` proxies only the fixed
+localhost-only server mirrors the route contract needed by the static front:
+`/discord` redirects to the public invite, the public flow aliases normalize to
+their trailing-slash directories, and `GET /api/status` proxies only the fixed
 read-only ACLClouds status endpoint. It does not proxy cookies, authorization
 headers, member routes, or administrative actions. If ACLClouds cannot be
 resolved or reached, the local route returns a truthful `503` response.
@@ -46,8 +54,14 @@ ACL process and must not be copied into the ACL deployment as a served site.
 |---|---|
 | Netlify `/` | serves `bot/site/index.html` with HTTPS |
 | Netlify `/styles.css`, `/script.js`, `/assets/*` | serves versioned static site files |
-| Netlify `/discord`, `/discord/`, `/entrar`, `/entrar/` | redirects to the public Discord invite via `_redirects` |
-| Netlify `/acessar` and `/acessar/` | normalizes to the gated `/area/` shell |
+| Netlify `/discord`, `/discord/` | redirects to the public Discord invite via `_redirects` |
+| Netlify `/entrar/` | serves the public entry UI |
+| Netlify `/candidatura/` | serves the documented candidature and setagem UI states |
+| Netlify `/acessar/` | serves the member Peace ID + code login UI |
+| Netlify `/avisos/` | serves the dedicated public notices interface |
+| Netlify `/parceiros/` | serves the dedicated public partners interface |
+| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros` | normalize to their trailing-slash routes |
+| Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
@@ -96,6 +110,20 @@ recorded here so the asset is not mistaken for a project-owned logo:
 - SHA-256: `6634CC2F915DB66DF7A5237CAC0C1B98016289E86A2BB4B7BF6408EC2B95265C`;
 - constraint: keep the mark unmodified and do not imply Discord endorsement.
 
+`bot/site/assets/shield-check.svg` is the local verification-state icon used in
+the candidature, login and notices surfaces. Its provenance is recorded here
+so it is not confused with the Peace mark:
+
+- source: [theSVG Shield Check UI icon](https://thesvg.org/ui/shield-check/outline.svg);
+- catalog page: [Shield Check](https://thesvg.org/ui/shield-check);
+- license/attribution: theSVG page declares its UI collection open-source and
+  states that no attribution is required; the SVG contains no scripts or
+  external references;
+- retrieved: 2026-11-11;
+- SHA-256: `80D0ECEBCBA1D1F28CAE603E8C9C1886FCA1CF22CC213EDDDFF526A059BEA86D`;
+- constraint: use only for a verification/security state, never as the Peace
+  logo or as evidence that a user is authenticated.
+
 The public page uses a small allowlist for copying: the visible invite is
 explicitly marked as copyable and has a copy button; ordinary editorial text is
 not placed on the clipboard by the page. This is browser-level friction, not a
@@ -116,8 +144,9 @@ git diff --check
 The public route tests exercise the Netlify artifact contract, the ACL API
 allowlist, CORS behavior, health response, and the fixed status proxy rule
 without contacting Discord or a production provider. A production smoke check
-should verify the Netlify homepage, `/discord`, `/area/`, and `/api/status`,
-followed by the direct ACL `/healthz` and `/api/status` routes. Custom-domain
-TLS remains controlled by Netlify after DNS propagation. The current redesign
-is not considered production-published until that smoke check is repeated
-after an explicitly authorized deploy.
+should verify the Netlify homepage, `/discord`, `/entrar/`, `/candidatura/`,
+`/acessar/`, `/avisos/`, `/parceiros/`, `/area/`, and `/api/status`, followed
+by the direct ACL `/healthz` and `/api/status` routes. Custom-domain TLS
+remains controlled by Netlify after DNS propagation. The current redesign is
+not considered production-published until that smoke check is repeated after
+an explicitly authorized deploy.
