@@ -157,6 +157,7 @@ class Settings:
     central_bridge_key: str
     private_call_category_id: int | None
     automod_channel_id: int | None
+    afk_channel_id: int | None
     website_url: str
     api_enabled: bool
     api_host: str
@@ -220,6 +221,7 @@ class Settings:
             central_bridge_key=_central_bridge_key_env(),
             private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
             automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
+            afk_channel_id=_int_env("DISCORD_AFK_CHANNEL_ID", None),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
             api_enabled=_bool_env("PEACE_API_ENABLED", True),
             api_host=os.getenv("PEACE_API_HOST", "0.0.0.0").strip() or "0.0.0.0",

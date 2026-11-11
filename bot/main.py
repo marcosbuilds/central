@@ -2264,6 +2264,7 @@ class PeaceBot(commands.Bot):
         self.iris_context_task: asyncio.Task | None = None
         self.public_api_runner: web.AppRunner | None = None
         self.central_bridge_runner: web.AppRunner | None = None
+        self.afk_presence_lock = asyncio.Lock()
 
     async def setup_hook(self) -> None:
         self.database.initialize()
@@ -2692,6 +2693,7 @@ class PeaceBot(commands.Bot):
             log.error("Servidor %s não está disponível no cache do bot", self.settings.guild_id)
             return
         log.info("Conectado como %s no servidor %s", self.user, self.guild.name)
+        await self.run_startup_step("presença AFK", self.ensure_afk_presence)
         # Nickname repair is an independent startup invariant. Run it before
         # panel reconciliation so a slow or rate-limited panel history request
         # cannot prevent existing Peace members from receiving their live
@@ -2732,6 +2734,55 @@ class PeaceBot(commands.Bot):
                 name="iris-context-warmup",
             )
             self.iris_context_task.add_done_callback(self.report_background_task)
+
+    async def ensure_afk_presence(self) -> bool:
+        """Keep the bot in the configured AFK voice channel, muted and idempotently."""
+
+        channel_id = getattr(self.settings, "afk_channel_id", None)
+        if channel_id is None or self.guild is None:
+            return False
+
+        async with self.afk_presence_lock:
+            target = self.guild.get_channel(int(channel_id))
+            if target is None or not callable(getattr(target, "connect", None)):
+                log.warning("Canal AFK %s não é um canal de voz disponível", channel_id)
+                return False
+
+            voice = getattr(self.guild, "voice_client", None)
+            if voice is None:
+                voice = discord.utils.get(self.voice_clients, guild=self.guild)
+
+            if voice is not None and not voice.is_connected():
+                try:
+                    await voice.disconnect(force=True)
+                except (discord.HTTPException, AttributeError):
+                    log.debug("A conexão de voz antiga não pôde ser encerrada", exc_info=True)
+                voice = None
+
+            if voice is None:
+                await target.connect(self_mute=True)
+                log.info("Presença AFK iniciada no canal %s", target.id)
+                return True
+
+            if getattr(getattr(voice, "channel", None), "id", None) != target.id:
+                await voice.move_to(target)
+
+            await self.guild.change_voice_state(channel=target, self_mute=True)
+            log.info("Presença AFK sincronizada no canal %s", target.id)
+            return True
+
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        if self.user is None or member.id != self.user.id:
+            return
+        channel_id = getattr(self.settings, "afk_channel_id", None)
+        target_id = getattr(getattr(after, "channel", None), "id", None)
+        if channel_id is not None and (target_id != int(channel_id) or not getattr(after, "self_mute", False)):
+            await self.run_startup_step("reconexão da presença AFK", self.ensure_afk_presence)
 
     async def on_member_join(self, member: discord.Member) -> None:
         await self.reconcile_visitor_role(member)

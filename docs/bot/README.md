@@ -110,6 +110,12 @@ The bot does not create or edit channel permission overwrites. Channel and
 category permissions are operator-managed; the verification panel only edits
 its own messages in the already configured channel.
 
+When `DISCORD_AFK_CHANNEL_ID` is configured, the bot keeps one idempotent voice
+connection in that channel while online and applies self-mute after startup,
+reconnect, or a manual move. The setting is optional for local runs; the
+production value belongs in the provider environment and is not part of the
+public repository.
+
 Members without an access role cannot see the server structure. After
 verification, `Visitor` can read `rules`, use `visitor-chat`, access `SUPPORT`,
 and see `AFK` without connecting. `spam-control` is private to the bot and is
