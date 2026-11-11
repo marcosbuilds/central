@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 
 
 SITE_DIRECTORY = Path(__file__).resolve().parents[1] / "bot" / "site"
-ACL_STATUS_URL = "http://api.peacegg.com.br:25072/api/status"
+ACL_STATUS_URL = "http://141.11.237.97:25072/api/status"
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
 
 

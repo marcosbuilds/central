@@ -191,13 +191,9 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
-    assert "/entrar /entrar/ 301!" in redirects
-    assert "/candidatura /candidatura/ 301!" in redirects
-    assert "/area /area/ 301!" in redirects
-    assert "/acessar /acessar/ 301!" in redirects
-    assert "/avisos /avisos/ 301!" in redirects
-    assert "/parceiros /parceiros/ 301!" in redirects
-    assert "/api/status http://api.peacegg.com.br:25072/api/status 200!" in redirects
+    assert "/api/status http://141.11.237.97:25072/api/status 200!" in redirects
+    for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
+        assert f"{route} {route}/ 301!" not in redirects
 
 
 def test_local_site_server_handles_static_and_entry_routes():

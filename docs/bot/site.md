@@ -27,8 +27,9 @@ described as member or case data.
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
 to the public Discord invite with a temporary redirect. It also proxies the
-single read-only `/api/status` route to the fixed ACLClouds API origin, so the
-browser keeps a same-origin HTTPS request. The invite is public by design; bot
+single read-only `/api/status` route to the fixed public ACLClouds endpoint at
+`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. The
+invite is public by design; bot
 credentials and provider settings remain outside the repository.
 
 For local review, run `python ops/peace_site_server.py --port 4173`. The
