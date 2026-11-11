@@ -68,6 +68,7 @@
     if (!status || !statusLabel) return;
     status.dataset.state = state;
     statusLabel.textContent = label;
+    status.hidden = state !== "online";
   }
 
   function refreshServiceStatus() {
@@ -82,10 +83,10 @@
       })
       .then(function (payload) {
         var connected = Boolean(payload && payload.discord && payload.discord.connected === true && payload.status === "ok");
-        setServiceStatus(connected ? "online" : "checking", connected ? "Peace Tools conectado" : "Peace Tools iniciando");
+        setServiceStatus(connected ? "online" : "checking", connected ? "Peace Tools conectado" : "");
       })
       .catch(function () {
-        setServiceStatus(localPreview ? "preview" : "offline", localPreview ? "Prévia local · API não conectada" : "Peace Tools indisponível no momento");
+        setServiceStatus(localPreview ? "preview" : "offline", "");
       });
   }
 
@@ -138,7 +139,7 @@
     });
   });
 
-  function setIntegrationMessage(node, title, message, tone) {
+  function setStatusMessage(node, title, message, tone) {
     if (!node) return;
     node.hidden = false;
     var strong = node.querySelector("strong");
@@ -148,11 +149,60 @@
     node.dataset.state = tone || "pending";
   }
 
-  function attemptEndpoint(url, options) {
+  function setButtonLabel(button, label) {
+    if (!button) return;
+    var labelNode = button.querySelector("[data-button-label]");
+    if (labelNode) labelNode.textContent = label;
+    button.dataset.idleLabel = label;
+  }
+
+  function setButtonBusy(button, isBusy, loadingLabel) {
+    if (!button) return;
+    var labelNode = button.querySelector("[data-button-label]");
+    if (isBusy) {
+      if (!button.dataset.idleLabel && labelNode) button.dataset.idleLabel = labelNode.textContent;
+      if (labelNode) labelNode.textContent = loadingLabel || "Processando…";
+      button.classList.add("is-loading");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      return;
+    }
+
+    if (labelNode && button.dataset.idleLabel) labelNode.textContent = button.dataset.idleLabel;
+    button.classList.remove("is-loading");
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+
+  function attemptEndpoint(url, options, timeoutMs) {
     if (!window.fetch) return Promise.reject(new Error("fetch unavailable"));
-    return window.fetch(url, options || { headers: { Accept: "application/json" } }).then(function (response) {
+    var requestOptions = Object.assign({}, options || { headers: { Accept: "application/json" } });
+    var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
+    var timeoutId;
+    var duration = Number(timeoutMs) > 0 ? Number(timeoutMs) : 60000;
+
+    if (controller) requestOptions.signal = controller.signal;
+
+    var request = window.fetch(url, requestOptions).then(function (response) {
       if (!response.ok) throw new Error("endpoint unavailable");
       return response;
+    });
+
+    var timeout = new Promise(function (_, reject) {
+      timeoutId = window.setTimeout(function () {
+        if (controller) controller.abort();
+        var error = new Error("request timeout");
+        error.code = "TIMEOUT";
+        reject(error);
+      }, duration);
+    });
+
+    return Promise.race([request, timeout]).then(function (response) {
+      window.clearTimeout(timeoutId);
+      return response;
+    }, function (error) {
+      window.clearTimeout(timeoutId);
+      throw error;
     });
   }
 
@@ -161,7 +211,6 @@
 
     var stageButtons = Array.prototype.slice.call(document.querySelectorAll("[data-stage-preview]"));
     var stages = Array.prototype.slice.call(document.querySelectorAll("[data-entry-stage]"));
-    var integrationBanner = document.querySelector("[data-integration-status]");
     var saveStatus = document.querySelector("[data-candidature-save-status]");
     var wizard = document.querySelector("[data-wizard]");
     var wizardPanels = wizard ? Array.prototype.slice.call(wizard.querySelectorAll("[data-wizard-panel]")) : [];
@@ -237,9 +286,6 @@
         if (active) button.setAttribute("aria-current", "step");
         else button.removeAttribute("aria-current");
       });
-      if (isPreview && currentStage > 1) {
-        setIntegrationMessage(integrationBanner, "Prévia", "Etapa ainda não confirmada.", "preview");
-      }
       if (!restoring) saveDraft();
     }
 
@@ -248,23 +294,46 @@
     });
 
     var connectButton = document.querySelector("[data-entry-connect]");
+    var connectResult = document.querySelector("[data-entry-result]");
     if (connectButton) {
       connectButton.addEventListener("click", function () {
-        connectButton.disabled = true;
-        setIntegrationMessage(integrationBanner, "Conexão não disponível", "A rota /api/entry/start ainda não está conectada ao OAuth do Discord. Nenhuma sessão foi criada.", "offline");
-        attemptEndpoint("/api/entry/start", { method: "POST", headers: { Accept: "application/json" } }).catch(function () {
-          connectButton.disabled = false;
+        if (connectResult) connectResult.textContent = "";
+        setButtonBusy(connectButton, true, "Conectando…");
+        attemptEndpoint("/api/entry/start", { method: "POST", headers: { Accept: "application/json" } }, 60000).then(function () {
+          setButtonBusy(connectButton, false);
+          setButtonLabel(connectButton, "Discord conectado");
+          setStage(2, false);
+        }).catch(function () {
+          setButtonBusy(connectButton, false);
+          setButtonLabel(connectButton, "Tentar novamente");
+          if (connectResult) connectResult.textContent = "Não foi possível conectar agora. Tente novamente.";
+          window.setTimeout(function () {
+            if (!connectButton.disabled) setButtonLabel(connectButton, "Conectar Discord");
+          }, 3500);
         });
       });
     }
 
     var refreshButton = document.querySelector("[data-entry-refresh]");
+    var refreshResult = document.querySelector("[data-entry-refresh-result]");
     if (refreshButton) {
       refreshButton.addEventListener("click", function () {
-        refreshButton.disabled = true;
-        setIntegrationMessage(integrationBanner, "Status não confirmado", "A rota /api/entry/status ainda não está disponível; a etapa continua aguardando o Discord.", "offline");
-        attemptEndpoint("/api/entry/status").catch(function () {
-          refreshButton.disabled = false;
+        if (refreshResult) refreshResult.textContent = "";
+        setButtonBusy(refreshButton, true, "Atualizando…");
+        attemptEndpoint("/api/entry/status", null, 60000).then(function () {
+          setButtonBusy(refreshButton, false);
+          setButtonLabel(refreshButton, "Atualizado");
+          if (refreshResult) refreshResult.textContent = "Status atualizado.";
+          window.setTimeout(function () {
+            if (!refreshButton.disabled) setButtonLabel(refreshButton, "Atualizar status");
+          }, 2500);
+        }).catch(function () {
+          setButtonBusy(refreshButton, false);
+          setButtonLabel(refreshButton, "Tentar novamente");
+          if (refreshResult) refreshResult.textContent = "Não foi possível atualizar agora. Tente novamente.";
+          window.setTimeout(function () {
+            if (!refreshButton.disabled) setButtonLabel(refreshButton, "Atualizar status");
+          }, 3500);
         });
       });
     }
@@ -350,9 +419,10 @@
         return;
       }
       saveDraft("Revisão salva neste navegador.");
-      if (result) result.textContent = "Envio indisponível nesta instalação: a API ainda não está conectada. Nenhuma candidatura foi criada.";
-      setIntegrationMessage(integrationBanner, "Candidatura não enviada", "A API de candidatura ainda não está conectada a esta instalação.", "offline");
+      if (result) result.textContent = "Candidatura salva neste navegador. Você pode voltar e continuar a qualquer momento.";
     });
+
+    window.addEventListener("pagehide", function () { saveDraft(); });
 
     var draft = readDraft();
     var draftValues = draft && draft.values ? draft.values : {};
@@ -385,6 +455,14 @@
     var result = document.querySelector("[data-login-result]");
     var codeInput = document.querySelector("[name=\"access-code\"]");
     var cells = Array.prototype.slice.call(document.querySelectorAll("[data-code-cell]"));
+    var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
+
+    if (idInput) {
+      idInput.addEventListener("input", function () {
+        idInput.value = idInput.value.replace(/\D/g, "").slice(0, 19);
+        idInput.setCustomValidity("");
+      });
+    }
 
     function syncCodeCells() {
       var value = codeInput ? codeInput.value : "";
@@ -400,22 +478,24 @@
 
     if (requestForm) requestForm.addEventListener("submit", function (event) {
       event.preventDefault();
-      var idInput = requestForm.querySelector('[name="peace-id"]');
-      if (!idInput || !idInput.value.trim()) {
-        if (idInput) { idInput.setCustomValidity("Digite seu ID Peace."); idInput.reportValidity(); idInput.setCustomValidity(""); }
+      if (!idInput || !/^\d{1,19}$/.test(idInput.value.trim())) {
+        if (idInput) { idInput.setCustomValidity("Use somente números, de 1 a 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
         return;
       }
       var submit = requestForm.querySelector("button[type=submit]");
-      if (submit) submit.disabled = true;
-      attemptEndpoint("/api/auth/code/request", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ peace_id: idInput.value.trim() }) }).then(function () {
-        setIntegrationMessage(status, "Código enviado", "Confira sua DM.", "success");
+      if (status) status.hidden = true;
+      setButtonBusy(submit, true, "Enviando código…");
+      attemptEndpoint("/api/auth/code/request", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ peace_id: idInput.value.trim() }) }, 60000).then(function () {
+        setButtonBusy(submit, false);
+        setButtonLabel(submit, "Reenviar código");
+        setStatusMessage(status, "Código enviado", "Confira sua DM.", "success");
         if (verifyForm) {
           verifyForm.hidden = false;
           if (codeInput) codeInput.focus();
         }
       }).catch(function () {
-        setIntegrationMessage(status, "Login indisponível", "Tente novamente.", "offline");
-        if (submit) submit.disabled = false;
+        setButtonBusy(submit, false);
+        setStatusMessage(status, "Não foi possível enviar", "Tente novamente.", "offline");
       });
     });
 
@@ -426,9 +506,15 @@
         if (codeInput) codeInput.focus();
         return;
       }
-      if (result) result.textContent = "Validando…";
-      attemptEndpoint("/api/auth/code/verify", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: codeInput.value }) }).catch(function () {
-        if (result) result.textContent = "Login indisponível. Tente novamente.";
+      var verifyButton = verifyForm.querySelector("button[type=submit]");
+      if (result) result.textContent = "";
+      setButtonBusy(verifyButton, true, "Validando…");
+      attemptEndpoint("/api/auth/code/verify", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: codeInput.value }) }, 60000).then(function () {
+        setButtonBusy(verifyButton, false);
+        if (result) result.textContent = "Código confirmado.";
+      }).catch(function () {
+        setButtonBusy(verifyButton, false);
+        if (result) result.textContent = "Não foi possível validar agora. Tente novamente.";
       });
     });
   }

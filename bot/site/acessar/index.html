@@ -7,9 +7,9 @@
     <meta name="description" content="Login da Peace com ID e código de acesso.">
     <title>Acessar — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-7">
+    <link rel="stylesheet" href="/styles.css?v=20261111-8">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-8"></script>
+    <script defer src="/script.js?v=20261111-9"></script>
   </head>
   <body data-page="login">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -31,16 +31,16 @@
 
           <section class="login-card" aria-label="Formulário de acesso">
             <form class="auth-form" data-login-request novalidate>
-              <label class="field"><span>ID Peace</span><input name="peace-id" type="text" required autocomplete="username" autocapitalize="characters" spellcheck="false" placeholder="Seu ID Peace"></label>
-              <button class="button button--light button--large" type="submit">Enviar código <span class="button-icon" aria-hidden="true">→</span></button>
+              <label class="field field--id"><span>ID Peace</span><span class="field-control"><img class="field-icon" src="/assets/id-card.svg" alt="" aria-hidden="true" width="24" height="24"><input name="peace-id" type="text" required autocomplete="username" inputmode="numeric" maxlength="19" pattern="[0-9]{1,19}" autocapitalize="off" spellcheck="false" placeholder="Somente números" aria-describedby="peace-id-help"></span><small id="peace-id-help">Somente números · até 19 dígitos.</small></label>
+              <button class="button button--light button--large" type="submit"><span data-button-label>Enviar código</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
             </form>
 
-            <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong>Login indisponível</strong><p>Tente novamente.</p></div></div>
+            <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong></strong><p></p></div></div>
 
             <form class="auth-form code-form" data-login-verify hidden novalidate>
               <div class="code-heading"><h2>Código de acesso</h2></div>
               <label class="field code-field"><span>Código recebido no Discord</span><div class="otp-shell"><input class="otp-input" name="access-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de acesso de 6 dígitos"><div class="otp-cells" aria-hidden="true"><span data-code-cell="0"></span><span data-code-cell="1"></span><span data-code-cell="2"></span><span data-code-cell="3"></span><span data-code-cell="4"></span><span data-code-cell="5"></span></div></div></label>
-              <button class="button button--light button--large" type="submit">Entrar <span class="button-icon" aria-hidden="true">→</span></button>
+              <button class="button button--light button--large" type="submit"><span data-button-label>Entrar</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
               <p class="form-status" data-login-result role="status" aria-live="polite"></p>
             </form>
 

@@ -118,6 +118,7 @@ def test_public_site_files_are_complete():
     assert (site_root / "script.js").is_file()
     assert (site_root / "assets" / "peace-bird.png").is_file()
     assert (site_root / "assets" / "discord.svg").is_file()
+    assert (site_root / "assets" / "id-card.svg").is_file()
     assert (site_root / "assets" / "shield-check.svg").is_file()
     assert (member_root / "index.html").is_file()
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
@@ -126,6 +127,7 @@ def test_public_site_files_are_complete():
     assert "/api/entry/start" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/request" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
+    script = (site_root / "script.js").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
     assert "--canvas: #050607" in stylesheet
@@ -150,6 +152,15 @@ def test_public_site_files_are_complete():
     assert "auth-note" not in login_html
     assert "Seu ID não é uma senha." not in login_html
     assert 'data-login-status role="status" aria-live="polite" hidden' in login_html
+    assert 'maxlength="19"' in login_html
+    assert 'inputmode="numeric"' in login_html
+    assert 'src="/assets/id-card.svg"' in login_html
+    assert "Login indisponível" not in login_html
+    assert "Conexão indisponível" not in candidature_html
+    assert 'data-button-label' in login_html and 'button-spinner' in login_html
+    assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
+    assert '60000' in script
+    assert 'aria-busy' in script
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
 

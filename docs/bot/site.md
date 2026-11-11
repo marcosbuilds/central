@@ -124,6 +124,19 @@ so it is not confused with the Peace mark:
 - constraint: use only for a verification/security state, never as the Peace
   logo or as evidence that a user is authenticated.
 
+`bot/site/assets/id-card.svg` is the local identity cue shown beside the Peace
+ID field on `/acessar/`. Its provenance is recorded here so it is not confused
+with the Peace mark:
+
+- source: [theSVG Id Card outline UI icon](https://thesvg.org/ui/id-card/outline.svg);
+- catalog page: [Id Card](https://thesvg.org/ui/id-card);
+- license/attribution: theSVG UI collection is open-source and requires no
+  attribution; the SVG contains no scripts or external references;
+- retrieved: 2026-11-11;
+- SHA-256: `AB43B1100D12EA994E2C740AF830CB0BAEE6B7921697EEECE3897D0AB1AC22EE`;
+- constraint: use only as an identity-field cue, never as a Peace logo or as
+  proof that a visitor is authenticated.
+
 `bot/site/assets/copy.svg` is the icon-only action for copying the public
 Discord route. Its provenance is recorded here so the control remains
 recognizable without turning into a large secondary button:
@@ -145,8 +158,12 @@ static site.
 The entry surfaces keep one next action in view. `/acessar/` contains only the
 Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
 the three public destinations visible, and `/candidatura/` reveals one stage at
-a time. Integration notices stay hidden until a real request or preview state
-needs to communicate them; the required terms remain on the final review step.
+a time. The Peace ID accepts only 1–19 digits and remains in the field after a
+failed or timed-out request. Remote actions use a 60-second timeout, expose a
+button loading state with `aria-busy`, and return to a retryable state without
+showing internal routes or technical integration logs. The required terms
+remain on the final review step, while the draft is persisted on input, step
+changes, and page hide.
 
 ## Verification
 
