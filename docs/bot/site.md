@@ -142,6 +142,12 @@ browser-level friction, not a security boundary: source inspection, DevTools,
 OCR, screenshots, and assistive technology remain outside the control of a
 static site.
 
+The entry surfaces keep one next action in view. `/acessar/` contains only the
+Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
+the three public destinations visible, and `/candidatura/` reveals one stage at
+a time. Integration notices stay hidden until a real request or preview state
+needs to communicate them; the required terms remain on the final review step.
+
 ## Verification
 
 Run the bot tests and compile check from the repository root:

@@ -140,10 +140,18 @@ def test_public_site_files_are_complete():
 
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
+    login_html = (site_root / "acessar" / "index.html").read_text(encoding="utf-8")
     assert "Começar minha entrada" in entry_html
     assert "peace-icon" in entry_html
     assert "Conectar Discord" in candidature_html
     assert "discord-icon" in candidature_html
+    assert 'class="login-layout login-layout--focused"' in login_html
+    assert "flow-boundary" not in login_html
+    assert "auth-note" not in login_html
+    assert "Seu ID não é uma senha." not in login_html
+    assert 'data-login-status role="status" aria-live="polite" hidden' in login_html
+    for flow_html in (entry_html, candidature_html, login_html):
+        assert "flow-header-context" not in flow_html
 
 
 def test_member_area_is_gated_and_preview_is_explicitly_synthetic():

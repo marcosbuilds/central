@@ -140,6 +140,7 @@
 
   function setIntegrationMessage(node, title, message, tone) {
     if (!node) return;
+    node.hidden = false;
     var strong = node.querySelector("strong");
     var paragraph = node.querySelector("p");
     if (strong) strong.textContent = title;
@@ -178,7 +179,7 @@
         else button.removeAttribute("aria-current");
       });
       if (isPreview && stage > 1) {
-        setIntegrationMessage(integrationBanner, "Prévia de interface", "Esta etapa está visível para revisão visual. O backend ainda não autorizou o avanço real.", "preview");
+        setIntegrationMessage(integrationBanner, "Prévia", "Etapa ainda não confirmada.", "preview");
       }
     }
 
@@ -323,12 +324,14 @@
       }
       var submit = requestForm.querySelector("button[type=submit]");
       if (submit) submit.disabled = true;
-      setIntegrationMessage(status, "Pedido preparado", "Se esse ID estiver ativo e vinculado, o código seria enviado por DM. A rota de emissão ainda não está conectada.", "offline");
-      if (verifyForm) {
-        verifyForm.hidden = false;
-        if (codeInput) codeInput.focus();
-      }
-      attemptEndpoint("/api/auth/code/request", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ peace_id: idInput.value.trim() }) }).catch(function () {
+      attemptEndpoint("/api/auth/code/request", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ peace_id: idInput.value.trim() }) }).then(function () {
+        setIntegrationMessage(status, "Código enviado", "Confira sua DM.", "success");
+        if (verifyForm) {
+          verifyForm.hidden = false;
+          if (codeInput) codeInput.focus();
+        }
+      }).catch(function () {
+        setIntegrationMessage(status, "Login indisponível", "Tente novamente.", "offline");
         if (submit) submit.disabled = false;
       });
     });
@@ -340,8 +343,10 @@
         if (codeInput) codeInput.focus();
         return;
       }
-      if (result) result.textContent = "Validação não disponível: /api/auth/code/verify ainda não está conectada. Nenhuma sessão foi criada.";
-      attemptEndpoint("/api/auth/code/verify", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: codeInput.value }) }).catch(function () {});
+      if (result) result.textContent = "Validando…";
+      attemptEndpoint("/api/auth/code/verify", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ code: codeInput.value }) }).catch(function () {
+        if (result) result.textContent = "Login indisponível. Tente novamente.";
+      });
     });
   }
 

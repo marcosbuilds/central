@@ -590,6 +590,7 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 /* Public entry, candidature, access and directory surfaces */
 .flow-page { background: var(--canvas); }
 .flow-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; width: min(100%, var(--content)); margin: 0 auto; padding: 1.1rem 1.25rem; }
+.flow-header--minimal { grid-template-columns: auto auto; justify-content: space-between; }
 .flow-header-context { display: inline-flex; align-items: center; justify-self: center; gap: 0.6rem; color: var(--muted); font-size: 0.72rem; }
 .flow-header-context small { color: var(--quiet); font-size: 0.62rem; }
 .flow-header-link, .flow-header-nav a { color: var(--muted); font-size: 0.74rem; font-weight: 700; transition: color 180ms var(--ease-fast); }
@@ -603,11 +604,14 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .flow-main { width: min(100%, var(--content)); margin: 0 auto; padding: clamp(3.5rem, 8vw, 7rem) 1.25rem clamp(5rem, 9vw, 8rem); }
 .flow-main--entry { padding-top: clamp(4rem, 10vw, 8rem); }
 .flow-main--application { padding-top: clamp(2.8rem, 6vw, 5.5rem); }
-.flow-main--login { padding-top: clamp(4rem, 10vw, 8rem); }
+.flow-main--login { padding-top: clamp(3rem, 7vw, 5.5rem); }
 .flow-main--public { padding-top: clamp(3.5rem, 8vw, 7rem); }
 .flow-hero, .login-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr); align-items: start; gap: clamp(3rem, 8vw, 8rem); }
+.login-layout--focused { display: block; max-width: 36rem; margin: 0 auto; }
 .flow-copy { max-width: 48rem; }
+.login-layout--focused .flow-copy { max-width: none; }
 .flow-copy h1, .flow-intro h1, .public-hero h1 { max-width: 49rem; margin: 0; font-size: clamp(3.4rem, 7vw, 7rem); letter-spacing: -0.075em; line-height: 0.9; }
+.login-layout--focused .flow-copy h1 { max-width: 30rem; font-size: clamp(2.8rem, 6vw, 5.2rem); }
 .flow-copy h1 em, .flow-intro h1 em, .public-hero h1 em { color: var(--accent); font-style: normal; }
 .flow-lede { max-width: 38rem; margin: 1.8rem 0 0; color: var(--muted); font-size: 1rem; line-height: 1.8; }
 .flow-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 2.2rem; }
@@ -643,9 +647,11 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .application-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; max-width: 64rem; }
 .application-card, .login-card { min-width: 0; padding: clamp(1.25rem, 4vw, 2.4rem); border: 1px solid var(--border); background: var(--surface); }
 .integration-banner { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: start; padding: 0.95rem 1rem; border-left: 2px solid var(--warning); background: rgba(223, 190, 125, 0.08); }
+.integration-banner[hidden] { display: none; }
 .integration-banner strong { color: var(--text); font-size: 0.8rem; }
 .integration-banner p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.72rem; line-height: 1.55; }
-.application-stage { padding-top: 2.8rem; }
+.application-stage { padding-top: 1.8rem; }
+.application-card > .application-stage:first-of-type { padding-top: 1.2rem; }
 .application-stage h2 { max-width: 40rem; margin: 0 0 1rem; font-size: clamp(2.3rem, 5vw, 4.7rem); letter-spacing: -0.07em; line-height: 0.94; }
 .application-stage h2 em { color: var(--accent); font-style: normal; }
 .stage-lede { max-width: 42rem; margin: 0; color: var(--muted); line-height: 1.75; }
@@ -704,8 +710,10 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .login-boundary strong { color: var(--text); font-size: 0.8rem; }
 .login-boundary p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.72rem; line-height: 1.6; }
 .auth-form { display: grid; gap: 0.2rem; margin-top: 1.8rem; }
+.login-layout--focused .auth-form { margin-top: 0; }
 .auth-form .button { width: 100%; }
 .code-form { margin-top: 2rem; padding-top: 1.8rem; border-top: 1px solid var(--border); }
+.login-layout--focused .code-form { margin-top: 1.6rem; }
 .code-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .code-heading .eyebrow { margin: 0 0 0.65rem; }
 .code-heading h2 { margin: 0; font-size: clamp(1.7rem, 3vw, 2.6rem); letter-spacing: -0.06em; line-height: 0.96; }
@@ -718,6 +726,9 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .otp-shell:focus-within .otp-cells span { border-color: var(--accent); }
 .auth-note { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1.6rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .auth-note p { margin: 0; color: var(--quiet); font-size: 0.69rem; line-height: 1.6; }
+.login-switch { margin: 1.25rem 0 0; color: var(--quiet); font-size: 0.72rem; line-height: 1.5; text-align: center; }
+.login-switch a { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 0.16em; }
+.flow-footer--minimal { display: flex; justify-content: flex-end; }
 .public-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.9fr); align-items: end; gap: clamp(3rem, 8vw, 8rem); }
 .public-hero .eyebrow { margin-bottom: 1rem; }
 .public-hero-mark { align-self: stretch; display: flex; flex-direction: column; justify-content: end; min-height: 13rem; padding: 1.3rem; border: 1px solid var(--border); background: var(--surface); }
@@ -814,3 +825,5 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
   .otp-cells span { font-size: 0.95rem; }
   .flow-footer { grid-template-columns: 1fr auto; }
 }
+
+.flow-header.flow-header--minimal { grid-template-columns: auto auto; justify-content: space-between; }
