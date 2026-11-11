@@ -283,6 +283,7 @@ def test_public_site_files_are_complete():
     assert 'maxlength="19"' in login_html
     assert 'inputmode="numeric"' in login_html
     assert 'src="/assets/id-card.svg"' in login_html
+    assert ">Continuar</span>" in login_html
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
     assert "Acesso web em preparação" in script
