@@ -12,13 +12,16 @@ time and does not expose member data or operational logs. Avisos and parceiros
 are separate public interfaces rather than sections embedded in the home.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
-UI. The first candidature action opens the public Discord invite; the explicit
-confirmation then checks the read-only `/api/status` contract before revealing
-the next stage. The interface does not claim to prove a member's identity or
-create an OAuth session because that remote exchange remains a separate,
-unimplemented contract. `/acessar/` is the member login UI for Peace ID plus a
-six-digit DM code; it also remains honest when the code endpoints are
-unavailable. No static page creates a session, invitation, application,
+UI. The first candidature action asks ACLClouds for a single-use Discord invite
+created in `#verify`, limited to one use and 30 minutes. The browser keeps only
+an opaque short-lived flow token, so a reload reuses the same invite while it is
+valid. The bot binds the invite to the member join event, reports the linked
+Discord display name, and exposes the verification state from the member's
+`Not Verified`, `Visitor`, or `Peace` role. The interface advances to the
+interview only after `Visitor` or `Peace` is observed; it never treats the
+public service-health check as proof of a member identity and it does not
+create a Discord OAuth session. `/acessar/` remains the member login UI for
+Peace ID plus a six-digit DM code. No static page creates an application,
 approval, or member record.
 
 The `/area/` route is the member-area UI shell. Without a future authenticated
@@ -30,18 +33,20 @@ described as member or case data.
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
 to the public Discord invite with a temporary redirect. It also proxies the
-single read-only `/api/status` route to the fixed public ACLClouds endpoint at
-`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. The
-invite is public by design; bot
+bounded status and entry routes to the fixed public ACLClouds endpoint at
+`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. Bot
 credentials and provider settings remain outside the repository.
 
 For local review, run `python ops/peace_site_server.py --port 4173`. The
 localhost-only server mirrors the route contract needed by the static front:
 `/discord` redirects to the public invite, the public flow aliases normalize to
-their trailing-slash directories, and `GET /api/status` proxies only the fixed
-read-only ACLClouds status endpoint. It does not proxy cookies, authorization
-headers, member routes, or administrative actions. If ACLClouds cannot be
-resolved or reached, the local route returns a truthful `503` response.
+their trailing-slash directories, and the bounded status/entry routes proxy to
+the fixed ACLClouds origin. It does not proxy cookies, authorization headers,
+arbitrary member routes, or administrative actions. The repair route can only
+inspect and, when Discord permits it, restore `Not Verified` for the member
+already bound to that opaque entry token; it cannot look up an arbitrary ID.
+If ACLClouds cannot be resolved or reached, the local route returns a truthful
+`503` response.
 
 The repository-level `netlify.toml` publishes `bot/site` without a build step,
 so a linked Netlify project can reproduce the same artifact from the source
@@ -68,8 +73,14 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |
+| Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
+| Netlify `/api/entry/status` | returns the invite/member/verification state for the opaque flow token |
+| Netlify `/api/entry/repair` | repairs only the linked member's `Not Verified` entry role when safe |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
 | ACLClouds `/api/status` | returns bot readiness without member data or secrets |
+| ACLClouds `/api/entry/start` | creates/resumes the 30-minute invite in the verification channel |
+| ACLClouds `/api/entry/status` | returns bounded flow state, not cookies or OAuth data |
+| ACLClouds `/api/entry/repair` | validates the linked session before the narrow role repair |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -159,16 +170,26 @@ browser-level friction, not a security boundary: source inspection, DevTools,
 OCR, screenshots, and assistive technology remain outside the control of a
 static site.
 
+When the individual invite is being generated, the browser opens a Peace-owned
+waiting page in a new tab instead of exposing an `about:blank` tab. The page is
+replaced by the Discord invite only after the API confirms the link; a failed
+request leaves a plain retry message and the Peace tab remains available.
+
 The entry surfaces keep one next action in view. `/acessar/` contains only the
 Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
 the three public destinations visible, and `/candidatura/` reveals one stage at
-a time. Future stage buttons are disabled until the previous action advances
-the flow. The Peace ID accepts only 1–19 digits and remains in the field after a
-failed or timed-out request. Remote actions use a 60-second timeout, expose a
-button loading state with `aria-busy`, and return to a retryable state without
-showing internal routes or technical integration logs. The required terms
-remain on the final review step, while the draft is persisted silently on input,
-step changes, and page hide.
+a time. Future stage buttons are disabled until the backend-backed entry state
+advances the flow. The Discord invite opens in a new tab and remains reusable
+after a reload until its 30-minute expiry. Stage 02 explains the real `#verify`
+CAPTCHA flow, polls the bounded entry status, and moves automatically only when
+the bot observes `Visitor` or `Peace`. Its troubleshooting panel accepts
+optional username, ID, and profile link fields, but the backend binds every
+repair to the member already identified by that invite. Remote actions use a
+60-second timeout, expose a button loading state with `aria-busy`, and return to
+a retryable state without showing internal routes or technical integration
+logs. The required terms remain on the final review step, while the draft is
+persisted silently on input, step changes, and page hide. The candidature header
+is intentionally mobile-only; desktop keeps the return link beside the title.
 
 ## Verification
 

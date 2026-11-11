@@ -1,3 +1,6 @@
 /discord https://discord.gg/qUkQH8XmcN 302!
 /discord/ https://discord.gg/qUkQH8XmcN 302!
 /api/status http://141.11.237.97:25072/api/status 200!
+/api/entry/start http://141.11.237.97:25072/api/entry/start 200!
+/api/entry/status http://141.11.237.97:25072/api/entry/status 200!
+/api/entry/repair http://141.11.237.97:25072/api/entry/repair 200!

@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import discord
 from aiohttp import web
@@ -46,6 +47,8 @@ PUBLIC_API_ORIGINS = frozenset(
         "https://www.peacegg.com.br",
     }
 )
+ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
+ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -432,6 +435,21 @@ class DeveloperDraft:
     nickname: str
     motivation: str
     area: str = ""
+
+
+@dataclass
+class EntryInviteSession:
+    """Short-lived public entry state bound to one single-use Discord invite."""
+
+    session_token: str
+    invite_code: str
+    invite_url: str
+    expires_at: datetime
+    initial_uses: int = 0
+    discord_user_id: int | None = None
+    discord_username: str = ""
+    status: str = "waiting_invite"
+    last_repair_at: float = 0.0
 
 
 class VerificationCaptchaView(discord.ui.View):
@@ -2242,6 +2260,7 @@ class PeaceBot(commands.Bot):
         self.drafts: dict[int, SetDraft] = {}
         self.developer_drafts: dict[int, DeveloperDraft] = {}
         self.verification_challenges: dict[int, tuple[str, float]] = {}
+        self.entry_sessions: dict[str, EntryInviteSession] = {}
         self.guild: discord.Guild | None = None
         self.panels_synced = False
         self.iris = Iris(settings.iris_url, settings.iris_model) if settings.iris_enabled else None
@@ -2342,6 +2361,284 @@ class PeaceBot(commands.Bot):
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
 
+    def entry_guild(self) -> discord.Guild | None:
+        return self.guild or self.get_guild(self.settings.guild_id)
+
+    def entry_verification_channel(self, guild: discord.Guild):
+        channel_id = getattr(self.settings, "verification_channel_id", None)
+        channel = guild.get_channel(int(channel_id)) if channel_id is not None else None
+        if channel is not None and callable(getattr(channel, "create_invite", None)):
+            return channel
+        return discord.utils.find(
+            lambda item: item.name.casefold() in {VERIFICATION_CHANNEL_NAME.casefold(), "verificar"}
+            and callable(getattr(item, "create_invite", None)),
+            getattr(guild, "text_channels", ()),
+        )
+
+    @staticmethod
+    def entry_session_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token) else None
+
+    def prune_entry_sessions(self) -> None:
+        now = datetime.now(timezone.utc)
+        for token, session in tuple(self.entry_sessions.items()):
+            if session.expires_at <= now:
+                self.entry_sessions.pop(token, None)
+
+    @staticmethod
+    def entry_invite_code(invite: object) -> str:
+        code = str(getattr(invite, "code", "") or "").strip()
+        if code:
+            return code
+        parsed = urlsplit(str(getattr(invite, "url", "") or ""))
+        return parsed.path.strip("/").split("/")[-1]
+
+    def entry_member(self, session: EntryInviteSession) -> discord.Member | None:
+        if session.discord_user_id is None:
+            return None
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        get_member = getattr(guild, "get_member", None)
+        return get_member(int(session.discord_user_id)) if callable(get_member) else None
+
+    async def refresh_entry_session(self, session: EntryInviteSession) -> None:
+        if session.expires_at <= datetime.now(timezone.utc):
+            session.status = "expired"
+            return
+        member = self.entry_member(session)
+        if member is None:
+            return
+
+        session.discord_username = str(
+            getattr(member, "display_name", None)
+            or getattr(member, "global_name", None)
+            or getattr(member, "name", "Discord")
+        )[:80]
+        guild = self.entry_guild()
+        if guild is None:
+            return
+        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor")
+        not_verified = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if role_member(member, getattr(self.settings, "peace_role_id", None)) or (
+            visitor is not None and visitor in member.roles
+        ):
+            session.status = "verified"
+        elif not_verified is not None and not_verified in member.roles:
+            session.status = "verification_pending"
+        else:
+            session.status = "role_missing"
+
+    async def bind_entry_invite(self, member: discord.Member) -> None:
+        """Bind a one-use invite to the member that joined through it."""
+        self.prune_entry_sessions()
+        sessions = [
+            session
+            for session in self.entry_sessions.values()
+            if session.discord_user_id is None and session.status == "waiting_invite"
+        ]
+        if not sessions:
+            return
+        try:
+            invites = await member.guild.invites()
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            log.info("Não consegui consultar os convites para acompanhar a entrada pública")
+            return
+        by_code = {self.entry_invite_code(invite): invite for invite in invites}
+        for session in sessions:
+            invite = by_code.get(session.invite_code)
+            if invite is None:
+                continue
+            try:
+                uses = int(getattr(invite, "uses", 0) or 0)
+            except (TypeError, ValueError):
+                uses = 0
+            if uses <= session.initial_uses:
+                continue
+            session.discord_user_id = member.id
+            session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+            session.status = "verification_pending"
+            await self.refresh_entry_session(session)
+
+    async def entry_session_payload(self, session: EntryInviteSession) -> dict[str, object]:
+        await self.refresh_entry_session(session)
+        member = self.entry_member(session)
+        guild = self.entry_guild()
+        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor") if guild else None
+        not_verified = (
+            role_named(
+                guild,
+                getattr(self.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            if guild
+            else None
+        )
+        has_visitor = bool(member is not None and visitor is not None and visitor in member.roles)
+        has_not_verified = bool(member is not None and not_verified is not None and not_verified in member.roles)
+        return {
+            "session_token": session.session_token,
+            "invite_url": session.invite_url,
+            "expires_at": session.expires_at.isoformat(),
+            "expires_in": max(0, int((session.expires_at - datetime.now(timezone.utc)).total_seconds())),
+            "status": session.status,
+            "discord_user": (
+                {
+                    "id": str(session.discord_user_id),
+                    "username": session.discord_username or "Discord",
+                    "mention": f"@{session.discord_username or 'usuário'}",
+                }
+                if session.discord_user_id is not None
+                else None
+            ),
+            "verification": {
+                "channel": VERIFICATION_CHANNEL_NAME,
+                "has_not_verified_role": has_not_verified,
+                "has_visitor_role": has_visitor,
+                "completed": session.status == "verified",
+            },
+        }
+
+    async def public_api_entry_start(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de entrada inválidos."}, status=400)
+
+        supplied_token = payload.get("session_token", "")
+        if supplied_token and self.entry_session_token(supplied_token) is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(self.entry_session_token(supplied_token) or "")
+        if session is not None:
+            return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        channel = self.entry_verification_channel(guild)
+        if channel is None:
+            return web.json_response({"ok": False, "code": "VERIFY_CHANNEL_UNAVAILABLE", "message": "O canal verify não está disponível agora."}, status=503)
+        try:
+            invite = await channel.create_invite(
+                max_age=ENTRY_INVITE_MAX_AGE_SECONDS,
+                max_uses=1,
+                unique=True,
+                reason="Convite único do fluxo público de entrada Peace",
+            )
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            log.info("Não consegui criar o convite único do fluxo público de entrada")
+            return web.json_response({"ok": False, "code": "INVITE_UNAVAILABLE", "message": "Não foi possível gerar o convite agora."}, status=503)
+
+        invite_code = self.entry_invite_code(invite)
+        invite_url = str(getattr(invite, "url", "") or "").strip() or (f"https://discord.gg/{invite_code}" if invite_code else "")
+        if not invite_code or not invite_url:
+            return web.json_response({"ok": False, "code": "INVITE_INVALID", "message": "O Discord retornou um convite inválido."}, status=503)
+        try:
+            initial_uses = int(getattr(invite, "uses", 0) or 0)
+        except (TypeError, ValueError):
+            initial_uses = 0
+        token = secrets.token_urlsafe(32)
+        session = EntryInviteSession(
+            session_token=token,
+            invite_code=invite_code,
+            invite_url=invite_url,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ENTRY_INVITE_MAX_AGE_SECONDS),
+            initial_uses=initial_uses,
+        )
+        self.entry_sessions[token] = session
+        return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+    async def public_api_entry_status(self, request: web.Request) -> web.Response:
+        supplied_token = request.query.get("session_token")
+        if request.method == "POST":
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+                supplied_token = payload.get("session_token")
+            except (TypeError, json.JSONDecodeError):
+                return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acompanhamento inválidos."}, status=400)
+        token = self.entry_session_token(supplied_token)
+        if token is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(token)
+        if session is None:
+            return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
+        return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+    async def public_api_entry_repair(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de diagnóstico inválidos."}, status=400)
+
+        token = self.entry_session_token(payload.get("session_token"))
+        if token is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(token)
+        if session is None:
+            return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
+        if session.discord_user_id is None:
+            return web.json_response({"ok": False, "code": "NOT_JOINED", "message": "Ainda não identifiquei sua entrada pelo convite."}, status=409)
+
+        supplied_id = str(payload.get("discord_id", "")).strip()
+        if supplied_id and (not supplied_id.isdigit() or not 15 <= len(supplied_id) <= 22):
+            return web.json_response({"ok": False, "code": "INVALID_DISCORD_ID", "message": "O ID do Discord deve conter somente números."}, status=400)
+        if supplied_id and int(supplied_id) != session.discord_user_id:
+            return web.json_response({"ok": False, "code": "DISCORD_ID_MISMATCH", "message": "O ID informado não corresponde à conta identificada pelo convite."}, status=400)
+        for key, maximum in (("discord_username", 80), ("discord_profile_url", 300)):
+            if len(str(payload.get(key, "") or "")) > maximum:
+                return web.json_response({"ok": False, "code": "FIELD_TOO_LONG", "message": "Um dos campos ultrapassou o limite permitido."}, status=400)
+        if time.monotonic() - session.last_repair_at < 5:
+            return web.json_response({"ok": False, "code": "REPAIR_THROTTLED", "message": "Aguarde alguns segundos antes de tentar novamente."}, status=429, headers={"Retry-After": "5"})
+        session.last_repair_at = time.monotonic()
+
+        member = self.entry_member(session)
+        guild = self.entry_guild()
+        if member is None or guild is None:
+            return web.json_response({"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "Não consegui localizar sua entrada no servidor."}, status=404)
+        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor")
+        not_verified = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if role_member(member, getattr(self.settings, "peace_role_id", None)) or (visitor is not None and visitor in member.roles):
+            session.status = "verified"
+            return web.json_response({"ok": True, "code": "ALREADY_VERIFIED", "message": "Sua verificação já foi concluída.", **await self.entry_session_payload(session)})
+        if not_verified is None:
+            return web.json_response({"ok": False, "code": "ROLE_NOT_CONFIGURED", "message": "O cargo Not Verified não está configurado. A staff precisa corrigir a configuração."}, status=503)
+        if not_verified not in member.roles:
+            bot_member = getattr(guild, "me", None)
+            if bot_member is None or not role_is_manageable(not_verified, bot_member):
+                return web.json_response({"ok": False, "code": "ROLE_HIERARCHY", "message": "O bot não consegue aplicar Not Verified por causa da hierarquia de cargos."}, status=409)
+            try:
+                await member.add_roles(not_verified, reason="Reparo solicitado no fluxo público de entrada Peace")
+            except (discord.Forbidden, discord.HTTPException):
+                return web.json_response({"ok": False, "code": "ROLE_UPDATE_FAILED", "message": "Não consegui aplicar Not Verified. A staff precisa revisar as permissões."}, status=502)
+            session.status = "verification_pending"
+            return web.json_response({"ok": True, "code": "ROLE_REPAIRED", "message": "Apliquei Not Verified. Agora abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
+        session.status = "verification_pending"
+        return web.json_response({"ok": True, "code": "ROLE_READY", "message": "Sua conta está pronta. Abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
+
     @staticmethod
     @web.middleware
     async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
@@ -2349,8 +2646,8 @@ class PeaceBot(commands.Bot):
         origin = request.headers.get("Origin")
         if origin in PUBLIC_API_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
             response.headers["Vary"] = "Origin"
         return response
 
@@ -2382,7 +2679,12 @@ class PeaceBot(commands.Bot):
         app = web.Application(middlewares=(self.public_api_cors,))
         app.router.add_get("/healthz", self.public_api_health)
         app.router.add_get("/api/status", self.public_api_status)
-        app.router.add_route("OPTIONS", "/api/status", self.public_api_options)
+        app.router.add_post("/api/entry/start", self.public_api_entry_start)
+        app.router.add_get("/api/entry/status", self.public_api_entry_status)
+        app.router.add_post("/api/entry/status", self.public_api_entry_status)
+        app.router.add_post("/api/entry/repair", self.public_api_entry_repair)
+        for route in ("/api/status", "/api/entry/start", "/api/entry/status", "/api/entry/repair"):
+            app.router.add_route("OPTIONS", route, self.public_api_options)
         return app
 
     async def start_public_api(self) -> None:
@@ -2786,6 +3088,7 @@ class PeaceBot(commands.Bot):
 
     async def on_member_join(self, member: discord.Member) -> None:
         await self.reconcile_visitor_role(member)
+        await self.bind_entry_invite(member)
         if not await self.ensure_return_request(member):
             await self.sync_member_tag(member)
         await self.ensure_booster_space(member)

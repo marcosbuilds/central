@@ -1,7 +1,9 @@
 import asyncio
 import http.client
 import threading
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -16,6 +18,11 @@ def make_bot(tmp_path):
         iris_url="http://127.0.0.1:11435",
         iris_model="iris-test",
         discord_invite_url="https://discord.gg/example",
+        guild_id=1,
+        peace_role_id=100,
+        visitor_role_id=200,
+        not_verified_role_id=300,
+        verification_channel_id=500,
     )
     return PeaceBot(settings)
 
@@ -35,6 +42,21 @@ def run_public_api(tmp_path, request_path, *, method="GET", headers=None):
                 allow_redirects=False,
             )
             return response.status, response.headers, await response.text()
+        finally:
+            await client.close()
+
+    return asyncio.run(scenario())
+
+
+def run_configured_api(bot, request_path, *, method="GET", payload=None):
+    async def scenario():
+        app = bot.public_api_app()
+        server = TestServer(app)
+        client = TestClient(server)
+        await client.start_server()
+        try:
+            response = await client.request(method, request_path, json=payload)
+            return response.status, await response.json()
         finally:
             await client.close()
 
@@ -98,13 +120,115 @@ def test_public_api_supports_only_status_preflight(tmp_path):
     assert status == 204
     assert body == ""
     assert headers["Access-Control-Allow-Origin"] == "https://www.peacegg.com.br"
-    assert headers["Access-Control-Allow-Methods"] == "GET, OPTIONS"
+    assert headers["Access-Control-Allow-Methods"] == "GET, POST, OPTIONS"
 
 
 def test_public_api_does_not_expose_central_bridge_routes(tmp_path):
     status, _, _ = run_public_api(tmp_path, "/v1/central/auth/request")
 
     assert status == 404
+
+
+def test_public_entry_invite_is_single_use_and_reused_until_expiry(tmp_path):
+    bot = make_bot(tmp_path)
+    channel = SimpleNamespace(name="verify")
+    channel.create_invite = AsyncMock(
+        return_value=SimpleNamespace(
+            code="entry-code",
+            url="https://discord.gg/entry-code",
+            uses=0,
+        )
+    )
+    bot.guild = SimpleNamespace(
+        text_channels=[channel],
+        roles=[],
+        get_channel=lambda channel_id: channel if channel_id == 500 else None,
+        get_role=lambda role_id: None,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, first = run_configured_api(bot, "/api/entry/start", method="POST", payload={})
+    assert status == 200
+    assert first["ok"] is True
+    assert first["status"] == "waiting_invite"
+    assert first["expires_in"] <= 1800
+
+    status, second = run_configured_api(
+        bot,
+        "/api/entry/start",
+        method="POST",
+        payload={"session_token": first["session_token"]},
+    )
+    assert status == 200
+    assert second["session_token"] == first["session_token"]
+    assert second["invite_url"] == first["invite_url"]
+    channel.create_invite.assert_awaited_once_with(
+        max_age=1800,
+        max_uses=1,
+        unique=True,
+        reason="Convite único do fluxo público de entrada Peace",
+    )
+
+
+def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
+    from bot.main import EntryInviteSession
+
+    class Role:
+        def __init__(self, role_id, name, position):
+            self.id = role_id
+            self.name = name
+            self.position = position
+            self.managed = False
+
+        def is_default(self):
+            return False
+
+        def __lt__(self, other):
+            return self.position < other.position
+
+    class Member:
+        def __init__(self, guild):
+            self.id = 12345678901234567
+            self.name = "peaceiro"
+            self.display_name = "peaceiro"
+            self.roles = []
+            self.guild = guild
+
+        async def add_roles(self, role, reason=None):
+            self.roles.append(role)
+
+    not_verified = Role(300, "Not Verified", 3)
+    guild = SimpleNamespace(
+        text_channels=[],
+        roles=[not_verified],
+        me=SimpleNamespace(top_role=Role(999, "PeaceBot", 10)),
+        get_role=lambda role_id: not_verified if role_id == 300 else None,
+    )
+    member = Member(guild)
+    guild.get_member = lambda member_id: member if member_id == member.id else None
+    bot = make_bot(tmp_path)
+    bot.guild = guild
+    token = "A" * 43
+    bot.entry_sessions[token] = EntryInviteSession(
+        session_token=token,
+        invite_code="entry-code",
+        invite_url="https://discord.gg/entry-code",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        discord_user_id=member.id,
+        discord_username=member.name,
+        status="verification_pending",
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/repair",
+        method="POST",
+        payload={"session_token": token, "discord_username": member.name},
+    )
+    assert status == 200
+    assert payload["code"] == "ROLE_REPAIRED"
+    assert not_verified in member.roles
 
 
 def test_public_site_files_are_complete():
@@ -144,8 +268,12 @@ def test_public_site_files_are_complete():
     login_html = (site_root / "acessar" / "index.html").read_text(encoding="utf-8")
     assert "Começar minha entrada" in entry_html
     assert "peace-icon" in entry_html
-    assert "Entrar no Discord" in candidature_html
+    assert "Conectar no Discord" in candidature_html
     assert "discord-icon" in candidature_html
+    assert "data-entry-connect" in candidature_html
+    assert "#verify" in candidature_html
+    assert "entry-help-panel" in candidature_html
+    assert "return-icon" in candidature_html
     assert 'class="login-layout login-layout--focused"' in login_html
     assert "flow-boundary" not in login_html
     assert "auth-note" not in login_html
@@ -160,16 +288,21 @@ def test_public_site_files_are_complete():
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert '60000' in script
     assert 'aria-busy' in script
-    assert '/api/entry/start' not in script
-    assert '/api/entry/status' not in script
-    assert 'href="/discord/"' in candidature_html
-    assert 'data-entry-confirm' in candidature_html
+    assert '/api/entry/start' in script
+    assert '/api/entry/status' in script
+    assert '/api/entry/repair' in script
+    assert 'href="/discord/"' not in candidature_html
+    assert "abrindo-discord.html" in script
+    assert "endpoint unavailable" not in script
+    assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
+    assert 'data-entry-confirm' not in candidature_html
     assert 'Progresso restaurado neste navegador' not in script
     assert 'Revisão salva neste navegador' not in script
     assert 'Candidatura salva neste navegador' not in script
     assert 'button.disabled = stageNumber > currentStage' in script
     assert '--container-background' in stylesheet
     assert '.application-card' in stylesheet and '.login-card' in stylesheet
+    assert 'body[data-page="candidatura"] .flow-header { display: none; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
 

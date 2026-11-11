@@ -1,9 +1,9 @@
 """Serve the public Peace site locally with its Netlify-compatible routes.
 
 This development server is intentionally localhost-only. It serves the static
-site, redirects public entry aliases, and proxies only the read-only status
-endpoint to the configured ACLClouds origin. It must not be used as a public
-edge or as an authenticated API gateway.
+site, redirects public entry aliases, and proxies only the bounded public
+Peace API routes to the configured ACLClouds origin. It must not be used as a
+public edge or as an authenticated API gateway.
 """
 
 from __future__ import annotations
@@ -17,7 +17,13 @@ from urllib.request import Request, urlopen
 
 
 SITE_DIRECTORY = Path(__file__).resolve().parents[1] / "bot" / "site"
-ACL_STATUS_URL = "http://141.11.237.97:25072/api/status"
+ACL_ORIGIN = "http://141.11.237.97:25072"
+ACL_API_ROUTES = {
+    "/api/status",
+    "/api/entry/start",
+    "/api/entry/status",
+    "/api/entry/repair",
+}
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
 
 
@@ -48,8 +54,8 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             self._redirect(route + "/", 301)
             return
 
-        if route == "/api/status":
-            self._proxy_status()
+        if route in ACL_API_ROUTES:
+            self._proxy_api("GET")
             return
 
         if route == "/_redirects":
@@ -59,24 +65,41 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
-        if self.path.split("?", 1)[0] != "/api/status":
+        if self.path.split("?", 1)[0] not in ACL_API_ROUTES:
             self.send_error(404)
             return
 
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Accept")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Accept, Content-Type")
         self.end_headers()
+
+    def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+        route = self.path.split("?", 1)[0]
+        if route not in {"/api/entry/start", "/api/entry/status", "/api/entry/repair"}:
+            self.send_error(404)
+            return
+        self._proxy_api("POST")
 
     def _redirect(self, location: str, status: int) -> None:
         self.send_response(status)
         self.send_header("Location", location)
         self.end_headers()
 
-    def _proxy_status(self) -> None:
+    def _proxy_api(self, method: str) -> None:
+        route = self.path.split("?", 1)[0]
+        target = ACL_ORIGIN + self.path
+        body = None
+        headers = {"Accept": "application/json", "User-Agent": "PeaceSiteLocal/1.0"}
+        if method == "POST":
+            length = int(self.headers.get("Content-Length", "0") or 0)
+            body = self.rfile.read(length)
+            headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
         request = Request(
-            ACL_STATUS_URL,
-            headers={"Accept": "application/json", "User-Agent": "PeaceSiteLocal/1.0"},
+            target,
+            data=body,
+            headers=headers,
+            method=method,
         )
 
         try:
@@ -94,6 +117,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                     "status": "unavailable",
                     "source": "aclclouds",
                     "message": "ACLClouds não respondeu ao proxy local.",
+                    "route": route,
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
@@ -118,7 +142,7 @@ def main() -> None:
     args = parse_args()
     server = ThreadingHTTPServer((args.host, args.port), PeaceSiteHandler)
     print(f"Peace site: http://{args.host}:{args.port}/")
-    print(f"ACL status proxy: {ACL_STATUS_URL}")
+    print(f"ACL API proxy: {ACL_ORIGIN}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
