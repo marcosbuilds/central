@@ -124,7 +124,6 @@ def test_public_site_files_are_complete():
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
         assert (site_root / route / "index.html").is_file()
     assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
-    assert "/api/entry/start" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/request" in (site_root / "script.js").read_text(encoding="utf-8")
     assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
     script = (site_root / "script.js").read_text(encoding="utf-8")
@@ -145,7 +144,7 @@ def test_public_site_files_are_complete():
     login_html = (site_root / "acessar" / "index.html").read_text(encoding="utf-8")
     assert "Começar minha entrada" in entry_html
     assert "peace-icon" in entry_html
-    assert "Conectar Discord" in candidature_html
+    assert "Entrar no Discord" in candidature_html
     assert "discord-icon" in candidature_html
     assert 'class="login-layout login-layout--focused"' in login_html
     assert "flow-boundary" not in login_html
@@ -161,6 +160,16 @@ def test_public_site_files_are_complete():
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert '60000' in script
     assert 'aria-busy' in script
+    assert '/api/entry/start' not in script
+    assert '/api/entry/status' not in script
+    assert 'href="/discord/"' in candidature_html
+    assert 'data-entry-confirm' in candidature_html
+    assert 'Progresso restaurado neste navegador' not in script
+    assert 'Revisão salva neste navegador' not in script
+    assert 'Candidatura salva neste navegador' not in script
+    assert 'button.disabled = stageNumber > currentStage' in script
+    assert '--container-background' in stylesheet
+    assert '.application-card' in stylesheet and '.login-card' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
 

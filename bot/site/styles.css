@@ -15,6 +15,11 @@
   --success: #7bc9a6;
   --warning: #dfbe7d;
   --danger: #d9858e;
+  --container-background: rgba(14, 20, 25, 0.66);
+  --container-border: rgba(185, 202, 211, 0.18);
+  --container-radius: 1.25rem;
+  --container-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1.5rem 3.5rem rgba(0, 0, 0, 0.14);
+  --container-blur: blur(20px) saturate(115%);
   --content: 78rem;
   --sidebar: 15.5rem;
   --header-height: 5.25rem;
@@ -655,9 +660,11 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .flow-progress-step:hover, .flow-progress-step:focus-visible, .flow-progress-step.is-current { color: var(--text); }
 .flow-progress-step.is-current { border-top-color: var(--accent); }
 .flow-progress-step.is-preview > span, .flow-progress-step.is-preview strong { color: var(--accent); }
+.flow-progress-step:disabled { cursor: not-allowed; opacity: 0.42; }
+.flow-progress-step:disabled:hover { color: var(--quiet); }
 .application-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; max-width: 64rem; }
-.application-card { min-width: 0; padding: clamp(1.25rem, 4vw, 2.4rem); border: 1px solid var(--border); background: var(--surface); }
-.login-card { min-width: 0; padding: clamp(1.35rem, 4vw, 2.5rem); border: 1px solid rgba(185, 202, 211, 0.18); border-radius: 1.35rem; background: rgba(12, 16, 20, 0.54); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1.5rem 3.5rem rgba(0, 0, 0, 0.14); backdrop-filter: blur(20px) saturate(115%); }
+.application-card { min-width: 0; padding: clamp(1.25rem, 4vw, 2.4rem); }
+.login-card { min-width: 0; padding: clamp(1.35rem, 4vw, 2.5rem); }
 .integration-banner { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: start; padding: 0.95rem 1rem; border-left: 2px solid var(--warning); background: rgba(223, 190, 125, 0.08); }
 .integration-banner[hidden] { display: none; }
 .integration-banner strong { color: var(--text); font-size: 0.8rem; }
@@ -746,16 +753,15 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .auth-note p { margin: 0; color: var(--quiet); font-size: 0.69rem; line-height: 1.6; }
 .login-switch { margin: 1.25rem 0 0; color: var(--quiet); font-size: 0.72rem; line-height: 1.5; text-align: center; }
 .login-switch a { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 0.16em; }
-.local-save-status { margin: 0.85rem 0 0; color: var(--quiet); font-size: 0.68rem; line-height: 1.5; }
 .flow-footer--minimal { display: flex; justify-content: flex-end; }
 .public-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.9fr); align-items: end; gap: clamp(3rem, 8vw, 8rem); }
 .public-hero .eyebrow { margin-bottom: 1rem; }
-.public-hero-mark { align-self: stretch; display: flex; flex-direction: column; justify-content: end; min-height: 13rem; padding: 1.3rem; border: 1px solid var(--border); background: var(--surface); }
+.public-hero-mark { align-self: stretch; display: flex; flex-direction: column; justify-content: end; min-height: 13rem; padding: 1.3rem; }
 .public-hero-mark .flow-symbol { margin: 0 0 auto; }
 .public-hero-mark .flow-symbol--peace { width: 3rem; height: 3rem; object-fit: contain; filter: grayscale(1) brightness(1.3); }
 .public-hero-mark strong { margin-top: 1.5rem; color: var(--text); font-size: 0.9rem; }
 .public-hero-mark p { max-width: 20rem; margin: 0.45rem 0 1.2rem; color: var(--muted); font-size: 0.77rem; line-height: 1.65; }
-.notice-board, .partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid var(--border); background: var(--surface); }
+.notice-board, .partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); }
 .notice-board-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 1.35rem; border-bottom: 1px solid var(--border); }
 .notice-board-heading .eyebrow { margin-bottom: 0.65rem; }
 .notice-board-heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3.8rem); letter-spacing: -0.07em; line-height: 0.95; }
@@ -791,6 +797,30 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .public-contact { display: flex; align-items: center; justify-content: space-between; gap: 2rem; margin-top: clamp(4rem, 8vw, 7rem); padding: 1.4rem 0; border-top: 1px solid var(--border); }
 .public-contact .eyebrow { margin-bottom: 0.6rem; }
 .public-contact h2 { margin-bottom: 0; }
+
+/* One calm surface language for every primary container. */
+.intro-visual,
+.flow-visual,
+.application-card,
+.login-card,
+.public-hero-mark,
+.notice-board,
+.partner-board {
+  border: 1px solid var(--container-border);
+  border-radius: var(--container-radius);
+  background: var(--container-background);
+  box-shadow: var(--container-shadow);
+  backdrop-filter: var(--container-blur);
+}
+
+.intro-visual-mark,
+.flow-visual-mark,
+.stage-icon,
+.partner-empty-mark {
+  border-color: var(--container-border);
+  border-radius: calc(var(--container-radius) - 0.45rem);
+  background: rgba(16, 26, 34, 0.72);
+}
 
 @media (max-width: 840px) {
   .flow-header { grid-template-columns: auto 1fr auto; gap: 0.8rem; padding-inline: 1.1rem; }

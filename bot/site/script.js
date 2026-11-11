@@ -211,7 +211,6 @@
 
     var stageButtons = Array.prototype.slice.call(document.querySelectorAll("[data-stage-preview]"));
     var stages = Array.prototype.slice.call(document.querySelectorAll("[data-entry-stage]"));
-    var saveStatus = document.querySelector("[data-candidature-save-status]");
     var wizard = document.querySelector("[data-wizard]");
     var wizardPanels = wizard ? Array.prototype.slice.call(wizard.querySelectorAll("[data-wizard-panel]")) : [];
     var wizardNext = wizard && wizard.querySelector("[data-wizard-next]");
@@ -223,12 +222,6 @@
     var currentStage = 1;
     var wizardStep = 1;
     var restoring = true;
-
-    function setSaveStatus(message) {
-      if (!saveStatus) return;
-      saveStatus.textContent = message;
-      saveStatus.hidden = !message;
-    }
 
     function readDraft() {
       try {
@@ -245,7 +238,7 @@
       return wizard && wizard.querySelector('[name="' + name + '"]');
     }
 
-    function saveDraft(message) {
+    function saveDraft() {
       if (!wizard) return;
       var draft = {
         version: 2,
@@ -266,9 +259,8 @@
 
       try {
         window.localStorage.setItem(storageKey, JSON.stringify(draft));
-        setSaveStatus(message || "Progresso salvo neste navegador.");
       } catch (error) {
-        setSaveStatus("");
+        // Local storage is optional; the form remains usable without it.
       }
     }
 
@@ -280,9 +272,12 @@
         item.classList.toggle("is-active", active);
       });
       stageButtons.forEach(function (button) {
-        var active = Number(button.dataset.stagePreview) === currentStage;
+        var stageNumber = Number(button.dataset.stagePreview);
+        var active = stageNumber === currentStage;
         button.classList.toggle("is-current", active);
         button.classList.toggle("is-preview", Boolean(isPreview && active && currentStage > 1));
+        button.disabled = stageNumber > currentStage;
+        button.setAttribute("aria-disabled", String(stageNumber > currentStage));
         if (active) button.setAttribute("aria-current", "step");
         else button.removeAttribute("aria-current");
       });
@@ -290,25 +285,39 @@
     }
 
     stageButtons.forEach(function (button) {
-      button.addEventListener("click", function () { setStage(Number(button.dataset.stagePreview), true); });
+      button.addEventListener("click", function () {
+        if (button.disabled) return;
+        setStage(Number(button.dataset.stagePreview), true);
+      });
     });
 
-    var connectButton = document.querySelector("[data-entry-connect]");
+    function checkPeaceStatus() {
+      return attemptEndpoint("/api/status", { headers: { Accept: "application/json" } }, 60000)
+        .then(function (response) { return response.json(); })
+        .then(function (payload) {
+          if (!payload || payload.status !== "ok" || !payload.discord || payload.discord.connected !== true) {
+            throw new Error("Peace Tools ainda não está pronto");
+          }
+          return payload;
+        });
+    }
+
+    var connectButton = document.querySelector("[data-entry-confirm]");
     var connectResult = document.querySelector("[data-entry-result]");
     if (connectButton) {
       connectButton.addEventListener("click", function () {
         if (connectResult) connectResult.textContent = "";
-        setButtonBusy(connectButton, true, "Conectando…");
-        attemptEndpoint("/api/entry/start", { method: "POST", headers: { Accept: "application/json" } }, 60000).then(function () {
+        setButtonBusy(connectButton, true, "Verificando…");
+        checkPeaceStatus().then(function () {
           setButtonBusy(connectButton, false);
-          setButtonLabel(connectButton, "Discord conectado");
+          setButtonLabel(connectButton, "Discord verificado");
           setStage(2, false);
         }).catch(function () {
           setButtonBusy(connectButton, false);
           setButtonLabel(connectButton, "Tentar novamente");
-          if (connectResult) connectResult.textContent = "Não foi possível conectar agora. Tente novamente.";
+          if (connectResult) connectResult.textContent = "Ainda não foi possível confirmar. Tente novamente.";
           window.setTimeout(function () {
-            if (!connectButton.disabled) setButtonLabel(connectButton, "Conectar Discord");
+            if (!connectButton.disabled) setButtonLabel(connectButton, "Já entrei — verificar");
           }, 3500);
         });
       });
@@ -320,19 +329,17 @@
       refreshButton.addEventListener("click", function () {
         if (refreshResult) refreshResult.textContent = "";
         setButtonBusy(refreshButton, true, "Atualizando…");
-        attemptEndpoint("/api/entry/status", null, 60000).then(function () {
+        checkPeaceStatus().then(function () {
           setButtonBusy(refreshButton, false);
-          setButtonLabel(refreshButton, "Atualizado");
-          if (refreshResult) refreshResult.textContent = "Status atualizado.";
-          window.setTimeout(function () {
-            if (!refreshButton.disabled) setButtonLabel(refreshButton, "Atualizar status");
-          }, 2500);
+          setButtonLabel(refreshButton, "Conexão verificada");
+          if (refreshResult) refreshResult.textContent = "Tudo certo. Continue com a entrevista.";
+          setStage(3, false);
         }).catch(function () {
           setButtonBusy(refreshButton, false);
           setButtonLabel(refreshButton, "Tentar novamente");
-          if (refreshResult) refreshResult.textContent = "Não foi possível atualizar agora. Tente novamente.";
+          if (refreshResult) refreshResult.textContent = "Ainda não foi possível confirmar. Tente novamente.";
           window.setTimeout(function () {
-            if (!refreshButton.disabled) setButtonLabel(refreshButton, "Atualizar status");
+            if (!refreshButton.disabled) setButtonLabel(refreshButton, "Verificar e continuar");
           }, 3500);
         });
       });
@@ -418,8 +425,9 @@
         missingTerm.focus();
         return;
       }
-      saveDraft("Revisão salva neste navegador.");
-      if (result) result.textContent = "Candidatura salva neste navegador. Você pode voltar e continuar a qualquer momento.";
+      saveDraft();
+      if (result) result.textContent = "Candidatura pronta para revisão.";
+      setStage(4, false);
     });
 
     window.addEventListener("pagehide", function () { saveDraft(); });
@@ -441,9 +449,6 @@
     updateWizard(draft && draft.wizardStep ? draft.wizardStep : 1, false);
     setStage(draft && draft.stage ? draft.stage : 1, false);
     restoring = false;
-    if (draft) {
-      setSaveStatus(currentStage === 4 || (currentStage === 3 && wizardStep === 4) ? "Revisão restaurada neste navegador." : "Progresso restaurado neste navegador.");
-    }
   }
 
   function initLogin() {

@@ -7,9 +7,9 @@
     <meta name="description" content="Fluxo de candidatura para fazer parte da Peace.">
     <title>Candidatura — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-8">
+  <link rel="stylesheet" href="/styles.css?v=20261111-10">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-9"></script>
+  <script defer src="/script.js?v=20261111-10"></script>
   </head>
   <body data-page="candidatura">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -34,21 +34,22 @@
           <button class="flow-progress-step" type="button" data-stage-preview="3"><span>03</span><strong>Entrevista</strong></button>
           <button class="flow-progress-step" type="button" data-stage-preview="4"><span>04</span><strong>Revisão</strong></button>
         </nav>
-        <p class="local-save-status" data-candidature-save-status role="status" aria-live="polite" hidden></p>
-
         <div class="application-layout">
           <section class="application-card" aria-labelledby="application-stage-title">
             <section class="application-stage is-active" data-entry-stage="1" aria-labelledby="application-stage-title">
               <p class="eyebrow">Etapa 01 / Conectar</p>
               <h2 id="application-stage-title">Conecte seu Discord.</h2>
               <div class="stage-actions">
-                <button class="button button--light button--large" type="button" data-entry-connect>
+                <a class="button button--light button--large" href="/discord/">
                   <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
-                  <span data-button-label>Conectar Discord</span>
-                  <span class="button-spinner" aria-hidden="true"></span>
+                  <span>Entrar no Discord</span>
                   <span class="button-icon" aria-hidden="true">↗</span>
+                </a>
+                <button class="button button--outline button--large" type="button" data-entry-confirm>
+                  <span data-button-label>Já entrei — verificar</span>
+                  <span class="button-spinner" aria-hidden="true"></span>
+                  <span class="button-icon" aria-hidden="true">→</span>
                 </button>
-                <a class="text-link" href="/discord/"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Abrir convite geral <span aria-hidden="true">↗</span></a>
               </div>
               <p class="stage-note" data-entry-result role="status" aria-live="polite"></p>
             </section>
@@ -56,9 +57,9 @@
             <section class="application-stage" data-entry-stage="2" aria-labelledby="verification-stage-title" hidden>
               <div class="stage-icon"><img src="/assets/shield-check.svg" alt="" width="24" height="24"></div>
               <p class="eyebrow">Etapa 02 / Verificar</p>
-              <h2 id="verification-stage-title">Confirme sua presença.</h2>
-              <div class="verification-state"><span class="status-mark" aria-hidden="true"></span><div><strong>Aguardando Discord</strong></div></div>
-              <button class="button button--outline" type="button" data-entry-refresh><span data-button-label>Atualizar status</span><span class="button-spinner" aria-hidden="true"></span></button>
+              <h2 id="verification-stage-title">Confira a conexão.</h2>
+              <div class="verification-state"><span class="status-mark" aria-hidden="true"></span><div><strong>Pronto para verificar</strong><small>Confirme que o Peace Tools está online para continuar.</small></div></div>
+              <button class="button button--outline" type="button" data-entry-refresh><span data-button-label>Verificar e continuar</span><span class="button-spinner" aria-hidden="true"></span></button>
               <p class="stage-note" data-entry-refresh-result role="status" aria-live="polite"></p>
             </section>
 

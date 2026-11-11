@@ -12,11 +12,14 @@ time and does not expose member data or operational logs. Avisos and parceiros
 are separate public interfaces rather than sections embedded in the home.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
-UI. They model the documented Discord OAuth, verification, short interview and
-staff review states without pretending that those future APIs exist. `/acessar/` is
-the member login UI for Peace ID plus a six-digit DM code; it also remains
-honest when the code endpoints are unavailable. No static page creates a
-session, invitation, application, approval, or member record.
+UI. The first candidature action opens the public Discord invite; the explicit
+confirmation then checks the read-only `/api/status` contract before revealing
+the next stage. The interface does not claim to prove a member's identity or
+create an OAuth session because that remote exchange remains a separate,
+unimplemented contract. `/acessar/` is the member login UI for Peace ID plus a
+six-digit DM code; it also remains honest when the code endpoints are
+unavailable. No static page creates a session, invitation, application,
+approval, or member record.
 
 The `/area/` route is the member-area UI shell. Without a future authenticated
 session it shows an access gate. The query strings `?preview=member` and
@@ -159,12 +162,13 @@ static site.
 The entry surfaces keep one next action in view. `/acessar/` contains only the
 Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
 the three public destinations visible, and `/candidatura/` reveals one stage at
-a time. The Peace ID accepts only 1–19 digits and remains in the field after a
+a time. Future stage buttons are disabled until the previous action advances
+the flow. The Peace ID accepts only 1–19 digits and remains in the field after a
 failed or timed-out request. Remote actions use a 60-second timeout, expose a
 button loading state with `aria-busy`, and return to a retryable state without
 showing internal routes or technical integration logs. The required terms
-remain on the final review step, while the draft is persisted on input, step
-changes, and page hide.
+remain on the final review step, while the draft is persisted silently on input,
+step changes, and page hide.
 
 ## Verification
 
