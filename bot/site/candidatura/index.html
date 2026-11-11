@@ -47,7 +47,7 @@
             <section class="application-stage is-active" data-entry-stage="1" aria-labelledby="application-stage-title">
               <p class="eyebrow">Etapa 01 / Conectar</p>
               <h2 id="application-stage-title">Conecte seu Discord.</h2>
-              <p class="stage-lede">Vamos gerar um convite individual para você entrar na Peace. O link funciona uma vez e expira em 30 minutos.</p>
+              <p class="stage-lede">Vamos gerar um convite individual para você entrar na Peace. O bot confirma sua entrada automaticamente; o link funciona uma vez e expira em 30 minutos.</p>
               <div class="stage-actions">
                 <button class="button button--light button--large" type="button" data-entry-connect>
                   <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
@@ -73,7 +73,7 @@
                 </form>
               </section>
               <ul class="connection-guide" aria-label="Como a conexão funciona">
-                <li><img src="/assets/discord.svg" alt="" aria-hidden="true" width="22" height="17"><div><strong>Convite exclusivo</strong><small>Um link único, de um uso, válido por 30 minutos. Se você recarregar, o mesmo link continua aqui enquanto estiver válido.</small></div></li>
+                <li><img src="/assets/discord.svg" alt="" aria-hidden="true" width="22" height="17"><div><strong>Convite exclusivo</strong><small>Um link individual, de uso efetivo único, válido por 30 minutos. Se você recarregar, o mesmo link continua aqui enquanto estiver válido.</small></div></li>
                 <li><img src="/assets/shield-check.svg" alt="" aria-hidden="true" width="22" height="22"><div><strong>Acesso limitado à Peace</strong><small>Não pedimos senha, token ou acesso a outras comunidades. O convite serve apenas para entrar no servidor Peace.</small></div></li>
                 <li><img src="/assets/id-card.svg" alt="" aria-hidden="true" width="22" height="22"><div><strong>Acompanhamento automático</strong><small>Quando o bot identificar sua entrada, esta tela avança para as instruções de verificação humana.</small></div></li>
               </ul>
@@ -83,7 +83,7 @@
                   <div>
                     <p class="eyebrow">Convite gerado</p>
                     <h3 id="entry-invite-title">Abra o Discord por aqui.</h3>
-                    <p>Entre na Peace pelo convite individual. Depois, volte para esta guia para acompanhar a confirmação.</p>
+                    <p>Entre na Peace pelo convite individual. Esta guia fica aguardando a confirmação real do Discord.</p>
                   </div>
                 </div>
                 <div class="entry-invite-actions">
@@ -92,7 +92,11 @@
                     <span>Abrir no Discord</span>
                     <span class="button-icon" aria-hidden="true">↗</span>
                   </a>
-                  <a class="entry-invite-url" data-entry-invite-link target="_blank" rel="noopener noreferrer"></a>
+                  <span class="entry-invite-url" data-entry-invite-link aria-label="Código do convite"></span>
+                </div>
+                <div class="verification-state entry-invite-waiting" data-entry-invite-waiting data-state="pending" hidden>
+                  <span class="status-mark" aria-hidden="true"></span>
+                  <div><strong data-entry-invite-status-title>Aguardando o Discord</strong><small data-entry-invite-status-message>Assim que você aceitar o convite, o bot identifica sua entrada nesta tela.</small></div>
                 </div>
               </section>
               <p class="stage-note" data-entry-result role="status" aria-live="polite"></p>
@@ -107,7 +111,7 @@
               <div class="verification-state" data-entry-verification-state data-state="pending"><span class="status-mark" aria-hidden="true"></span><div><strong data-entry-status-title>Aguardando sua entrada</strong><small data-entry-status-message>Assim que o bot identificar o convite, mostramos o próximo passo aqui.</small></div></div>
               <ol class="verification-steps" aria-label="Passo a passo da verificação">
                 <li><span>01</span><div><strong>Abra o Discord</strong><small>Use a nova guia aberta pelo botão de conexão.</small></div></li>
-                <li><span>02</span><div><strong>Entre na Peace pelo convite</strong><small>O link é individual e pode ser usado apenas uma vez.</small></div></li>
+                <li><span>02</span><div><strong>Entre na Peace pelo convite</strong><small>O link é individual e só pode confirmar uma entrada.</small></div></li>
                 <li><span>03</span><div><strong>Abra <code>#verify</code></strong><small>Clique em <strong>Iniciar verificação</strong> e responda ao CAPTCHA humano mostrado pelo bot.</small></div></li>
                 <li><span>04</span><div><strong>Volte para esta guia</strong><small>O avanço acontece automaticamente quando o cargo de verificação for confirmado.</small></div></li>
               </ol>

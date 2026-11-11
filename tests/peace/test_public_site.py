@@ -179,7 +179,7 @@ def test_public_api_does_not_expose_central_bridge_routes(tmp_path):
     assert status == 404
 
 
-def test_public_entry_invite_is_single_use_and_reused_until_expiry(tmp_path):
+def test_public_entry_invite_is_effectively_single_use_and_reused_until_expiry(tmp_path):
     bot = make_bot(tmp_path)
     channel = SimpleNamespace(name="verify")
     channel.create_invite = AsyncMock(
@@ -215,7 +215,7 @@ def test_public_entry_invite_is_single_use_and_reused_until_expiry(tmp_path):
     assert second["invite_url"] == first["invite_url"]
     channel.create_invite.assert_awaited_once_with(
         max_age=1800,
-        max_uses=1,
+        max_uses=2,
         unique=True,
         reason="Convite único do fluxo público de entrada Peace",
     )
@@ -227,9 +227,13 @@ def test_public_entry_binds_join_from_the_verification_channel_invite_list(tmp_p
     not_verified = SimpleNamespace(id=300, name="Not Verified")
     channel = SimpleNamespace(name="verify")
     channel.create_invite = AsyncMock()
-    channel.invites = AsyncMock(
-        return_value=[SimpleNamespace(code="entry-code", url="https://discord.gg/entry-code", uses=1)]
+    invite = SimpleNamespace(
+        code="entry-code",
+        url="https://discord.gg/entry-code",
+        uses=1,
+        delete=AsyncMock(),
     )
+    channel.invites = AsyncMock(return_value=[invite])
     guild = SimpleNamespace(
         text_channels=[channel],
         roles=[not_verified],
@@ -261,6 +265,41 @@ def test_public_entry_binds_join_from_the_verification_channel_invite_list(tmp_p
     assert session.discord_username == member.display_name
     assert session.status == "verification_pending"
     channel.invites.assert_awaited_once_with()
+    invite.delete.assert_awaited_once_with(reason="Convite individual do fluxo público de entrada já utilizado")
+
+
+def test_public_entry_reports_an_invite_that_disappeared(tmp_path):
+    from bot.main import EntryInviteSession
+
+    channel = SimpleNamespace(name="verify", create_invite=AsyncMock(), invites=AsyncMock(return_value=[]))
+    guild = SimpleNamespace(
+        text_channels=[channel],
+        roles=[],
+        get_channel=lambda channel_id: channel if channel_id == 500 else None,
+        get_role=lambda role_id: None,
+        get_member=lambda member_id: None,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = guild
+    token = "C" * 43
+    bot.entry_sessions[token] = EntryInviteSession(
+        session_token=token,
+        invite_code="entry-code",
+        invite_url="https://discord.gg/entry-code",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        created_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/status",
+        method="POST",
+        payload={"session_token": token},
+    )
+
+    assert status == 200
+    assert payload["status"] == "invite_unavailable"
+    assert payload["invite_url"] == ""
 
 
 def test_public_member_auth_sends_and_consumes_one_dm_code(tmp_path):
@@ -444,10 +483,12 @@ def test_public_site_files_are_complete():
     assert (member_root / "index.html").is_file()
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
         assert (site_root / route / "index.html").is_file()
-    assert "/api/status" in (site_root / "script.js").read_text(encoding="utf-8")
+    assert "/api/status" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/request" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/verify" not in (site_root / "script.js").read_text(encoding="utf-8")
-    assert "data-service-status" in (site_root / "index.html").read_text(encoding="utf-8")
+    homepage = (site_root / "index.html").read_text(encoding="utf-8")
+    assert "data-service-status" not in homepage
+    assert "Peace Tools conectado" not in homepage
     script = (site_root / "script.js").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
@@ -503,6 +544,13 @@ def test_public_site_files_are_complete():
     assert '/api/entry/repair' in script
     assert '/api/entry/identify' in script
     assert 'data-entry-invite-panel' in candidature_html
+    assert 'data-entry-invite-open' in candidature_html
+    assert candidature_html.count('data-entry-invite-open') == 1
+    assert '<span class="entry-invite-url" data-entry-invite-link' in candidature_html
+    assert 'data-entry-invite-link target="_blank"' not in candidature_html
+    assert 'data-entry-invite-waiting' in candidature_html
+    assert 'invite_unavailable' in script
+    assert 'recoverEntrySession' in script
     assert 'data-entry-existing' in candidature_html
     assert 'Já sou membro' in login_html or 'Já sou membro' in entry_html
     assert 'href="/discord/"' not in candidature_html

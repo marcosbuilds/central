@@ -52,6 +52,7 @@ PUBLIC_API_ORIGINS = frozenset(
     }
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
+ENTRY_INVITE_MAX_USES = 2
 ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 TICKET_IDS = {
     "peace_support_poke_ticket",
@@ -460,11 +461,13 @@ class EntryInviteSession:
     invite_code: str
     invite_url: str
     expires_at: datetime
+    created_at: datetime | None = None
     initial_uses: int = 0
     discord_user_id: int | None = None
     discord_username: str = ""
     status: str = "waiting_invite"
     last_repair_at: float = 0.0
+    last_invite_check_at: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -2284,6 +2287,7 @@ class PeaceBot(commands.Bot):
         self.developer_drafts: dict[int, DeveloperDraft] = {}
         self.verification_challenges: dict[int, tuple[str, float]] = {}
         self.entry_sessions: dict[str, EntryInviteSession] = {}
+        self.entry_invite_lock = asyncio.Lock()
         self.guild: discord.Guild | None = None
         self.panels_synced = False
         self.iris = Iris(settings.iris_url, settings.iris_model) if settings.iris_enabled else None
@@ -2419,6 +2423,37 @@ class PeaceBot(commands.Bot):
         parsed = urlsplit(str(getattr(invite, "url", "") or ""))
         return parsed.path.strip("/").split("/")[-1]
 
+    async def entry_invite_list(self, guild: discord.Guild) -> tuple[list[object], bool]:
+        """Read invites from the narrowest available Discord endpoint.
+
+        The boolean records whether at least one endpoint was inspected. An
+        empty list can mean that the individual invite is no longer available;
+        a false value means the bot could not inspect invites at all.
+        """
+        verification_channel = self.entry_verification_channel(guild)
+        invite_sources = [verification_channel, guild]
+        for source in invite_sources:
+            list_invites = getattr(source, "invites", None)
+            if not callable(list_invites):
+                continue
+            try:
+                invites = await list_invites()
+            except (discord.Forbidden, discord.HTTPException, AttributeError):
+                continue
+            return list(invites or ()), True
+        return [], False
+
+    async def entry_invite_for_code(
+        self,
+        guild: discord.Guild,
+        invite_code: str,
+    ) -> tuple[object | None, bool]:
+        invites, inspected = await self.entry_invite_list(guild)
+        for invite in invites:
+            if self.entry_invite_code(invite) == invite_code:
+                return invite, inspected
+        return None, inspected
+
     def entry_member(self, session: EntryInviteSession) -> discord.Member | None:
         if session.discord_user_id is None:
             return None
@@ -2434,6 +2469,18 @@ class PeaceBot(commands.Bot):
             return
         member = self.entry_member(session)
         if member is None:
+            if session.status == "waiting_invite":
+                now = time.monotonic()
+                created_at = session.created_at
+                if created_at is not None and (datetime.now(timezone.utc) - created_at).total_seconds() < 5:
+                    return
+                if now - session.last_invite_check_at >= 5:
+                    session.last_invite_check_at = now
+                    guild = self.entry_guild()
+                    if guild is not None:
+                        invite, inspected = await self.entry_invite_for_code(guild, session.invite_code)
+                        if inspected and invite is None:
+                            session.status = "invite_unavailable"
             return
 
         session.discord_username = str(
@@ -2463,49 +2510,51 @@ class PeaceBot(commands.Bot):
 
     async def bind_entry_invite(self, member: discord.Member) -> None:
         """Bind a one-use invite to the member that joined through it."""
-        self.prune_entry_sessions()
-        sessions = [
-            session
-            for session in self.entry_sessions.values()
-            if session.discord_user_id is None and session.status == "waiting_invite"
-        ]
-        if not sessions:
-            return
+        async with self.entry_invite_lock:
+            self.prune_entry_sessions()
+            sessions = [
+                session
+                for session in self.entry_sessions.values()
+                if session.discord_user_id is None and session.status == "waiting_invite"
+            ]
+            if not sessions:
+                return
 
-        # The invite is created in #verify. Reading the guild-wide list requires
-        # Manage Server, while reading the channel list requires Manage Channel.
-        # Prefer the narrower channel endpoint so a bot that can operate the
-        # verification channel does not silently lose the join association.
-        verification_channel = self.entry_verification_channel(member.guild)
-        invite_sources = [verification_channel, member.guild]
-        invites = None
-        for source in invite_sources:
-            list_invites = getattr(source, "invites", None)
-            if not callable(list_invites):
-                continue
-            try:
-                invites = await list_invites()
-                break
-            except (discord.Forbidden, discord.HTTPException, AttributeError):
-                continue
-        if invites is None:
-            log.info("Não consegui consultar os convites do canal de verificação para acompanhar a entrada pública")
-            return
-        by_code = {self.entry_invite_code(invite): invite for invite in invites}
-        for session in sessions:
-            invite = by_code.get(session.invite_code)
-            if invite is None:
-                continue
-            try:
-                uses = int(getattr(invite, "uses", 0) or 0)
-            except (TypeError, ValueError):
-                uses = 0
-            if uses <= session.initial_uses:
-                continue
-            session.discord_user_id = member.id
-            session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
-            session.status = "verification_pending"
-            await self.refresh_entry_session(session)
+            # A max_uses=1 invite can disappear as soon as Discord consumes it.
+            # The public flow creates max_uses=2 and deletes the invite after the
+            # first observed use, preserving effective one-use behavior while
+            # keeping the usage counter observable during on_member_join.
+            for attempt in range(3):
+                invites, inspected = await self.entry_invite_list(member.guild)
+                if not inspected:
+                    log.info("Não consegui consultar os convites do canal de verificação para acompanhar a entrada pública")
+                    return
+                by_code = {self.entry_invite_code(invite): invite for invite in invites}
+                for session in sessions:
+                    invite = by_code.get(session.invite_code)
+                    if invite is None:
+                        continue
+                    try:
+                        raw_uses = getattr(invite, "uses", None)
+                        uses = int(raw_uses) if raw_uses is not None else None
+                    except (TypeError, ValueError):
+                        uses = None
+                    if uses is None or uses <= session.initial_uses:
+                        continue
+                    session.discord_user_id = member.id
+                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.status = "verification_pending"
+                    await self.refresh_entry_session(session)
+                    delete_invite = getattr(invite, "delete", None)
+                    if callable(delete_invite):
+                        try:
+                            await delete_invite(reason="Convite individual do fluxo público de entrada já utilizado")
+                        except (discord.Forbidden, discord.HTTPException, AttributeError):
+                            log.warning("Não consegui remover o convite individual após associar a entrada pública")
+                    log.info("Entrada pública associada pelo convite individual")
+                    return
+                if attempt < 2:
+                    await asyncio.sleep(1)
 
     async def entry_session_payload(self, session: EntryInviteSession) -> dict[str, object]:
         await self.refresh_entry_session(session)
@@ -2527,7 +2576,7 @@ class PeaceBot(commands.Bot):
         has_not_verified = bool(member is not None and not_verified is not None and not_verified in member.roles)
         return {
             "session_token": session.session_token,
-            "invite_url": session.invite_url,
+            "invite_url": session.invite_url if session.status not in {"invite_unavailable", "expired"} else "",
             "expires_at": session.expires_at.isoformat(),
             "expires_in": max(0, int((session.expires_at - datetime.now(timezone.utc)).total_seconds())),
             "status": session.status,
@@ -2573,7 +2622,7 @@ class PeaceBot(commands.Bot):
         try:
             invite = await channel.create_invite(
                 max_age=ENTRY_INVITE_MAX_AGE_SECONDS,
-                max_uses=1,
+                max_uses=ENTRY_INVITE_MAX_USES,
                 unique=True,
                 reason="Convite único do fluxo público de entrada Peace",
             )
@@ -2590,11 +2639,13 @@ class PeaceBot(commands.Bot):
         except (TypeError, ValueError):
             initial_uses = 0
         token = secrets.token_urlsafe(32)
+        created_at = datetime.now(timezone.utc)
         session = EntryInviteSession(
             session_token=token,
             invite_code=invite_code,
             invite_url=invite_url,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=ENTRY_INVITE_MAX_AGE_SECONDS),
+            created_at=created_at,
             initial_uses=initial_uses,
         )
         self.entry_sessions[token] = session

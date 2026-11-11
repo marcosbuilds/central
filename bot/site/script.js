@@ -84,36 +84,6 @@
     revealItems.forEach(function (element) { observer.observe(element); });
   }
 
-  function setServiceStatus(state, label) {
-    var status = document.querySelector("[data-service-status]");
-    var statusLabel = status && status.querySelector("[data-service-status-label]");
-    if (!status || !statusLabel) return;
-    status.dataset.state = state;
-    statusLabel.textContent = label;
-    status.hidden = state !== "online";
-  }
-
-  function refreshServiceStatus() {
-    if (body.dataset.page !== "home" || !window.fetch) return;
-
-    var localPreview = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-
-    window.fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" })
-      .then(function (response) {
-        if (!response.ok) throw new Error("status check failed");
-        return response.json();
-      })
-      .then(function (payload) {
-        var connected = Boolean(payload && payload.discord && payload.discord.connected === true && payload.status === "ok");
-        setServiceStatus(connected ? "online" : "checking", connected ? "Peace Tools conectado" : "");
-      })
-      .catch(function () {
-        setServiceStatus(localPreview ? "preview" : "offline", "");
-      });
-  }
-
-  refreshServiceStatus();
-
   function initPublicMedia() {
     if (body.dataset.page !== "home") return;
 
@@ -388,7 +358,7 @@
       INVITE_INVALID: "Não consegui preparar seu convite agora. Tente novamente em instantes.",
       ENTRY_SESSION_NOT_FOUND: "Este convite expirou. Gere um novo link para continuar.",
       INVALID_SESSION: "A conexão anterior não está mais disponível. Gere um novo convite.",
-      NOT_JOINED: "Ainda não identifiquei sua entrada na Peace. Abra o convite e tente novamente.",
+      NOT_JOINED: "Ainda estou aguardando a confirmação automática da sua entrada na Peace.",
       ROLE_NOT_CONFIGURED: "A equipe precisa ajustar o cargo de entrada antes de continuar.",
       ROLE_HIERARCHY: "A equipe precisa ajustar a hierarquia de cargos antes de continuar.",
       ROLE_UPDATE_FAILED: "Não consegui corrigir o cargo de entrada agora. Tente novamente em instantes.",
@@ -487,6 +457,9 @@
     var inviteLink = document.querySelector("[data-entry-invite-link]");
     var inviteOpenLink = document.querySelector("[data-entry-invite-open]");
     var inviteUrlText = document.querySelector("[data-entry-invite-url]");
+    var inviteWaiting = document.querySelector("[data-entry-invite-waiting]");
+    var inviteWaitingTitle = document.querySelector("[data-entry-invite-status-title]");
+    var inviteWaitingMessage = document.querySelector("[data-entry-invite-status-message]");
     var entryUser = document.querySelector("[data-entry-user]");
     var verificationState = document.querySelector("[data-entry-verification-state]");
     var verificationTitle = document.querySelector("[data-entry-status-title]");
@@ -516,6 +489,7 @@
     var entryPollTimer = null;
     var entryStartPromise = null;
     var entryStatusPromise = null;
+    var entryRecoveryPromise = null;
     var inviteOpened = false;
     var manualEntryIdentity = null;
 
@@ -604,6 +578,11 @@
       }
     }
 
+    function clearInviteMeta() {
+      inviteOpened = false;
+      try { window.localStorage.removeItem(entryMetaStorageKey); } catch (error) { /* optional */ }
+    }
+
     function openEntryInvite(url, token) {
       if (!url) return null;
       var popup = window.open(url, "_blank", "noopener,noreferrer");
@@ -620,25 +599,58 @@
       }
     }
 
-    function setInviteLinks(url, token) {
+    function setInviteLinks(url, token, keepPanel) {
       var hasInvite = Boolean(url);
-      if (invitePanel) invitePanel.hidden = !hasInvite;
-      if (inviteOpenLink && hasInvite) {
-        inviteOpenLink.href = url;
-        inviteOpenLink.dataset.sessionToken = token || "";
+      var showPanel = hasInvite || Boolean(keepPanel);
+      if (invitePanel) invitePanel.hidden = !showPanel;
+      if (inviteOpenLink) {
+        inviteOpenLink.hidden = !hasInvite;
+        if (hasInvite) {
+          inviteOpenLink.href = url;
+          inviteOpenLink.dataset.sessionToken = token || "";
+        } else {
+          inviteOpenLink.removeAttribute("href");
+          delete inviteOpenLink.dataset.sessionToken;
+        }
       }
-      if (inviteLink && hasInvite) {
-        inviteLink.href = url;
-        inviteLink.textContent = inviteLabel(url);
-        inviteLink.dataset.sessionToken = token || "";
+      if (inviteLink) {
+        inviteLink.textContent = hasInvite ? inviteLabel(url) : "";
+        inviteLink.hidden = !hasInvite;
       }
-      if (inviteUrlText && hasInvite) inviteUrlText.textContent = inviteLabel(url);
+      if (inviteUrlText) inviteUrlText.textContent = hasInvite ? inviteLabel(url) : "";
+      if (connectButton) {
+        connectButton.hidden = hasInvite || Boolean(keepPanel);
+        if (!hasInvite) delete connectButton.dataset.inviteUrl;
+      }
     }
 
     function setVerificationState(state, title, message) {
       if (verificationState) verificationState.dataset.state = state || "pending";
       if (verificationTitle) verificationTitle.textContent = title || "Acompanhando sua entrada";
       if (verificationMessage) verificationMessage.textContent = message || "Aguarde alguns instantes.";
+    }
+
+    function setInviteWaiting(state, title, message) {
+      if (!inviteWaiting) return;
+      inviteWaiting.hidden = false;
+      inviteWaiting.dataset.state = state || "pending";
+      if (inviteWaitingTitle) inviteWaitingTitle.textContent = title || "Aguardando o Discord";
+      if (inviteWaitingMessage) inviteWaitingMessage.textContent = message || "Aguarde a confirmação da sua entrada.";
+    }
+
+    function isInviteRecoveryStatus(status) {
+      return status === "invite_unavailable" || status === "expired";
+    }
+
+    function showInviteRecoveryState() {
+      setInviteLinks("", "", true);
+      setInviteWaiting(
+        "pending",
+        "Gerando um novo convite…",
+        "O convite anterior deixou de estar disponível. Aguarde enquanto preparamos outro link válido."
+      );
+      if (connectResult) connectResult.textContent = "Preparando um novo convite individual…";
+      if (sessionNote) sessionNote.textContent = "O link anterior não está mais disponível. Estamos preparando outro automaticamente.";
     }
 
     function setEntryUser(user) {
@@ -713,7 +725,12 @@
     }
 
     function startEntryPolling() {
-      if (entryPollTimer || !entrySession || currentStage >= 3) return;
+      if (
+        entryPollTimer
+        || !entrySession
+        || currentStage >= 3
+        || !["waiting_invite", "verification_pending", "role_missing"].includes(entrySession.status)
+      ) return;
       entryPollTimer = window.setInterval(function () {
         if (document.visibilityState && document.visibilityState !== "visible") return;
         fetchEntryStatus(false).catch(function () { /* keep the current state quiet and retry on the next visible poll */ });
@@ -728,6 +745,16 @@
 
     function applyEntryPayload(payload) {
       if (!payload) return;
+
+      if (isInviteRecoveryStatus(payload.status)) {
+        entrySession = null;
+        clearEntryToken();
+        clearInviteMeta();
+        stopEntryPolling();
+        showInviteRecoveryState();
+        return;
+      }
+
       entrySession = payload;
       saveEntryToken(payload.session_token);
       inviteOpened = readEntryMeta(payload.session_token);
@@ -739,7 +766,12 @@
       }
       setInviteLinks(payload.invite_url, payload.session_token);
 
-      if (payload.invite_url && payload.status === "waiting_invite" && connectResult && !connectResult.textContent.trim()) {
+      if (
+        payload.invite_url
+        && payload.status === "waiting_invite"
+        && connectResult
+        && (!connectResult.textContent.trim() || /preparando|novo convite|anterior deixou/i.test(connectResult.textContent))
+      ) {
         connectResult.textContent = inviteOpened
           ? "Convite aberto. Entre na Peace por ele; esta página acompanha sua entrada."
           : "Convite gerado. Abra o Discord no painel abaixo para continuar.";
@@ -747,6 +779,7 @@
 
       if (payload.status === "verified") {
         stopEntryPolling();
+        if (inviteWaiting) inviteWaiting.hidden = true;
         setVerificationState("success", "Verificação concluída", "Tudo certo. Continuando para a entrevista.");
         if (refreshResult) refreshResult.textContent = "Verificação concluída. A entrevista está liberada.";
         setStage(3, false);
@@ -754,6 +787,7 @@
       }
 
       if (payload.status === "verification_pending") {
+        setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada na Peace. Agora acompanhe a verificação nesta página.");
         setVerificationState("pending", "Verificação pendente", "Você já está na Peace. Abra o canal #verify, clique em Iniciar verificação e responda ao CAPTCHA.");
         if (sessionNote) sessionNote.textContent = "Entrada identificada. Acompanhe a verificação nesta página.";
         setStage(2, false);
@@ -762,6 +796,7 @@
       }
 
       if (payload.status === "role_missing") {
+        setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada. Estamos aguardando o cargo de verificação.");
         setVerificationState("warning", "Cargo de entrada ausente", "Não encontrei Not Verified nesta conta. Abra Estou com problemas para tentar corrigir.");
         if (helpPanel) helpPanel.hidden = false;
         if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
@@ -771,6 +806,9 @@
       }
 
       setStage(stageForEntryStatus(payload.status), false);
+      setInviteWaiting("pending", "Aguardando o Discord", inviteOpened
+        ? "O convite foi aberto. Assim que você aceitar, o bot identifica sua entrada automaticamente."
+        : "Abra o convite no painel acima. Assim que você aceitar, o bot identifica sua entrada automaticamente.");
       if (sessionNote && payload.expires_in) sessionNote.textContent = "Convite ativo por aproximadamente " + Math.ceil(payload.expires_in / 60) + " minutos. Ele abre em uma nova guia.";
       startEntryPolling();
     }
@@ -784,9 +822,17 @@
       });
     }
 
-    function startEntrySession() {
+    function startEntrySession(forceNew) {
       if (entryStartPromise) return entryStartPromise;
-      var token = readEntryToken();
+      var replacing = Boolean(forceNew);
+      if (replacing) {
+        clearEntryToken();
+        clearInviteMeta();
+        entrySession = null;
+        stopEntryPolling();
+        showInviteRecoveryState();
+      }
+      var token = replacing ? "" : readEntryToken();
       var requestBody = token ? { session_token: token } : {};
       var requestPromise = attemptEndpoint("/api/entry/start", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(requestBody) }, 60000)
         .then(parseEntryResponse)
@@ -798,6 +844,35 @@
         if (entryStartPromise === requestPromise) entryStartPromise = null;
       });
       return requestPromise;
+    }
+
+    function recoverEntrySession() {
+      if (entryRecoveryPromise) return entryRecoveryPromise;
+      showInviteRecoveryState();
+      setStage(1, false);
+      var requestPromise = startEntrySession(true)
+        .catch(function (error) {
+          setInviteLinks("", "", false);
+          if (connectButton) {
+            connectButton.hidden = false;
+            setButtonLabel(connectButton, "Tentar gerar convite");
+          }
+          if (connectResult) connectResult.textContent = error.message || "Não foi possível gerar um novo convite agora.";
+          throw error;
+        });
+      entryRecoveryPromise = requestPromise;
+      requestPromise.then(function () {
+        if (entryRecoveryPromise === requestPromise) entryRecoveryPromise = null;
+      }, function () {
+        if (entryRecoveryPromise === requestPromise) entryRecoveryPromise = null;
+      });
+      return requestPromise;
+    }
+
+    function maybeRecoverEntrySession(payload) {
+      return isInviteRecoveryStatus(payload && payload.status)
+        ? recoverEntrySession()
+        : Promise.resolve(payload);
     }
 
     function fetchEntryStatus(showBusy) {
@@ -815,14 +890,11 @@
         .then(function (payload) {
           applyEntryPayload(payload);
           if (refreshResult && payload.status === "verification_pending") refreshResult.textContent = "Ainda aguardando a conclusão no #verify.";
-          return payload;
+          return maybeRecoverEntrySession(payload);
         })
         .catch(function (error) {
-          if (/expirou|inválida/i.test(error.message || "")) {
-            clearEntryToken();
-            entrySession = null;
-            stopEntryPolling();
-            setStage(1, false);
+          if (error.code === "ENTRY_SESSION_NOT_FOUND" || error.code === "INVALID_SESSION") {
+            return recoverEntrySession();
           }
           if (refreshResult) refreshResult.textContent = error.message || "Não foi possível atualizar agora.";
           throw error;
@@ -899,7 +971,7 @@
         }
         if (connectResult) connectResult.textContent = "Gerando seu convite individual…";
         setButtonBusy(connectButton, true, "Gerando convite…");
-        startEntrySession().then(function (payload) {
+          startEntrySession().then(maybeRecoverEntrySession).then(function (payload) {
           var popup = openEntryInvite(payload.invite_url, payload.session_token);
           setButtonBusy(connectButton, false);
           setButtonLabel(connectButton, "Abrir convite novamente");
@@ -934,13 +1006,11 @@
       identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
     });
 
-    [inviteOpenLink, inviteLink].forEach(function (link) {
-      if (!link) return;
-      link.addEventListener("click", function () {
-        markInviteOpened(link.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
-        if (connectResult) connectResult.textContent = "Discord aberto em uma nova guia. Entre na Peace e volte para acompanhar.";
-        startEntryPolling();
-      });
+    if (inviteOpenLink) inviteOpenLink.addEventListener("click", function () {
+      markInviteOpened(inviteOpenLink.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
+      setInviteWaiting("pending", "Aguardando o Discord", "O convite foi aberto. Assim que você aceitar, o bot identifica sua entrada automaticamente.");
+      if (connectResult) connectResult.textContent = "Discord aberto em uma nova guia. Aguardando a confirmação automática da sua entrada.";
+      startEntryPolling();
     });
 
     if (refreshButton) {
@@ -1103,7 +1173,7 @@
     setManualEntryFields(manualEntryIdentity);
 
     if (readEntryToken()) {
-      startEntrySession().catch(function () {
+      startEntrySession().then(maybeRecoverEntrySession).catch(function () {
         if (sessionNote) sessionNote.textContent = "Não consegui retomar o convite agora. Tente abrir um novo link.";
       });
     } else if (manualEntryIdentity) {

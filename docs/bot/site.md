@@ -23,10 +23,16 @@ tracking them. Media URLs are accepted only from Discord's HTTPS CDN hosts,
 and the feed contains no private channel history or bot logs.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
-UI. The first candidature action asks ACLClouds for a single-use Discord invite
-created in `#verify`, limited to one use and 30 minutes. The browser keeps only
-an opaque short-lived flow token, so a reload reuses the same invite while it is
-valid. The bot binds the invite to the member join event, reports the linked
+UI. The first candidature action asks ACLClouds for an individual Discord
+invite created in `#verify`. The runtime keeps the invite effectively
+single-use: it creates a short-lived two-use invite so Discord's usage counter
+remains observable during the join event, binds the first observed member, and
+deletes the invite immediately. The invite is valid for 30 minutes. The browser
+keeps only an opaque short-lived flow token, so a reload reuses the same invite
+while it is valid. If the invite expires or disappears before entry, the bot
+reports that bounded state and the browser automatically requests a replacement
+while remaining in a loading state. The bot binds the invite to the member join
+event, reports the linked
 Discord display name, and exposes the verification state from the member's
 `Not Verified`, `Visitor`, or `Peace` role. The interface advances to the
 interview only after `Visitor` or `Peace` is observed; it never treats the
@@ -223,7 +229,10 @@ a time. Future stage buttons are disabled until the backend-backed entry state
 advances the flow. The Discord invite opens in a new tab and remains reusable
 after a reload until its 30-minute expiry. Stage 02 explains the real `#verify`
 CAPTCHA flow, polls the bounded entry status, and moves automatically only when
-the bot observes `Visitor` or `Peace`. Its troubleshooting panel accepts
+the bot observes `Visitor` or `Peace`. During the invite stage it shows one
+Discord-opening action plus a non-clickable invite label, waits for the bot's
+actual member binding, and never treats a browser click as proof of entry. Its
+troubleshooting panel accepts
 optional username, ID, and profile link fields, but the backend binds every
 repair to the member already identified by that invite. Remote actions use a
 60-second timeout, expose a button loading state with `aria-busy`, and return to

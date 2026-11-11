@@ -193,11 +193,7 @@ h2, h3, h4 { font-weight: 600; }
 h2 em, h1 em { color: var(--accent); font-style: normal; }
 .hero-lede { max-width: 34rem; margin: 2rem auto 0; color: var(--muted); font-size: 0.98rem; line-height: 1.7; }
 .hero-actions { display: flex; justify-content: center; gap: 0.65rem; margin-top: 2rem; }
-.hero-status { display: inline-flex; align-items: center; gap: 0.6rem; margin-top: 2.2rem; color: var(--quiet); font-size: 0.68rem; }
-.signal-dot, .status-mark, .preview-dot { display: block; width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 0.25rem rgba(223, 190, 125, 0.1); }
-.hero-status[data-state="online"] .signal-dot { background: var(--success); box-shadow: 0 0 0 0.25rem rgba(123, 201, 166, 0.1); }
-.hero-status[data-state="preview"] .signal-dot { background: var(--accent); box-shadow: 0 0 0 0.25rem rgba(185, 202, 211, 0.1); }
-.hero-status[data-state="offline"] .signal-dot { background: var(--danger); box-shadow: 0 0 0 0.25rem rgba(217, 133, 142, 0.1); }
+.status-mark, .preview-dot { display: block; width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 0.25rem rgba(223, 190, 125, 0.1); }
 .scroll-cue { position: absolute; z-index: 2; bottom: 2.3rem; left: 50%; display: grid; justify-items: center; gap: 0.65rem; color: var(--quiet); font-size: 0.61rem; letter-spacing: 0.18em; text-transform: uppercase; transform: translateX(-50%); }
 .scroll-cue-line { display: block; width: 1px; height: 2rem; background: var(--quiet); opacity: 0.7; }
 .scroll-cue:hover { color: var(--text); }
@@ -765,7 +761,12 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 .entry-invite-heading p:last-child { max-width: 38rem; margin: 0.55rem 0 0; color: var(--muted); font-size: 0.74rem; line-height: 1.6; }
 .entry-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem; padding-top: 0.95rem; border-top: 1px solid var(--border); }
 .entry-invite-actions .button { min-height: 2.8rem; }
-.entry-invite-url { min-width: 0; overflow-wrap: anywhere; color: var(--accent); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.72rem; font-weight: 700; text-decoration: underline; text-underline-offset: 0.18em; }
+.entry-invite-url { min-width: 0; overflow-wrap: anywhere; color: var(--accent); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.72rem; font-weight: 700; }
+.entry-invite-waiting { margin: 0; }
+.entry-invite-waiting[hidden] { display: none; }
+.entry-invite-waiting[data-state="pending"] .status-mark { animation: entry-waiting-pulse 1.6s ease-in-out infinite; }
+@keyframes entry-waiting-pulse { 0%, 100% { opacity: 0.55; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .entry-invite-waiting[data-state="pending"] .status-mark { animation: none; } }
 .stage-icon { display: grid; width: 2.7rem; height: 2.7rem; place-items: center; margin-bottom: 1.6rem; border: 1px solid var(--border); background: #101a20; }
 .flow-symbol { display: block; width: 2.7rem; height: 2.7rem; margin-bottom: 1.6rem; object-fit: contain; }
 .stage-icon img, .flow-symbol { filter: brightness(0) saturate(100%) invert(83%) sepia(8%) saturate(462%) hue-rotate(154deg) brightness(89%) contrast(88%); }
