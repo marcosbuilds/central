@@ -2692,6 +2692,11 @@ class PeaceBot(commands.Bot):
             log.error("Servidor %s não está disponível no cache do bot", self.settings.guild_id)
             return
         log.info("Conectado como %s no servidor %s", self.user, self.guild.name)
+        # Nickname repair is an independent startup invariant. Run it before
+        # panel reconciliation so a slow or rate-limited panel history request
+        # cannot prevent existing Peace members from receiving their live
+        # visual-role prefix.
+        await self.run_startup_step("tags Peace prioritárias", self.sync_peace_tags)
         if not self.panels_synced:
             completed, result = await self.run_startup_step("painéis", self.sync_panels)
             self.panels_synced = completed and result is True
@@ -2717,7 +2722,6 @@ class PeaceBot(commands.Bot):
             ("painéis de developers pendentes", self.sync_pending_developer_panels),
             ("cargos de visitante", self.sync_visitor_roles),
             ("limpeza de exclusões Peace antigas", self.sync_released_member_cleanup),
-            ("tags Peace", self.sync_peace_tags),
         ):
             await self.run_startup_step(label, operation)
         if self.iris is not None:
