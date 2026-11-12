@@ -15,8 +15,8 @@ separately; a proposal is never presented as a production capability.
 ## Public scope
 
 - .NET 8 and WPF desktop application in `app/`.
-- Companion automation bot in `bot/`; the provider deploys the contents of
-  that directory at its own runtime root.
+- Companion automation bot in `bot/`; ACL receives its backend allowlist while
+  Netlify publishes the separate `bot/site/` frontend.
 - Database migrations and access rules in `db/`.
 - Gateway, installer, and operational scripts in `ops/`.
 - Automated tests in `tests/`.
@@ -28,7 +28,7 @@ separately; a proposal is never presented as a production capability.
 | Path | Responsibility |
 |---|---|
 | `app/` | desktop application and shared core |
-| `bot/` | companion automation bot source; its contents are the provider payload |
+| `bot/` | companion bot source; backend runtime and independent Netlify site |
 | `db/` | database migrations |
 | `ops/` | gateway, installer, and operational scripts |
 | `tests/` | application and bot tests |

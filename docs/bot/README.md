@@ -21,11 +21,13 @@ python -m bot.commands.nick --apply
 ```
 
 The repository keeps the bot source in `bot/`, with `bot/main.py` as its
-compatibility entry point. The provider deployment copies the contents of
-`bot/` into its runtime root, so its startup command is `python -u main.py` and
-there is no `bot/` directory in production. Supporting code remains grouped by
-responsibility under `config/`, `core/`, `integrations/`, `persistence/`,
-`operations/`, and `commands/` inside that deployment payload.
+compatibility entry point. The ACL provider deployment copies the backend
+allowlist from `bot/` into its runtime root; `bot/site/` is excluded because
+Netlify publishes it independently. The ACL startup command is therefore
+`python -u main.py` and there is no `bot/` directory in production. Supporting
+code remains grouped by responsibility under `config/`, `core/`,
+`integrations/`, `persistence/`, `operations/`, and `commands/` inside that
+backend payload.
 
 `snapshot` is read-only against Discord and writes the JSON snapshot to
 `data/snapshots/` and the database to `data/`. It does not rename members or

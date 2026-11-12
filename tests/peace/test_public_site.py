@@ -1352,8 +1352,36 @@ def test_public_site_files_are_complete():
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
     assert "data-service-status" not in homepage
     assert "Peace Tools conectado" not in homepage
-    script = (site_root / "script.js").read_text(encoding="utf-8")
-    stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
+    script = "\n".join(
+        [
+            (site_root / "script.js").read_text(encoding="utf-8"),
+            *[
+                path.read_text(encoding="utf-8")
+                for path in (
+                    site_root / "js" / "site-core.js",
+                    site_root / "js" / "public-media.js",
+                    site_root / "js" / "candidature.js",
+                    site_root / "js" / "login.js",
+                    site_root / "js" / "member-area.js",
+                )
+            ],
+        ]
+    )
+    stylesheet = "\n".join(
+        [
+            (site_root / "styles.css").read_text(encoding="utf-8"),
+            *[
+                path.read_text(encoding="utf-8")
+                for path in (
+                    site_root / "css" / "base.css",
+                    site_root / "css" / "member.css",
+                    site_root / "css" / "flows.css",
+                    site_root / "css" / "media.css",
+                    site_root / "css" / "responsive.css",
+                )
+            ],
+        ]
+    )
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
     assert "--canvas: #050607" in stylesheet
     assert "O seu espaço." in homepage

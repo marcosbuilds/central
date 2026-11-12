@@ -15,8 +15,8 @@ server, database, or already-published panels.
 ├── pyproject.toml
 ├── .env.example
 ├── .gitignore
-├── assets/bot/             # bot runtime artwork
-├── bot/                    # Python package; its contents are the provider payload
+├── assets/bot/             # bot runtime artwork, grouped by consumer
+├── bot/                    # Python package and the separate Netlify site source
 ├── docs/                   # documentation and decisions
 ├── tests/peace/            # bot tests
 └── data/                   # local data; not a source of code
@@ -47,9 +47,16 @@ bot/
 └── persistence/
 ```
 
-The provider receives only the contents of `bot/`, flattened one level. Its
-runtime root therefore contains `main.py` and the six support directories, and
+The ACL provider receives only the backend runtime allowlist from `bot/`,
+flattened one level. `bot/site/` is excluded because Netlify publishes it as
+the independent public frontend. The ACL runtime therefore contains
+`main.py`, the six support directories, runtime assets, and configuration, and
 starts with `python -u main.py`.
+
+The public site keeps stable entrypoints at `bot/site/script.js` and
+`bot/site/styles.css`. Their responsibility-specific modules live below
+`bot/site/js/` and `bot/site/css/`; route HTML files continue to reference the
+stable entrypoints so all public paths remain unchanged.
 
 Create new directories only when there is real code to put in them. Do not
 create empty directories just to complete an idealized tree.

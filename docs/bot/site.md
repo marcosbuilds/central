@@ -42,6 +42,21 @@ Media failures preserve the last successful list and keep an external origin
 link visible; a provider page is never presented as an iframe video when the
 provider blocks embedding.
 
+## Source and publication layout
+
+The frontend source is kept under `bot/site/` because Netlify publishes that
+directory directly. `script.js` and `styles.css` remain compatibility
+entrypoints for every route; their implementation is split into
+`bot/site/js/` and `bot/site/css/` by responsibility. This keeps cacheable
+public URLs stable while allowing media, candidature, access, member-area,
+layout, and responsive rules to be maintained independently.
+
+ACL deployment packages are backend-only. A valid package contains the bot
+entrypoint and its support modules, configuration, persistence, operations,
+and runtime artwork; it does not contain `site/`, HTML, frontend JavaScript,
+frontend CSS, or site assets. Packages that still contain both surfaces are
+legacy archives and must not be reused for production.
+
 The clips channel is intentionally handled as a link-first feed: a message may
 contain only a Medal/TikTok URL and no caption at all. In that case an empty
 caption is valid; the site uses the bounded provider title/author as secondary

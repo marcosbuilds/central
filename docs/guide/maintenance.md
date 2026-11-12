@@ -22,6 +22,12 @@ Each folder has one responsibility. New documents should use a short filename
 that describes the stored content; do not add catch-all folders or duplicate
 copies of an existing contract.
 
+Generated delivery material follows the consumer boundary as well: ACL
+backend packages, Netlify site packages, desktop builds, and QA evidence live
+in their own ignored artifact trees. The tracked source keeps the frontend
+entrypoints stable while detailed CSS and JavaScript lives in responsibility-
+specific subdirectories under `bot/site/`.
+
 ## Status and ownership
 
 | Area | Canonical location | Update when |

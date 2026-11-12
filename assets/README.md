@@ -3,6 +3,11 @@
 Assets are split by the code or document that consumes them. The split is part
 of the public repository contract, not a staging area.
 
+There are intentionally no top-level folders named after file formats such as
+`png/` or `svg/`: the consumer boundary is canonical and the file extension is
+only an implementation detail. Frontend-only artwork remains in
+`bot/site/assets/` and is not mixed into this runtime/documentation tree.
+
 ## Layout
 
 | Folder | Contents | Consumer |

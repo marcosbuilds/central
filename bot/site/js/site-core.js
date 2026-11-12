@@ -1,0 +1,286 @@
+(function () {
+  "use strict";
+
+  var body = document.body;
+  var header = document.querySelector(".site-header");
+  var menuButton = document.querySelector(".menu-toggle");
+  var navigation = document.querySelector("#site-nav");
+  var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
+  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var mobileNavigation = window.matchMedia("(max-width: 840px)");
+  var memberSessionStorageKey = "peace.member.session.v1";
+
+  function readMemberSessionToken() {
+    // The authenticated session is HttpOnly. Delete any token left by the
+    // pre-cookie client and never read it into page JavaScript again.
+    clearMemberSessionToken();
+    return "";
+  }
+
+  function clearMemberSessionToken() {
+    try { window.localStorage.removeItem(memberSessionStorageKey); } catch (error) { /* optional */ }
+    try { window.sessionStorage.removeItem(memberSessionStorageKey); } catch (error) { /* optional */ }
+  }
+
+  document.documentElement.classList.add("js-ready");
+
+  // Discord destinations always open outside the Peace flow so the current
+  // page remains available for status, return navigation, and retry actions.
+  document.querySelectorAll('a[href^="/discord"], a[href^="../discord"]').forEach(function (link) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  });
+
+  document.querySelectorAll("a[href]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      if (reducedMotion || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (link.target === "_blank" || link.hasAttribute("download") || link.getAttribute("href").charAt(0) === "#") return;
+      var destination;
+      try { destination = new URL(link.href, window.location.href); } catch (error) { return; }
+      if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
+      event.preventDefault();
+      document.body.classList.add("is-leaving");
+      window.setTimeout(function () { window.location.assign(destination.href); }, 150);
+    });
+  });
+
+  window.addEventListener("pageshow", function () { document.body.classList.remove("is-leaving"); });
+
+  function syncNavigationInteraction(isOpen) {
+    if (!navigation) return;
+    var shouldDisable = mobileNavigation.matches && !isOpen;
+    navigation.inert = shouldDisable;
+    navigation.setAttribute("aria-hidden", String(shouldDisable));
+  }
+
+  function closeMenu(restoreFocus) {
+    if (!header || !menuButton) return;
+    header.classList.remove("menu-open");
+    menuButton.setAttribute("aria-expanded", "false");
+    syncNavigationInteraction(false);
+    if (restoreFocus) menuButton.focus();
+  }
+
+  if (menuButton && navigation && header) {
+    syncNavigationInteraction(false);
+
+    menuButton.addEventListener("click", function () {
+      var isOpen = header.classList.toggle("menu-open");
+      menuButton.setAttribute("aria-expanded", String(isOpen));
+      syncNavigationInteraction(isOpen);
+    });
+
+    navigation.querySelectorAll("a").forEach(function (link) {
+      link.addEventListener("click", function () { closeMenu(false); });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (header.classList.contains("menu-open") && !header.contains(event.target)) closeMenu(true);
+    });
+
+    mobileNavigation.addEventListener("change", function () { closeMenu(false); });
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && header && header.classList.contains("menu-open")) closeMenu(true);
+  });
+
+  function reveal(element) { element.classList.add("is-visible"); }
+
+  if (reducedMotion || !("IntersectionObserver" in window)) {
+    revealItems.forEach(reveal);
+  } else {
+    var observer = new IntersectionObserver(function (entries, currentObserver) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        reveal(entry.target);
+        currentObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
+
+    revealItems.forEach(function (element) { observer.observe(element); });
+  }
+
+  function copyAllowedFrom(node) {
+    var element = node && node.nodeType === 1 ? node : node && node.parentElement;
+    return Boolean(element && element.closest("[data-copyable], code, pre, input, textarea, [contenteditable=\"true\"]"));
+  }
+
+  document.addEventListener("copy", function (event) {
+    var selection = window.getSelection();
+    if (!selection || (!copyAllowedFrom(selection.anchorNode) && !copyAllowedFrom(selection.focusNode))) {
+      event.preventDefault();
+    }
+  });
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; });
+    }
+
+    var fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "");
+    fallback.style.position = "fixed";
+    fallback.style.top = "-9999px";
+    document.body.appendChild(fallback);
+    fallback.select();
+    var copied = false;
+    try { copied = document.execCommand("copy"); } catch (error) { copied = false; }
+    document.body.removeChild(fallback);
+    return Promise.resolve(copied);
+  }
+
+  document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var target = document.querySelector(button.dataset.copyTarget);
+      var status = button.closest(".discord-copy") && button.closest(".discord-copy").querySelector("[data-copy-status], .copy-status");
+      if (!target || !status) return;
+
+      copyText(target.textContent.trim())
+        .then(function (copied) {
+          status.textContent = copied ? "Link copiado." : "Não foi possível copiar aqui.";
+          window.setTimeout(function () { status.textContent = ""; }, 3500);
+        })
+        .catch(function () {
+          status.textContent = "Não foi possível copiar aqui.";
+        });
+    });
+  });
+
+  function setStatusMessage(node, title, message, tone) {
+    if (!node) return;
+    node.hidden = false;
+    var strong = node.querySelector("strong");
+    var paragraph = node.querySelector("p");
+    if (strong) strong.textContent = title;
+    if (paragraph) paragraph.textContent = message;
+    node.dataset.state = tone || "pending";
+  }
+
+  function setButtonLabel(button, label) {
+    if (!button) return;
+    var labelNode = button.querySelector("[data-button-label]");
+    if (labelNode) labelNode.textContent = label;
+    button.dataset.idleLabel = label;
+  }
+
+  function setButtonBusy(button, isBusy, loadingLabel) {
+    if (!button) return;
+    var labelNode = button.querySelector("[data-button-label]");
+    if (isBusy) {
+      if (!button.dataset.idleLabel && labelNode) button.dataset.idleLabel = labelNode.textContent;
+      if (labelNode) labelNode.textContent = loadingLabel || "Processando…";
+      button.classList.add("is-loading");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      return;
+    }
+
+    if (labelNode && button.dataset.idleLabel) labelNode.textContent = button.dataset.idleLabel;
+    button.classList.remove("is-loading");
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+
+  function userFacingEndpointMessage(payload, status, fallback) {
+    var code = payload && typeof payload.code === "string" ? payload.code : "";
+    var knownMessages = {
+      DISCORD_NOT_READY: "O Peace Tools está conectando ao Discord. Tente novamente em instantes.",
+      VERIFY_CHANNEL_UNAVAILABLE: "O canal de verificação está temporariamente indisponível. Tente novamente em instantes.",
+      INVITE_UNAVAILABLE: "Não consegui gerar seu convite agora. Tente novamente em instantes.",
+      INVITE_INVALID: "Não consegui preparar seu convite agora. Tente novamente em instantes.",
+      ENTRY_SESSION_NOT_FOUND: "Este convite expirou. Gere um novo link para continuar.",
+      INVALID_SESSION: "A conexão anterior não está mais disponível. Gere um novo convite.",
+      NOT_JOINED: "Ainda estou aguardando a confirmação automática da sua entrada na Peace.",
+      ROLE_NOT_CONFIGURED: "A equipe precisa ajustar o cargo de entrada antes de continuar.",
+      ROLE_HIERARCHY: "A equipe precisa ajustar a hierarquia de cargos antes de continuar.",
+      ROLE_UPDATE_FAILED: "Não consegui corrigir o cargo de entrada agora. Tente novamente em instantes.",
+      MEMBER_UNAVAILABLE: "Ainda não consegui localizar sua entrada. Tente novamente em instantes.",
+      REPAIR_THROTTLED: "Aguarde alguns segundos e tente novamente.",
+      DISCORD_ID_MISMATCH: "O ID informado não corresponde à conta identificada pelo convite.",
+      INVALID_DISCORD_ID: "O ID do Discord deve conter somente números.",
+      FIELD_TOO_LONG: "Revise os campos informados e tente novamente.",
+      INVALID_PEACE_ID: "O ID Peace deve conter somente números.",
+      AUTH_DENIED: "Não foi possível validar esse ID Peace. Confira os números e tente novamente.",
+      AUTH_THROTTLED: "Aguarde alguns minutos antes de solicitar outro código.",
+      DM_UNAVAILABLE: "Não consegui enviar a mensagem privada. Abra suas DMs no Discord e tente novamente.",
+      INVALID_CODE: "O código não confere ou já expirou. Confira a DM e tente novamente.",
+      AUTH_SESSION_INVALID: "Sua sessão expirou. Entre novamente.",
+      AUTH_SESSION_UNAVAILABLE: "Não foi possível concluir o acesso agora. Tente novamente.",
+      MEMBER_NOT_FOUND: "Não encontrei essa conta no servidor. Revise o username e tente novamente.",
+      MEMBER_AMBIGUOUS: "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
+      INVALID_DISCORD_PROFILE: "Informe um link de perfil válido do Discord.",
+      MEMBER_IDENTITY_MISMATCH: "O username, o ID e o link informado não pertencem à mesma conta.",
+      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente."
+    };
+
+    if (knownMessages[code]) return knownMessages[code];
+    if (status === 404) return "O serviço de entrada está sendo atualizado. Tente novamente em instantes.";
+    if (status === 429) return "Aguarde alguns segundos e tente novamente.";
+    if (status >= 500) return "O Peace Tools está terminando uma atualização. Tente novamente em instantes.";
+    return fallback || "Não foi possível continuar agora. Tente novamente.";
+  }
+
+  function friendlyError(payload, status, fallback) {
+    var error = new Error(userFacingEndpointMessage(payload, status, fallback));
+    error.code = payload && payload.code ? payload.code : "";
+    error.status = status || 0;
+    return error;
+  }
+
+  function responseFailure(response, fallback) {
+    return response.text().then(function (raw) {
+      var payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+      throw friendlyError(payload, response.status, fallback);
+    });
+  }
+
+  function attemptEndpoint(url, options, timeoutMs) {
+    if (!window.fetch) {
+      var browserError = new Error("A conexão não está disponível neste navegador. Tente novamente.");
+      browserError.code = "BROWSER_NETWORK";
+      return Promise.reject(browserError);
+    }
+    var requestOptions = Object.assign({}, options || { headers: { Accept: "application/json" } });
+    if (!requestOptions.credentials) requestOptions.credentials = "same-origin";
+    var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
+    var timeoutId;
+    var duration = Number(timeoutMs) > 0 ? Number(timeoutMs) : 60000;
+
+    if (controller) requestOptions.signal = controller.signal;
+
+    var request = window.fetch(url, requestOptions).then(function (response) {
+      return response.ok ? response : responseFailure(response, "Não foi possível continuar agora. Tente novamente.");
+    });
+
+    var timeout = new Promise(function (_, reject) {
+      timeoutId = window.setTimeout(function () {
+        if (controller) controller.abort();
+        var error = new Error("A conexão demorou mais do que o esperado. Tente novamente.");
+        error.code = "TIMEOUT";
+        reject(error);
+      }, duration);
+    });
+
+    return Promise.race([request, timeout]).then(function (response) {
+      window.clearTimeout(timeoutId);
+      return response;
+    }, function (error) {
+      window.clearTimeout(timeoutId);
+      throw error;
+    });
+  }
+
+
+  window.PeaceSite = {
+    body: body,
+    readMemberSessionToken: readMemberSessionToken,
+    clearMemberSessionToken: clearMemberSessionToken,
+    setStatusMessage: setStatusMessage,
+    setButtonBusy: setButtonBusy,
+    friendlyError: friendlyError,
+    attemptEndpoint: attemptEndpoint
+  };
+})();
