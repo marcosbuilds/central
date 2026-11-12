@@ -45,8 +45,8 @@ if ($LASTEXITCODE -ne 0 -or $resolvedCommit -ne $headCommit) {
     throw 'Commit must resolve to the checked-out HEAD; checkout the desired revision before packaging.'
 }
 $Commit = $headShortCommit
-$dirtyTrackedFiles = (& git -C $repositoryRoot status --porcelain --untracked-files=no).Trim()
-if ($dirtyTrackedFiles) {
+$dirtyTrackedFiles = @(& git -C $repositoryRoot status --porcelain --untracked-files=no)
+if ($dirtyTrackedFiles.Count -gt 0) {
     throw 'The working tree has tracked changes; commit or discard them before packaging.'
 }
 if (-not $DeployDate) {
