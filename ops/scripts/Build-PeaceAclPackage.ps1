@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$OutputRoot = (Join-Path (Get-Location) 'artifacts\acl\deploy'),
+    [string]$OutputRoot = '',
     [string]$Commit = '',
     [string]$DeployDate = ''
 )
@@ -27,20 +27,39 @@ function Get-RelativePath {
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$botRoot = Join-Path $repositoryRoot 'bot'
-$assetRoot = Join-Path $repositoryRoot 'assets\bot'
+
+$headCommit = (& git -C $repositoryRoot rev-parse --verify HEAD 2>$null).Trim()
+$headShortCommit = (& git -C $repositoryRoot rev-parse --short HEAD 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $headCommit -or -not $headShortCommit) {
+    throw 'The repository must have a checked-out Git commit.'
+}
 
 if (-not $Commit) {
-    $Commit = (& git -C $repositoryRoot rev-parse --short HEAD).Trim()
+    $Commit = $headShortCommit
 }
 if (-not $Commit -or $Commit -notmatch '^[0-9a-fA-F]+$') {
     throw 'Commit must be a short hexadecimal Git revision.'
+}
+$resolvedCommit = (& git -C $repositoryRoot rev-parse --verify ("{0}^{{commit}}" -f $Commit) 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $resolvedCommit -ne $headCommit) {
+    throw 'Commit must resolve to the checked-out HEAD; checkout the desired revision before packaging.'
+}
+$Commit = $headShortCommit
+$dirtyTrackedFiles = (& git -C $repositoryRoot status --porcelain --untracked-files=no).Trim()
+if ($dirtyTrackedFiles) {
+    throw 'The working tree has tracked changes; commit or discard them before packaging.'
 }
 if (-not $DeployDate) {
     $DeployDate = Get-Date -Format 'yyyy-MM-dd'
 }
 if ($DeployDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
     throw 'DeployDate must use yyyy-MM-dd.'
+}
+if (-not $OutputRoot) {
+    $OutputRoot = Join-Path $repositoryRoot 'artifacts\acl\deploy'
+}
+if (-not [IO.Path]::IsPathRooted($OutputRoot)) {
+    $OutputRoot = Join-Path $repositoryRoot $OutputRoot
 }
 
 $deployDirectory = Join-Path (Join-Path (Join-Path $OutputRoot $DeployDate) 'deploys') $Commit
@@ -52,12 +71,23 @@ New-Item -ItemType Directory -Force -Path $deployDirectory | Out-Null
 
 $excludedDirectories = @('__pycache__', 'site')
 $excludedExtensions = @('.pyc', '.pyo', '.pyd', '.sqlite3')
-$sourceFiles = Get-ChildItem -LiteralPath $botRoot -File -Recurse | Where-Object {
-    $relative = Get-RelativePath $botRoot $_.FullName
+$trackedBotFiles = @(& git -C $repositoryRoot ls-files --full-name -- bot)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not enumerate tracked bot files.'
+}
+$sourceFiles = foreach ($relativeFromRepository in $trackedBotFiles) {
+    $relative = $relativeFromRepository.Substring(4)
     $segments = $relative -split '[\\/]'
-    ($segments | Where-Object { $_ -in $excludedDirectories }).Count -eq 0 -and
-    $_.Extension.ToLowerInvariant() -notin $excludedExtensions -and
-    $_.Name -notin @('.env', '.env.example')
+    $sourcePath = Join-Path $repositoryRoot $relativeFromRepository
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "Tracked bot file is missing from the checkout: $relativeFromRepository"
+    }
+    $sourceFile = Get-Item -LiteralPath $sourcePath
+    if (($segments | Where-Object { $_ -in $excludedDirectories }).Count -eq 0 -and
+        $sourceFile.Extension.ToLowerInvariant() -notin $excludedExtensions -and
+        $sourceFile.Name -notin @('.env', '.env.example')) {
+        $sourceFile
+    }
 }
 
 foreach ($sourceFile in $sourceFiles) {
@@ -70,19 +100,31 @@ foreach ($sourceFile in $sourceFiles) {
 
 foreach ($requirementsName in @('requirements.txt', 'requirements-aclclouds.txt')) {
     $requirements = Join-Path $repositoryRoot $requirementsName
-    if (Test-Path -LiteralPath $requirements) {
+    $trackedRequirement = @(& git -C $repositoryRoot ls-files --full-name -- $requirementsName)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect tracked requirements: $requirementsName"
+    }
+    if ($trackedRequirement.Count -gt 0) {
         Copy-Item -LiteralPath $requirements -Destination (Join-Path $deployDirectory $requirementsName)
     }
 }
 
-if (Test-Path -LiteralPath $assetRoot) {
+$trackedAssetFiles = @(& git -C $repositoryRoot ls-files --full-name -- assets/bot)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not enumerate tracked bot artwork.'
+}
+if ($trackedAssetFiles.Count -gt 0) {
     $destinationAssetRoot = Join-Path $deployDirectory 'assets\bot'
-    Get-ChildItem -LiteralPath $assetRoot -File -Recurse | ForEach-Object {
-        $relative = Get-RelativePath $assetRoot $_.FullName
+    foreach ($relativeFromRepository in $trackedAssetFiles) {
+        $relative = $relativeFromRepository.Substring('assets/bot/'.Length)
+        $sourcePath = Join-Path $repositoryRoot $relativeFromRepository
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "Tracked artwork is missing from the checkout: $relativeFromRepository"
+        }
         $destination = Join-Path $destinationAssetRoot $relative
         $parent = Split-Path -Parent $destination
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
-        Copy-Item -LiteralPath $_.FullName -Destination $destination
+        Copy-Item -LiteralPath $sourcePath -Destination $destination
     }
 }
 

@@ -48,8 +48,9 @@ Create a new sanitized ACL package with:
 powershell -ExecutionPolicy Bypass -File ops/scripts/Build-PeaceAclPackage.ps1
 ```
 
-The script runs on Windows PowerShell 5.1 and PowerShell 7, refuses to
-overwrite an existing commit/date directory, excludes
-`bot/site`, secrets, databases, and bytecode, copies the runtime artwork, and
-writes a SHA-256 manifest beside the package. It does not upload or restart a
-provider; production publication remains a separate authorized operation.
+The script runs on Windows PowerShell 5.1 and PowerShell 7, requires a clean
+working tree and the checked-out `HEAD`, copies only tracked backend files and
+runtime artwork, refuses to overwrite an existing commit/date directory, and
+excludes `bot/site`, secrets, databases, and bytecode. It writes a SHA-256
+manifest inside the package. It does not upload or restart a provider;
+production publication remains a separate authorized operation.
