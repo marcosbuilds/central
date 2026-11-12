@@ -4,12 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#050607">
-    <meta name="description" content="Área da comunidade Peace: acompanhe entrada, pedidos e próximos passos quando a sessão autorizada estiver disponível.">
-    <title>Peace — área da comunidade</title>
+    <meta name="description" content="Área autenticada da comunidade Peace.">
+    <title>Área da Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261112-20">
-    <script>document.documentElement.classList.add("js");</script>
-    <script defer src="../script.js?v=20261112-20"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261112-22">
+    <script defer src="../script.js?v=20261112-22"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -20,7 +19,7 @@
           <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
           <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
         </a>
-        <div class="member-header-context"><span class="status-mark" aria-hidden="true"></span><span>Workspace</span><small>área condicionada à sessão</small></div>
+        <span class="member-header-context"><span class="status-mark" aria-hidden="true"></span><span>Área da comunidade</span></span>
         <div class="member-header-actions">
           <a class="member-header-link" href="../">Site público</a>
           <a class="button button--outline member-header-discord" href="../discord"><img class="discord-icon" src="../assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span>Discord</span><span class="button-icon" aria-hidden="true">↗</span></a>
@@ -28,48 +27,64 @@
       </header>
 
       <main id="conteudo" class="member-page">
-        <section class="member-intro" aria-labelledby="member-title">
-          <div data-reveal="hero-copy">
-            <p class="eyebrow">Área da comunidade</p>
-            <h1 id="member-title">Seu próximo passo, <em>sem ruído.</em></h1>
-            <p class="hero-lede">Um lugar para acompanhar entrada, pedidos e suporte sem tirar do Discord o que pertence à conversa.</p>
-          </div>
-          <div class="member-intro-aside" data-reveal><span class="status-mark" aria-hidden="true"></span><p><strong>Acesso condicionado ao Discord</strong><br>O painel só mostra dados depois de uma sessão autorizada.</p></div>
-        </section>
-
-        <section class="member-gate" data-member-gate aria-labelledby="gate-title" data-reveal>
+        <section class="member-gate" data-member-gate aria-labelledby="gate-title">
           <div class="gate-copy">
-            <p class="eyebrow">Acesso do membro</p>
-            <h2 id="gate-title">Entre pelo Discord para continuar.</h2>
-            <p>Hoje, a verificação e a liberação de cargos continuam sob autoridade do Peace Tools dentro do servidor. A área web não altera cargos e não substitui a verificação do bot.</p>
-            <div class="gate-actions"><a class="button button--light button--large" href="../discord"><img class="discord-icon" src="../assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span>Entrar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a></div>
+            <p class="eyebrow">Área da comunidade</p>
+            <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
+            <p>Entre com seu ID Peace para acompanhar informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
+            <div class="gate-actions"><a class="button button--light button--large" href="../acessar/">Acessar a área <span class="button-icon" aria-hidden="true">→</span></a><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
           </div>
-          <aside class="gate-note" aria-label="O que acontece depois">
-            <p class="eyebrow">Depois da entrada</p>
-            <ol class="entry-sequence">
-              <li><span>01</span><strong>Entrar no servidor</strong><small>O Discord mantém a identidade.</small></li>
-              <li><span>02</span><strong>Concluir a verificação</strong><small>O bot confirma a entrada.</small></li>
-              <li><span>03</span><strong>Acompanhar a rotina</strong><small>Pedidos e suporte aparecem quando houver sessão.</small></li>
-            </ol>
+          <aside class="gate-note" aria-label="Limite da área web">
+            <p class="eyebrow">Fonte de autoridade</p>
+            <p class="member-gate-note"><span class="status-mark" aria-hidden="true"></span> O Discord e o Peace Tools confirmam cargos, entrada e ações da comunidade.</p>
           </aside>
         </section>
 
-        <section class="member-authenticated" data-member-authenticated hidden aria-labelledby="member-auth-title" data-reveal>
-          <div class="member-auth-skeleton" data-member-auth-skeleton aria-busy="true" aria-label="Carregando área do membro">
-            <span></span><span></span><span></span>
-          </div>
-          <div data-member-auth-content hidden>
-            <p class="eyebrow">Sessão Peace ativa</p>
-            <h2 id="member-auth-title">Bem-vindo, <em data-member-name>membro.</em></h2>
-            <p class="hero-lede">Seu acesso foi confirmado pelo código enviado no Discord. O ID Peace <strong data-member-id>—</strong> está vinculado a esta sessão.</p>
-            <div class="gate-actions"><a class="button button--light button--large" href="../discord"><img class="discord-icon" src="../assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span>Continuar no Discord</span><span class="button-icon" aria-hidden="true">↗</span></a><button class="text-button" type="button" data-member-logout>Sair desta sessão</button></div>
+        <section class="member-workspace" data-member-workspace hidden aria-labelledby="workspace-title">
+          <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Carregando área do membro"><span></span><span></span><span></span></div>
+          <div data-member-workspace-content hidden>
+            <div class="member-workspace-topline">
+              <div>
+                <p class="eyebrow">Área autenticada</p>
+                <h1 id="workspace-title">Visão geral.</h1>
+              </div>
+              <div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div>
+            </div>
+
+            <nav class="member-nav" aria-label="Navegação da área">
+              <a aria-current="page" href="#overview">Visão geral</a>
+              <a href="../avisos/">Avisos</a>
+              <a href="#media">Mídias</a>
+              <a href="../parceiros/">Parceiros</a>
+              <a href="#investigation" data-member-capability="investigator" hidden>Investigação</a>
+              <a href="../discord" data-member-capability="scan_only" target="_blank" rel="noopener noreferrer">Gestão no Discord</a>
+              <a href="../discord" data-member-capability="logs" target="_blank" rel="noopener noreferrer">Logs no Discord</a>
+            </nav>
+
+            <div class="member-welcome" id="overview">
+              <div class="member-avatar-wrap"><img data-member-avatar alt="" hidden></div>
+              <div>
+                <p class="eyebrow">Sessão confirmada pelo Discord</p>
+                <h2>Olá, <span data-member-name>membro</span>.</h2>
+                <p>Esta é uma visão resumida. Ações e suporte continuam no servidor.</p>
+              </div>
+              <div class="member-welcome-actions"><button class="button button--outline" data-member-refresh type="button">Atualizar</button><button class="text-button" data-member-logout type="button">Sair</button></div>
+            </div>
+
+            <div class="member-next-action" data-member-next-action></div>
+
+            <div class="member-overview-grid" data-member-overview>
+              <section class="member-data-block member-data-block--wide" data-member-block="announcements" data-member-title="Avisos recentes" aria-live="polite"></section>
+              <section class="member-data-block" id="media" data-member-block="media" data-member-title="Mídias recentes" aria-live="polite"></section>
+              <section class="member-data-block" data-member-block="active_members" data-member-title="Membros ativos" aria-live="polite"></section>
+              <section class="member-data-block" data-member-block="partners" data-member-title="Parceiros" aria-live="polite"></section>
+              <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden aria-live="polite"></section>
+            </div>
           </div>
         </section>
-
-        <section class="member-principles" aria-labelledby="principles-title"><div data-reveal><p class="eyebrow">O que esta área deve resolver</p><h2 id="principles-title">Menos caça ao canal.<br><em>Mais clareza sobre o próximo passo.</em></h2></div><div class="principle-list" role="list" data-reveal><div role="listitem"><span>01</span><p><strong>Status.</strong> Saber se a entrada foi concluída e qual etapa vem depois.</p></div><div role="listitem"><span>02</span><p><strong>Histórico.</strong> Encontrar pedidos e mudanças do próprio membro em ordem.</p></div><div role="listitem"><span>03</span><p><strong>Limite.</strong> Entender quando a ação pertence ao Discord, ao bot ou à staff.</p></div></div></section>
       </main>
 
-      <footer class="site-footer"><a class="brand brand--footer" href="../" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Área da comunidade — o Discord continua sendo o ponto de encontro.</p><a class="footer-link" href="../discord"><img class="discord-icon discord-icon--small" src="../assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Discord <span aria-hidden="true">↗</span></a></footer>
+      <footer class="site-footer flow-footer flow-footer--minimal"><a class="footer-link" href="../">Voltar ao site <span aria-hidden="true">↗</span></a><p>Dados autorizados e atualizados a partir das fontes da Peace.</p></footer>
     </div>
   </body>
 </html>

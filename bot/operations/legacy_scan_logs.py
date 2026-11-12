@@ -260,28 +260,39 @@ def destination_has_equivalent_log(destinations: list[Any], source: Any, kind: s
             fields = _embed_fields(embed)
             if kind == "Set aprovado":
                 if (
-                    signature.get("peace_id") in fields.get("id peace", "")
+                    signature.get("peace_id")
+                    and signature.get("peace_id") in fields.get("id peace", "")
+                    and signature.get("member")
                     and _contains_mention(fields.get("usuário", ""), signature.get("member"))
+                    and signature.get("actor")
                     and _contains_mention(fields.get("aprovado por", ""), signature.get("actor"))
                 ):
                     return True
             elif kind == "Retorno Peace recusado":
                 if (
-                    signature.get("peace_id") in fields.get("id reservado", "")
+                    signature.get("peace_id")
+                    and signature.get("peace_id") in fields.get("id reservado", "")
+                    and signature.get("actor")
                     and _contains_mention(fields.get("quem recusou", ""), signature.get("actor"))
                 ):
                     return True
             elif kind == "Retorno Peace aprovado":
                 if (
-                    signature.get("old_id") in fields.get("id anterior", "")
+                    signature.get("old_id")
+                    and signature.get("old_id") in fields.get("id anterior", "")
+                    and signature.get("new_id")
                     and signature.get("new_id") in fields.get("novo id", "")
+                    and signature.get("actor")
                     and _contains_mention(fields.get("aprovado por", ""), signature.get("actor"))
                 ):
                     return True
             elif kind == "Set atualizado":
                 if (
-                    signature.get("peace_id") in fields.get("id peace", "")
+                    signature.get("peace_id")
+                    and signature.get("peace_id") in fields.get("id peace", "")
+                    and signature.get("member")
                     and _contains_mention(fields.get("membro", ""), signature.get("member"))
+                    and signature.get("actor")
                     and _contains_mention(fields.get("atualizado por", ""), signature.get("actor"))
                 ):
                     return True

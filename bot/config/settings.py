@@ -38,6 +38,16 @@ def _int_env(name: str, default: int | None = None) -> int:
         raise RuntimeError(f"Variável {name} precisa ser um número inteiro") from exc
 
 
+def _optional_int_env(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Variável {name} precisa ser um número inteiro") from exc
+
+
 def _bool_env(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -153,6 +163,7 @@ class Settings:
     central_access_role_id: int | None
     central_auth_code_ttl_seconds: int
     central_auth_session_ttl_seconds: int
+    central_auth_persistent_session_ttl_seconds: int
     central_bridge_url: str
     central_bridge_key: str
     private_call_category_id: int | None
@@ -161,7 +172,12 @@ class Settings:
     website_url: str
     website_media_channel_id: int | None
     website_clips_channel_id: int | None
+    website_partners_channel_id: int | None
+    website_investigation_channel_id: int | None
     website_media_cache_seconds: int
+    peace_timezone: str
+    investigator_role_id: int | None
+    lead_investigator_role_id: int | None
     api_enabled: bool
     api_host: str
     api_port: int
@@ -195,40 +211,52 @@ class Settings:
             peace_role_id=_int_env("DISCORD_PEACE_ROLE_ID"),
             novato_role_id=_int_env("DISCORD_NOVATO_ROLE_ID"),
             set_channel_id=_int_env("DISCORD_SET_CHANNEL_ID"),
-            welcome_channel_id=_int_env("DISCORD_WELCOME_CHANNEL_ID", None),
-            rules_channel_id=_int_env("DISCORD_RULES_CHANNEL_ID", None),
-            verification_category_id=_int_env("DISCORD_VERIFICATION_CATEGORY_ID", None),
-            verification_channel_id=_int_env("DISCORD_VERIFICATION_CHANNEL_ID", None),
-            log_channel_id=_int_env("DISCORD_LOG_CHANNEL_ID", None),
-            ticket_panel_channel_id=_int_env("DISCORD_TICKET_PANEL_CHANNEL_ID", None),
-            operations_channel_id=_int_env("DISCORD_OPERATIONS_CHANNEL_ID", None),
-            absence_channel_id=_int_env("DISCORD_ABSENCE_CHANNEL_ID", None),
-            scan_channel_id=_int_env("DISCORD_SCAN_CHANNEL_ID", None),
-            ticket_category_id=_int_env("DISCORD_TICKET_CATEGORY_ID", None),
-            closed_ticket_category_id=_int_env("DISCORD_CLOSED_TICKET_CATEGORY_ID", None),
-            staff_role_id=_int_env("DISCORD_STAFF_ROLE_ID", None),
-            staff_control_channel_id=_int_env("DISCORD_STAFF_CONTROL_CHANNEL_ID", None),
-            manager_role_id=_int_env("DISCORD_MANAGER_ROLE_ID", None),
-            visitor_role_id=_int_env("DISCORD_VISITOR_ROLE_ID", None),
-            not_verified_role_id=_int_env("DISCORD_NOT_VERIFIED_ROLE_ID", None),
-            intern_role_id=_int_env("DISCORD_INTERN_ROLE_ID", None),
-            booster_role_id=_int_env("DISCORD_BOOSTER_ROLE_ID", None),
-            central_access_role_id=_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID", None),
+            welcome_channel_id=_optional_int_env("DISCORD_WELCOME_CHANNEL_ID"),
+            rules_channel_id=_optional_int_env("DISCORD_RULES_CHANNEL_ID"),
+            verification_category_id=_optional_int_env("DISCORD_VERIFICATION_CATEGORY_ID"),
+            verification_channel_id=_optional_int_env("DISCORD_VERIFICATION_CHANNEL_ID"),
+            log_channel_id=_optional_int_env("DISCORD_LOG_CHANNEL_ID"),
+            ticket_panel_channel_id=_optional_int_env("DISCORD_TICKET_PANEL_CHANNEL_ID"),
+            operations_channel_id=_optional_int_env("DISCORD_OPERATIONS_CHANNEL_ID"),
+            absence_channel_id=_optional_int_env("DISCORD_ABSENCE_CHANNEL_ID"),
+            scan_channel_id=_optional_int_env("DISCORD_SCAN_CHANNEL_ID"),
+            ticket_category_id=_optional_int_env("DISCORD_TICKET_CATEGORY_ID"),
+            closed_ticket_category_id=_optional_int_env("DISCORD_CLOSED_TICKET_CATEGORY_ID"),
+            staff_role_id=_optional_int_env("DISCORD_STAFF_ROLE_ID"),
+            staff_control_channel_id=_optional_int_env("DISCORD_STAFF_CONTROL_CHANNEL_ID"),
+            manager_role_id=_optional_int_env("DISCORD_MANAGER_ROLE_ID"),
+            visitor_role_id=_optional_int_env("DISCORD_VISITOR_ROLE_ID"),
+            not_verified_role_id=_optional_int_env("DISCORD_NOT_VERIFIED_ROLE_ID"),
+            intern_role_id=_optional_int_env("DISCORD_INTERN_ROLE_ID"),
+            booster_role_id=_optional_int_env("DISCORD_BOOSTER_ROLE_ID"),
+            central_access_role_id=_optional_int_env("DISCORD_CENTRAL_ACCESS_ROLE_ID"),
             central_auth_code_ttl_seconds=_int_env("CENTRAL_AUTH_CODE_TTL_SECONDS", 600),
-            central_auth_session_ttl_seconds=_int_env("CENTRAL_AUTH_SESSION_TTL_SECONDS", 1800),
+            central_auth_session_ttl_seconds=min(
+                7 * 24 * 60 * 60,
+                max(60, _int_env("CENTRAL_AUTH_SESSION_TTL_SECONDS", 1800)),
+            ),
+            central_auth_persistent_session_ttl_seconds=min(
+                7 * 24 * 60 * 60,
+                max(60, _int_env("CENTRAL_AUTH_PERSISTENT_SESSION_TTL_SECONDS", 7 * 24 * 60 * 60)),
+            ),
             central_bridge_url=(
                 parse_central_bridge_url(central_bridge_url)[2]
                 if central_bridge_url
                 else ""
             ),
             central_bridge_key=_central_bridge_key_env(),
-            private_call_category_id=_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID", None),
-            automod_channel_id=_int_env("DISCORD_AUTOMOD_CHANNEL_ID", None),
-            afk_channel_id=_int_env("DISCORD_AFK_CHANNEL_ID", None),
+            private_call_category_id=_optional_int_env("DISCORD_PRIVATE_CALL_CATEGORY_ID"),
+            automod_channel_id=_optional_int_env("DISCORD_AUTOMOD_CHANNEL_ID"),
+            afk_channel_id=_optional_int_env("DISCORD_AFK_CHANNEL_ID"),
             website_url=os.getenv("PEACE_SITE_URL", "https://peacegg.com.br").strip(),
-            website_media_channel_id=_int_env("PEACE_SITE_MEDIA_CHANNEL_ID", None),
-            website_clips_channel_id=_int_env("PEACE_SITE_CLIPS_CHANNEL_ID", None),
+            website_media_channel_id=_optional_int_env("PEACE_SITE_MEDIA_CHANNEL_ID"),
+            website_clips_channel_id=_optional_int_env("PEACE_SITE_CLIPS_CHANNEL_ID"),
+            website_partners_channel_id=_optional_int_env("PEACE_SITE_PARTNERS_CHANNEL_ID"),
+            website_investigation_channel_id=_optional_int_env("PEACE_SITE_INVESTIGATION_CHANNEL_ID"),
             website_media_cache_seconds=max(30, _int_env("PEACE_SITE_MEDIA_CACHE_SECONDS", 300)),
+            peace_timezone=os.getenv("PEACE_TIMEZONE", "America/Sao_Paulo").strip() or "America/Sao_Paulo",
+            investigator_role_id=_optional_int_env("DISCORD_INVESTIGATOR_ROLE_ID"),
+            lead_investigator_role_id=_optional_int_env("DISCORD_LEAD_INVESTIGATOR_ROLE_ID"),
             api_enabled=_bool_env("PEACE_API_ENABLED", True),
             api_host=os.getenv("PEACE_API_HOST", "0.0.0.0").strip() or "0.0.0.0",
             api_port=_int_env("PEACE_API_PORT", _int_env("PORT", 8080)),
@@ -242,7 +270,7 @@ class Settings:
             iris_learning_channel_ids=_ids_env("IRIS_LEARNING_CHANNEL_IDS"),
             iris_history_limit=_int_env("IRIS_HISTORY_LIMIT", 10),
             founder_user_id=_int_env("DISCORD_FOUNDER_USER_ID"),
-            bot_user_id=_int_env("DISCORD_BOT_USER_ID", None),
+            bot_user_id=_optional_int_env("DISCORD_BOT_USER_ID"),
             database_path=database_path,
             set_vagas_abertas=_bool_env("SET_VAGAS_ABERTAS", True),
             developer_vagas_abertas=_bool_env("SET_DEVELOPER_VAGAS_ABERTAS"),
@@ -260,6 +288,8 @@ class Settings:
             "DISCORD_INTERN_ROLE_ID": settings.intern_role_id,
             "DISCORD_BOOSTER_ROLE_ID": settings.booster_role_id,
             "DISCORD_CENTRAL_ACCESS_ROLE_ID": settings.central_access_role_id,
+            "DISCORD_INVESTIGATOR_ROLE_ID": settings.investigator_role_id,
+            "DISCORD_LEAD_INVESTIGATOR_ROLE_ID": settings.lead_investigator_role_id,
         }
         try:
             if (__package__ or "").startswith("bot."):

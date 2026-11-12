@@ -11,26 +11,10 @@
   var memberSessionStorageKey = "peace.member.session.v1";
 
   function readMemberSessionToken() {
-    try {
-      var persistent = window.localStorage.getItem(memberSessionStorageKey) || "";
-      if (persistent) return persistent;
-    } catch (error) { /* optional */ }
-    try {
-      return window.sessionStorage.getItem(memberSessionStorageKey) || "";
-    } catch (error) {
-      return "";
-    }
-  }
-
-  function storeMemberSessionToken(token, keepConnected) {
-    try {
-      if (keepConnected) window.localStorage.setItem(memberSessionStorageKey, token);
-      else window.localStorage.removeItem(memberSessionStorageKey);
-    } catch (error) { /* optional */ }
-    try {
-      if (keepConnected) window.sessionStorage.removeItem(memberSessionStorageKey);
-      else window.sessionStorage.setItem(memberSessionStorageKey, token);
-    } catch (error) { /* optional */ }
+    // The authenticated session is HttpOnly. Delete any token left by the
+    // pre-cookie client and never read it into page JavaScript again.
+    clearMemberSessionToken();
+    return "";
   }
 
   function clearMemberSessionToken() {
@@ -395,14 +379,21 @@
       });
     }
 
-    function renderList(kind, items) {
+    function renderList(kind, items, source) {
       var list = lists[kind];
       var empty = emptyStates[kind];
       if (!list) return;
       list.replaceChildren();
       list.setAttribute("aria-busy", "false");
       if (!Array.isArray(items) || !items.length) {
-        if (empty) empty.hidden = false;
+        if (empty) {
+          empty.textContent = source && source.state === "unavailable"
+            ? "Esta fonte está indisponível agora. Tente atualizar em instantes."
+            : (kind === "clips"
+              ? "Os clipes entram aqui quando forem publicados pela comunidade."
+              : "Os próximos momentos aparecem aqui quando a comunidade compartilhar algo novo.");
+          empty.hidden = false;
+        }
         return;
       }
       if (empty) empty.hidden = true;
@@ -439,8 +430,9 @@
       return attemptEndpoint("/api/media?seed=" + encodeURIComponent(String(seed)), { headers: { Accept: "application/json" } }, 12000)
         .then(parseMediaResponse)
         .then(function (payload) {
-          renderList("moments", payload.moments || []);
-          renderList("clips", payload.clips || []);
+          var sources = payload.sources || {};
+          renderList("moments", payload.moments || [], sources.moments);
+          renderList("clips", payload.clips || [], sources.clips);
           var count = (payload.moments || []).length + (payload.clips || []).length;
           if (updated) updated.textContent = count ? "Atualizado agora · registros do Discord" : "A comunidade continua em movimento no Discord.";
           if (status) status.textContent = count ? "Momentos atualizados." : "Os próximos registros aparecem aqui quando forem publicados.";
@@ -619,6 +611,7 @@
       return Promise.reject(browserError);
     }
     var requestOptions = Object.assign({}, options || { headers: { Accept: "application/json" } });
+    if (!requestOptions.credentials) requestOptions.credentials = "same-origin";
     var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
     var timeoutId;
     var duration = Number(timeoutMs) > 0 ? Number(timeoutMs) : 60000;
@@ -1508,6 +1501,7 @@
 
     var requestForm = document.querySelector("[data-login-request]");
     var verifyForm = document.querySelector("[data-login-verify]");
+    var resendButton = document.querySelector("[data-login-resend]");
     var status = document.querySelector("[data-login-status]");
     var requestButton = requestForm && requestForm.querySelector("button[type=submit]");
     var verifyButton = verifyForm && verifyForm.querySelector("button[type=submit]");
@@ -1515,7 +1509,8 @@
     var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
     var keepConnected = requestForm && requestForm.querySelector('[name="keep-connected"]');
     var codeInput = verifyForm && verifyForm.querySelector('[name="access-code"]');
-    var requestedPeaceId = "";
+    var resendTimer = null;
+    var resendAvailableAt = 0;
 
     function parseLoginResponse(response) {
       return response.text().then(function (raw) {
@@ -1535,6 +1530,34 @@
       });
     }
 
+    function showCodeStep() {
+      if (requestForm) requestForm.hidden = true;
+      if (verifyForm) verifyForm.hidden = false;
+      if (resendButton) resendButton.hidden = false;
+      if (codeInput) codeInput.focus();
+    }
+
+    function startResendCooldown(seconds) {
+      if (!resendButton) return;
+      if (resendTimer) window.clearInterval(resendTimer);
+      resendAvailableAt = Date.now() + Math.max(30, Number(seconds) || 30) * 1000;
+      resendButton.disabled = true;
+      resendButton.hidden = false;
+      function tick() {
+        var remaining = Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000));
+        if (!remaining) {
+          window.clearInterval(resendTimer);
+          resendTimer = null;
+          resendButton.disabled = false;
+          resendButton.textContent = "Não recebi o código";
+          return;
+        }
+        resendButton.textContent = "Não recebi o código · aguarde " + remaining + "s";
+      }
+      tick();
+      resendTimer = window.setInterval(tick, 1000);
+    }
+
     if (idInput) {
       idInput.addEventListener("input", function () {
         idInput.value = idInput.value.replace(/\D/g, "").slice(0, 19);
@@ -1542,32 +1565,53 @@
       });
     }
 
-    if (requestForm) requestForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      if (!idInput || !/^\d{1,19}$/.test(idInput.value.trim())) {
-        if (idInput) { idInput.setCustomValidity("Use somente números, com até 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
-        return;
+    function requestAccessCode(isResend) {
+      if (!isResend) {
+        if (!idInput || !/^\d{1,19}$/.test(idInput.value.trim())) {
+          if (idInput) { idInput.setCustomValidity("Use somente números, com até 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
+          return;
+        }
       }
-      requestedPeaceId = idInput.value.trim();
+      if (isResend && Date.now() < resendAvailableAt) return;
       if (result) result.textContent = "";
-      setButtonBusy(requestButton, true, "Enviando código…");
+      var activeButton = isResend ? resendButton : requestButton;
+      if (isResend && activeButton) {
+        activeButton.disabled = true;
+        activeButton.setAttribute("aria-busy", "true");
+        activeButton.textContent = "Enviando…";
+      } else {
+        setButtonBusy(activeButton, true, "Enviando código…");
+      }
       attemptEndpoint("/api/member/auth/request", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ peace_id: requestedPeaceId })
+        body: JSON.stringify(isResend ? {} : { peace_id: idInput.value.trim() })
       }, 60000)
         .then(parseLoginResponse)
-        .then(function (payload) {
-          var memberName = payload.member_name ? " para " + payload.member_name : "";
-          setStatusMessage(status, "Código enviado", "Enviamos um código de 6 números para sua DM no Discord" + memberName + ".", "success");
-          if (verifyForm) verifyForm.hidden = false;
-          if (codeInput) codeInput.focus();
+        .then(function () {
+          setStatusMessage(status, "Código enviado", "Enviamos um código de 6 números para sua DM no Discord.", "success");
+          showCodeStep();
+          if (idInput) idInput.value = "";
+          startResendCooldown(30);
         })
         .catch(function (error) {
           setStatusMessage(status, "Não foi possível continuar", error.message || "Tente novamente.", "warning");
         })
-        .finally(function () { setButtonBusy(requestButton, false); });
+        .finally(function () {
+          if (isResend && activeButton) {
+            activeButton.removeAttribute("aria-busy");
+            if (Date.now() >= resendAvailableAt) activeButton.disabled = false;
+          } else {
+            setButtonBusy(activeButton, false);
+          }
+        });
+    }
+
+    if (requestForm) requestForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      requestAccessCode(false);
     });
+    if (resendButton) resendButton.addEventListener("click", function () { requestAccessCode(true); });
 
     if (codeInput) {
       codeInput.addEventListener("input", syncCodeCells);
@@ -1578,7 +1622,7 @@
     if (verifyForm) verifyForm.addEventListener("submit", function (event) {
       event.preventDefault();
       syncCodeCells();
-      if (!/^\d{6}$/.test(codeInput ? codeInput.value : "") || !/^\d{1,19}$/.test(requestedPeaceId)) {
+      if (!/^\d{6}$/.test(codeInput ? codeInput.value : "")) {
         if (codeInput) { codeInput.setCustomValidity("Digite os 6 números recebidos no Discord."); codeInput.reportValidity(); codeInput.setCustomValidity(""); }
         return;
       }
@@ -1587,13 +1631,18 @@
       attemptEndpoint("/api/member/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ peace_id: requestedPeaceId, code: codeInput.value })
+        body: JSON.stringify({
+          code: codeInput.value,
+          keep_connected: Boolean(keepConnected && keepConnected.checked),
+        })
       }, 60000)
         .then(parseLoginResponse)
         .then(function (payload) {
-          storeMemberSessionToken(payload.session.token, Boolean(keepConnected && keepConnected.checked));
+          // New sessions are HttpOnly cookies. Remove only any pre-cookie
+          // legacy token; never expose the fresh session to JavaScript.
+          clearMemberSessionToken();
           setStatusMessage(status, "Acesso confirmado", "Abrindo sua área da Peace…", "success");
-          window.setTimeout(function () { window.location.assign("/area/"); }, 260);
+          window.setTimeout(function () { window.location.replace("/area/"); }, 260);
         })
         .catch(function (error) {
           if (result) result.textContent = error.message || "Não foi possível validar o código.";
@@ -1605,30 +1654,152 @@
     if (params.get("status") === "already-member") {
       setStatusMessage(status, "Você já é membro", "Não é necessário pedir setagem. Entre com seu ID Peace para continuar.", "success");
     }
+    if (params.get("status") === "session-expired") {
+      setStatusMessage(status, "Sessão encerrada", "Entre novamente para continuar na área da Peace.", "warning");
+    }
+    if (params.get("status") === "logged-out") {
+      setStatusMessage(status, "Sessão encerrada", "Você saiu deste dispositivo.", "success");
+    }
+
+    var existingToken = readMemberSessionToken();
+    var existingHeaders = { Accept: "application/json", "Content-Type": "application/json" };
+    if (existingToken) existingHeaders.Authorization = "Bearer " + existingToken;
+    attemptEndpoint("/api/member/auth/session", {
+      method: "POST",
+      headers: existingHeaders,
+      body: "{}",
+    }, 15000)
+      .then(function () { window.location.replace("/area/"); })
+      .catch(function (error) {
+        if (existingToken && error && (error.status === 401 || error.status === 403)) clearMemberSessionToken();
+      });
   }
 
   function initMemberArea() {
     if (body.dataset.page !== "member") return;
 
     var gate = document.querySelector("[data-member-gate]");
-    var authenticated = document.querySelector("[data-member-authenticated]");
-    var authSkeleton = document.querySelector("[data-member-auth-skeleton]");
-    var authContent = authenticated && authenticated.querySelector("[data-member-auth-content]");
-    var memberName = authenticated && authenticated.querySelector("[data-member-name]");
-    var memberId = authenticated && authenticated.querySelector("[data-member-id]");
-    var logoutButton = authenticated && authenticated.querySelector("[data-member-logout]");
+    var workspace = document.querySelector("[data-member-workspace]");
+    var workspaceSkeleton = workspace && workspace.querySelector("[data-member-workspace-skeleton]");
+    var workspaceContent = workspace && workspace.querySelector("[data-member-workspace-content]");
+    var memberName = workspace && workspace.querySelector("[data-member-name]");
+    var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
+    var logoutButton = workspace && workspace.querySelector("[data-member-logout]");
+    var connection = workspace && workspace.querySelector("[data-member-connection]");
+    var overview = workspace && workspace.querySelector("[data-member-overview]");
+    var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
+    var refreshButton = workspace && workspace.querySelector("[data-member-refresh]");
+    var loading = false;
+    var memberPollTimer = null;
+    var hasAuthenticatedWorkspace = false;
+    var logoutPending = false;
 
-    function loadMemberSession() {
+    function renderMemberBlock(container, block, title) {
+      if (!container || !block) return;
+      container.textContent = "";
+      var heading = document.createElement("h3");
+      heading.textContent = title;
+      container.appendChild(heading);
+      if (block.items && block.items.length) {
+        var list = document.createElement("ul");
+        list.className = "member-block-list";
+        block.items.forEach(function (item) {
+          var row = document.createElement("li");
+          var copy = document.createElement("div");
+          copy.className = "member-block-copy";
+          var label = document.createElement("strong");
+          label.textContent = item.author || item.title || "Atualização";
+          copy.appendChild(label);
+          if (item.text) {
+            var text = document.createElement("p");
+            text.textContent = item.text;
+            copy.appendChild(text);
+          }
+          if (item.published_at || item.started_at) {
+            var date = document.createElement("small");
+            date.textContent = new Date(item.published_at || item.started_at).toLocaleString("pt-BR");
+            copy.appendChild(date);
+          }
+          if (item.url) {
+            var link = document.createElement("a");
+            link.href = item.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "Abrir no Discord ↗";
+            copy.appendChild(link);
+          }
+          row.appendChild(copy);
+          list.appendChild(row);
+        });
+        container.appendChild(list);
+      } else {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = block.message || "Sem dados disponíveis agora.";
+        container.appendChild(empty);
+      }
+      var freshness = document.createElement("small");
+      freshness.className = "member-block-freshness";
+      freshness.textContent = block.stale ? "Desatualizado · tentando atualizar" : "Fonte: " + (block.source || "Peace");
+      container.appendChild(freshness);
+    }
+
+    function renderOverview(payload) {
+      var data = payload && payload.overview;
+      if (!data || !overview) return;
+      if (nextAction && data.next_action) {
+        nextAction.textContent = "";
+        var nextTitle = document.createElement("strong");
+        nextTitle.textContent = data.next_action.title || "Próximo passo";
+        var nextText = document.createElement("p");
+        nextText.textContent = data.next_action.message || "Consulte o Discord para continuar.";
+        nextAction.appendChild(nextTitle);
+        nextAction.appendChild(nextText);
+      }
+      overview.querySelectorAll("[data-member-block]").forEach(function (node) {
+        var key = node.getAttribute("data-member-block");
+        var capability = node.getAttribute("data-member-capability");
+        if (capability && (!data.capabilities || data.capabilities[capability] !== true)) {
+          node.hidden = true;
+          return;
+        }
+        node.hidden = false;
+        renderMemberBlock(node, data[key], node.dataset.memberTitle || key);
+      });
+      document.querySelectorAll("[data-member-capability]").forEach(function (node) {
+        var capability = node.getAttribute("data-member-capability");
+        node.hidden = !data.capabilities || data.capabilities[capability] !== true;
+      });
+      if (connection) connection.textContent = "Atualizado agora · sessão validada pelo Discord";
+    }
+
+    function parseOverviewResponse(response) {
+      return response.text().then(function (raw) {
+        var payload = null;
+        try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+        if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível atualizar a área.");
+        return payload;
+      });
+    }
+
+    function loadMemberSession(options) {
+      options = options || {};
+      var silent = options.silent === true;
       var token = readMemberSessionToken();
-      if (!token || !authenticated) return;
+      if (!workspace || loading) return;
 
-      authenticated.hidden = false;
-      authenticated.classList.add("is-visible");
-      if (authSkeleton) authSkeleton.hidden = false;
-      if (authContent) authContent.hidden = true;
+      loading = true;
+      workspace.hidden = false;
+      if (!silent) {
+        if (workspaceSkeleton) workspaceSkeleton.hidden = false;
+        if (workspaceContent) workspaceContent.hidden = true;
+      }
+      if (silent && connection) connection.textContent = "Atualizando…";
+      var sessionHeaders = { Accept: "application/json", "Content-Type": "application/json" };
+      if (token) sessionHeaders.Authorization = "Bearer " + token;
       attemptEndpoint("/api/member/auth/session", {
         method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + token },
+        headers: sessionHeaders,
         body: "{}"
       }, 60000)
         .then(function (response) {
@@ -1640,26 +1811,76 @@
           });
         })
         .then(function (payload) {
+          hasAuthenticatedWorkspace = true;
           if (gate) gate.hidden = true;
-          if (authSkeleton) authSkeleton.hidden = true;
-          if (authContent) authContent.hidden = false;
-          if (memberName) memberName.textContent = payload.session.member_name || "membro.";
-          if (memberId) memberId.textContent = payload.session.peace_id === null || payload.session.peace_id === undefined
-            ? "—"
-            : String(payload.session.peace_id);
+          if (workspaceSkeleton) workspaceSkeleton.hidden = true;
+          if (workspaceContent) workspaceContent.hidden = false;
+          if (memberName) memberName.textContent = payload.session.member_name || "membro";
+          if (memberAvatar && payload.session.avatar_url) {
+            memberAvatar.src = payload.session.avatar_url;
+            memberAvatar.hidden = false;
+          }
+          var overviewHeaders = { Accept: "application/json" };
+          if (token) overviewHeaders.Authorization = "Bearer " + token;
+          return attemptEndpoint("/api/member/overview", {
+            method: "GET",
+            headers: overviewHeaders,
+          }, 30000).then(parseOverviewResponse).then(renderOverview);
         })
-        .catch(function () {
-          clearMemberSessionToken();
-          if (authenticated) authenticated.hidden = true;
+        .catch(function (error) {
+          if ((token || hasAuthenticatedWorkspace) && error && (error.status === 401 || error.status === 403)) {
+            clearMemberSessionToken();
+            window.location.replace("/acessar/?status=session-expired");
+            return;
+          }
+          if (!token && error && (error.status === 401 || error.status === 403)) {
+            if (workspace) workspace.hidden = true;
+            if (gate) gate.hidden = false;
+            return;
+          }
+          if (connection) connection.textContent = "Não foi possível atualizar · tente novamente";
+          if (!silent) {
+            if (workspaceSkeleton) workspaceSkeleton.hidden = true;
+            if (workspaceContent) workspaceContent.hidden = false;
+          }
+        })
+        .finally(function () {
+          loading = false;
         });
     }
 
     if (logoutButton) logoutButton.addEventListener("click", function () {
-      clearMemberSessionToken();
-      if (authenticated) authenticated.hidden = true;
-      if (gate) gate.hidden = false;
+      if (logoutPending) return;
+      logoutPending = true;
+      logoutButton.disabled = true;
+      logoutButton.setAttribute("aria-busy", "true");
+      var token = readMemberSessionToken();
+      var headers = { Accept: "application/json", "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+      attemptEndpoint("/api/member/auth/revoke", {
+        method: "POST",
+        headers: headers,
+        body: "{}",
+      }, 10000)
+        .then(function () {
+          clearMemberSessionToken();
+          window.location.replace("/acessar/?status=logged-out");
+        })
+        .catch(function (error) {
+          logoutPending = false;
+          logoutButton.disabled = false;
+          logoutButton.removeAttribute("aria-busy");
+          if (connection) connection.textContent = (error && error.message) || "Não foi possível encerrar a sessão. Tente novamente.";
+        });
     });
-    loadMemberSession();
+    if (refreshButton) refreshButton.addEventListener("click", function () { loadMemberSession({ silent: false }); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && (readMemberSessionToken() || hasAuthenticatedWorkspace)) loadMemberSession({ silent: true });
+    });
+    loadMemberSession({ silent: false });
+    memberPollTimer = window.setInterval(function () {
+      if (document.visibilityState === "visible" && hasAuthenticatedWorkspace) loadMemberSession({ silent: true });
+    }, 45000);
   }
 
   initPublicMedia();

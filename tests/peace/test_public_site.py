@@ -1,9 +1,13 @@
 import asyncio
 import http.client
 import re
+import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from urllib.error import HTTPError
+from urllib.request import Request
 from unittest.mock import AsyncMock
 
 from aiohttp import web
@@ -24,6 +28,11 @@ def make_bot(tmp_path):
         visitor_role_id=200,
         not_verified_role_id=300,
         verification_channel_id=500,
+        staff_role_id=501,
+        manager_role_id=502,
+        central_access_role_id=503,
+        investigator_role_id=101,
+        lead_investigator_role_id=102,
     )
     return PeaceBot(settings)
 
@@ -49,15 +58,30 @@ def run_public_api(tmp_path, request_path, *, method="GET", headers=None):
     return asyncio.run(scenario())
 
 
-def run_configured_api(bot, request_path, *, method="GET", payload=None):
+def run_configured_api(bot, request_path, *, method="GET", payload=None, headers=None, cookies=None):
     async def scenario():
         app = bot.public_api_app()
         server = TestServer(app)
         client = TestClient(server)
         await client.start_server()
         try:
-            response = await client.request(method, request_path, json=payload)
+            response = await client.request(method, request_path, json=payload, headers=headers, cookies=cookies)
             return response.status, await response.json()
+        finally:
+            await client.close()
+
+    return asyncio.run(scenario())
+
+
+def run_configured_api_with_headers(bot, request_path, *, method="GET", payload=None, headers=None, cookies=None):
+    async def scenario():
+        app = bot.public_api_app()
+        server = TestServer(app)
+        client = TestClient(server)
+        await client.start_server()
+        try:
+            response = await client.request(method, request_path, json=payload, headers=headers, cookies=cookies)
+            return response.status, response.headers, await response.json()
         finally:
             await client.close()
 
@@ -96,6 +120,33 @@ def test_public_api_status_is_bounded_and_tracks_discord_readiness(tmp_path):
         '{"service": "peace-backend", "status": "starting", '
         '"frontend": "netlify", "discord": {"connected": false}}'
     )
+
+
+def test_public_api_rate_limit_has_retry_contract(tmp_path):
+    bot = make_bot(tmp_path)
+    request = SimpleNamespace(path="/api/entry/start", remote="198.51.100.20")
+
+    for _ in range(12):
+        assert bot.public_api_rate_limit(request) is None
+
+    response = bot.public_api_rate_limit(request)
+
+    assert response is not None
+    assert response.status == 429
+    assert int(response.headers["Retry-After"]) > 0
+
+
+def test_public_media_feed_reports_unavailable_sources_without_faking_empty_data(tmp_path):
+    bot = make_bot(tmp_path)
+
+    status, payload = run_configured_api(bot, "/api/media?seed=7", method="GET")
+
+    assert status == 200
+    assert payload["moments"] == []
+    assert payload["clips"] == []
+    assert payload["sources"]["moments"]["state"] == "unavailable"
+    assert payload["sources"]["moments"]["stale"] is True
+    assert payload["sources"]["clips"]["state"] == "unavailable"
 
 
 def test_public_media_feed_reads_discord_attachments_and_keeps_external_urls_out(tmp_path):
@@ -511,9 +562,9 @@ def test_public_api_rejects_untrusted_origins_without_reflection(tmp_path):
         headers={"Origin": "https://evil.peacegg.com.br"},
     )
 
-    assert status == 200
+    assert status == 403
     assert "Access-Control-Allow-Origin" not in headers
-    assert "Vary" not in headers
+    assert headers["Cache-Control"] == "no-store"
 
 
 def test_public_api_supports_only_status_preflight(tmp_path):
@@ -528,6 +579,29 @@ def test_public_api_supports_only_status_preflight(tmp_path):
     assert body == ""
     assert headers["Access-Control-Allow-Origin"] == "https://www.peacegg.com.br"
     assert headers["Access-Control-Allow-Methods"] == "GET, POST, OPTIONS"
+
+
+def test_authentication_responses_are_private_and_uncacheable(tmp_path):
+    routes = (
+        ("/api/member/auth/request", {"peace_id": "invalid"}),
+        ("/api/member/auth/verify", {"peace_id": "invalid", "code": "invalid"}),
+        ("/api/member/auth/session", {}),
+        ("/api/member/auth/revoke", {}),
+    )
+
+    for route, payload in routes:
+        bot = make_bot(tmp_path)
+        status, headers, _ = run_configured_api_with_headers(
+            bot,
+            route,
+            method="POST",
+            payload=payload,
+        )
+
+        assert status in {400, 401}
+        assert headers["Cache-Control"] == "no-store, private"
+        assert headers["Pragma"] == "no-cache"
+        assert {value.strip() for value in headers["Vary"].split(",")} >= {"Authorization", "Cookie"}
 
 
 def test_public_api_does_not_expose_central_bridge_routes(tmp_path):
@@ -702,6 +776,9 @@ def test_public_member_auth_sends_and_consumes_one_dm_code(tmp_path):
         role_names=["Peace"],
         founder_id=999,
     )
+    with bot.database.connect() as connection:
+        connection.execute("UPDATE members SET peace_id = 42 WHERE discord_user_id = ?", (str(member.id),))
+        connection.commit()
     bot.guild = SimpleNamespace(
         members=[member],
         get_member=lambda user_id: member if user_id == member.id else None,
@@ -709,7 +786,7 @@ def test_public_member_auth_sends_and_consumes_one_dm_code(tmp_path):
     bot.is_ready = lambda: True
     bot.is_closed = lambda: False
 
-    status, requested = run_configured_api(
+    status, requested_headers, requested = run_configured_api_with_headers(
         bot,
         "/api/member/auth/request",
         method="POST",
@@ -717,28 +794,45 @@ def test_public_member_auth_sends_and_consumes_one_dm_code(tmp_path):
     )
     assert status == 200
     assert requested["ok"] is True
-    assert requested["member_name"] == "Peaceiro"
-    message = member.send.await_args.args[0]
-    code = re.search(r"Código: `(?P<code>\d{6})`", message).group("code")
+    assert "member_name" not in requested
+    message = member.send.await_args.kwargs["embed"]
+    code = message.fields[0].value.strip("`")
+    assert message.description == f"Bom dia, <@{member.id}>." or message.description == f"Boa tarde, <@{member.id}>." or message.description == f"Boa noite, <@{member.id}>."
+    allowed_mentions = member.send.await_args.kwargs["allowed_mentions"]
+    assert allowed_mentions.users is True
+    assert allowed_mentions.roles is False
     assert code not in requested
+    challenge_cookie = next(
+        value.split(";", 1)[0]
+        for value in requested_headers.getall("Set-Cookie", [])
+        if value.startswith("peace_member_challenge=")
+    )
+    challenge_name, challenge_value = challenge_cookie.split("=", 1)
+    assert challenge_name == "peace_member_challenge"
+    assert challenge_value
 
-    status, verified = run_configured_api(
+    status, verified_headers, verified = run_configured_api_with_headers(
         bot,
         "/api/member/auth/verify",
         method="POST",
-        payload={"peace_id": "42", "code": code},
+        headers={"Origin": "https://peacegg.com.br"},
+        cookies={challenge_name: challenge_value},
+        payload={"code": code},
     )
     assert status == 200
     assert verified["ok"] is True
     assert verified["session"]["peace_id"] == 42
     assert verified["session"]["member_name"] == "Peaceiro"
-    assert "token" in verified["session"]
+    assert "token" not in verified["session"]
+    assert any(value.startswith("peace_member_session=") for value in verified_headers.getall("Set-Cookie", []))
 
     status, invalid = run_configured_api(
         bot,
         "/api/member/auth/verify",
         method="POST",
-        payload={"peace_id": "42", "code": code},
+        headers={"Origin": "https://peacegg.com.br"},
+        cookies={challenge_name: challenge_value},
+        payload={"code": code},
     )
     assert status == 401
     assert invalid["code"] == "INVALID_CODE"
@@ -787,6 +881,314 @@ def test_public_member_auth_rejects_ids_outside_numeric_limit(tmp_path):
     assert payload["code"] == "INVALID_PEACE_ID"
 
 
+def test_public_member_auth_rejects_ids_that_overflow_sqlite(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.guild = SimpleNamespace()
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    for value in ("9223372036854775808", "9999999999999999999"):
+        status, payload = run_configured_api(
+            bot,
+            "/api/member/auth/request",
+            method="POST",
+            payload={"peace_id": value},
+        )
+        assert status == 400
+        assert payload["code"] == "INVALID_PEACE_ID"
+
+
+def test_public_member_cookie_wins_over_legacy_bearer(tmp_path):
+    bot = make_bot(tmp_path)
+    cookie = "C" * 43
+    bearer = "B" * 43
+    request = SimpleNamespace(
+        cookies={"peace_member_session": cookie},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+
+    assert bot.public_member_token(request) == cookie
+
+
+def test_public_member_session_is_revoked_when_a_peace_id_is_reassigned(tmp_path):
+    bot = make_bot(tmp_path)
+    first_user_id = 111111111111111
+    second_user_id = 222222222222222
+    bot.database.ensure_runtime_member(
+        discord_user_id=first_user_id,
+        username="first",
+        nickname="First",
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=999,
+    )
+    first = bot.database.get_member(first_user_id)
+    assert first is not None
+    token = bot.database.create_central_login_session(
+        discord_user_id=first_user_id,
+        peace_id=int(first["peace_id"]),
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+    )
+    with bot.database.connect() as connection:
+        connection.execute("DELETE FROM member_roles WHERE discord_user_id = ?", (str(first_user_id),))
+        connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(first_user_id),))
+        timestamp = datetime.now(timezone.utc).isoformat()
+        connection.execute(
+            """
+            INSERT INTO members (
+                discord_user_id, username, global_name, display_name, nickname,
+                peace_id, name_prefix, is_founder, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (str(second_user_id), "second", None, "Second", "Second", int(first["peace_id"]), "N", timestamp, timestamp),
+        )
+        connection.execute(
+            "INSERT INTO member_roles (discord_user_id, role_id, role_name) VALUES (?, ?, ?)",
+            (str(second_user_id), "100", "Peace"),
+        )
+        connection.commit()
+    member = SimpleNamespace(
+        id=second_user_id,
+        name="second",
+        display_name="Second",
+        global_name="Second",
+        nick="Second",
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+    )
+    bot.guild = SimpleNamespace(
+        get_member=lambda user_id: member if user_id == second_user_id else None,
+        fetch_member=AsyncMock(return_value=member),
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/session",
+        method="POST",
+        cookies={"peace_member_session": token},
+        payload={},
+    )
+
+    assert status == 401
+    assert payload["code"] == "AUTH_SESSION_INVALID"
+    assert bot.database.validate_central_login_session(token=token, client_id="peacegg-web") is None
+
+
+def test_public_member_logout_revokes_cookie_only_session(tmp_path):
+    bot = make_bot(tmp_path)
+    token = bot.database.create_central_login_session(
+        discord_user_id=123,
+        peace_id=42,
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/revoke",
+        method="POST",
+        payload={},
+        headers={"Origin": "https://peacegg.com.br"},
+        cookies={"peace_member_session": token},
+    )
+
+    assert status == 200
+    assert payload == {"ok": True, "message": "Sessão encerrada."}
+    assert bot.database.validate_central_login_session(token=token, client_id="peacegg-web") is None
+
+
+def test_public_member_logout_rejects_cookie_without_allowed_origin(tmp_path):
+    bot = make_bot(tmp_path)
+    token = bot.database.create_central_login_session(
+        discord_user_id=123,
+        peace_id=42,
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/revoke",
+        method="POST",
+        payload={},
+        cookies={"peace_member_session": token},
+    )
+
+    assert status == 403
+    assert payload["code"] == "ORIGIN_REQUIRED"
+    assert bot.database.validate_central_login_session(token=token, client_id="peacegg-web") is not None
+
+
+def test_public_auth_member_uses_fresh_discord_role_state(tmp_path):
+    cached_member = SimpleNamespace(
+        id=12345678901234567,
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+    )
+    fetched_member = SimpleNamespace(
+        id=cached_member.id,
+        roles=[],
+        bot=False,
+    )
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=cached_member.id,
+        username="peaceiro",
+        nickname="M ⎰ Peaceiro 42",
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=999,
+    )
+    with bot.database.connect() as connection:
+        connection.execute("UPDATE members SET peace_id = 42 WHERE discord_user_id = ?", (str(cached_member.id),))
+        connection.commit()
+
+    async def fetch_member(_member_id):
+        return fetched_member
+
+    bot.guild = SimpleNamespace(
+        get_member=lambda user_id: cached_member if user_id == cached_member.id else None,
+        fetch_member=fetch_member,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/request",
+        method="POST",
+        payload={"peace_id": "42"},
+    )
+
+    assert status == 403
+    assert payload["code"] == "AUTH_DENIED"
+
+
+def test_investigation_overview_reads_only_the_authorized_channel(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="investigador",
+        display_name="Investigator",
+        global_name="Investigator",
+        nick="I ⎰ Investigator 42",
+        roles=[SimpleNamespace(id=100, name="Peace"), SimpleNamespace(id=101, name="Investigator")],
+        bot=False,
+    )
+
+    class Channel:
+        def permissions_for(self, _member):
+            return SimpleNamespace(view_channel=True, read_message_history=True)
+
+        async def history(self, limit):
+            assert limit == 12
+            yield SimpleNamespace(
+                id=1,
+                content="Registro autorizado",
+                author=SimpleNamespace(display_name="Staff", global_name="Staff", name="staff"),
+                embeds=[],
+                attachments=[],
+                created_at=datetime.now(timezone.utc),
+                jump_url="https://discord.com/channels/1/2/1",
+            )
+
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[100, 101],
+        role_names=["Peace", "Investigator"],
+        founder_id=999,
+    )
+    with bot.database.connect() as connection:
+        connection.execute("UPDATE members SET peace_id = 42 WHERE discord_user_id = ?", (str(member.id),))
+        connection.commit()
+    bot.guild = SimpleNamespace(
+        members=[member],
+        text_channels=[],
+        get_member=lambda user_id: member if user_id == member.id else None,
+    )
+    bot.public_investigation_channel = lambda: Channel()
+    token = bot.database.create_central_login_session(
+        discord_user_id=member.id,
+        peace_id=42,
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/overview",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert status == 200
+    investigation = payload["overview"]["investigation"]
+    assert investigation["state"] == "ready"
+    assert investigation["items"][0]["text"] == "Registro autorizado"
+
+
+def test_member_overview_marks_sqlite_presence_as_unavailable(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick="M ⎰ Peaceiro 42",
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+    )
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=999,
+    )
+    with bot.database.connect() as connection:
+        connection.execute("UPDATE members SET peace_id = 42 WHERE discord_user_id = ?", (str(member.id),))
+        connection.commit()
+    bot.guild = SimpleNamespace(
+        members=[member],
+        text_channels=[],
+        get_member=lambda user_id: member if user_id == member.id else None,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+    bot.database.active_clocks = lambda limit=24: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked"))
+    token = bot.database.create_central_login_session(
+        discord_user_id=member.id,
+        peace_id=42,
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/overview",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert status == 200
+    assert payload["overview"]["active_members"]["state"] == "unavailable"
+    assert payload["overview"]["active_members"]["stale"] is True
+
+
 def test_public_member_auth_accepts_founder_zero_id(tmp_path):
     member = SimpleNamespace(
         id=12345678901234567,
@@ -823,7 +1225,62 @@ def test_public_member_auth_accepts_founder_zero_id(tmp_path):
 
     assert status == 200
     assert payload["ok"] is True
-    assert payload["member_name"] == "Founder"
+    assert "member_name" not in payload
+
+
+def test_public_member_session_uses_bounded_cookie_and_overview_is_role_scoped(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick="M ⎰ Peaceiro 42",
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+        send=AsyncMock(),
+    )
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=999,
+    )
+    with bot.database.connect() as connection:
+        connection.execute("UPDATE members SET peace_id = 42 WHERE discord_user_id = ?", (str(member.id),))
+        connection.commit()
+    bot.guild = SimpleNamespace(
+        members=[member],
+        text_channels=[],
+        get_member=lambda user_id: member if user_id == member.id else None,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+    token = bot.database.create_central_login_session(
+        discord_user_id=member.id,
+        peace_id=42,
+        client_id="peacegg-web",
+        project_id=None,
+        scope="peace:member",
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+    )
+
+    status, overview = run_configured_api(
+        bot,
+        "/api/member/overview",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert status == 200
+    assert overview["overview"]["capabilities"]["investigator"] is False
+    assert "investigation" not in overview["overview"]
+    assert overview["overview"]["active_members"]["state"] == "empty"
+
+    status, denied = run_configured_api(bot, "/api/member/overview")
+    assert status == 401
+    assert denied["code"] == "AUTH_SESSION_INVALID"
 
 
 def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
@@ -899,6 +1356,9 @@ def test_public_site_files_are_complete():
     assert (site_root / "assets" / "discord.svg").is_file()
     assert (site_root / "assets" / "id-card.svg").is_file()
     assert (site_root / "assets" / "shield-check.svg").is_file()
+    headers = (site_root / "_headers").read_text(encoding="utf-8")
+    assert headers.startswith("/*\n  Content-Security-Policy:")
+    assert "*/" not in headers
     assert (member_root / "index.html").is_file()
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
         assert (site_root / route / "index.html").is_file()
@@ -949,6 +1409,10 @@ def test_public_site_files_are_complete():
     assert 'name="keep-connected"' in login_html
     assert "Manter conectado neste dispositivo" in login_html
     assert "Enviar código no Discord" in login_html
+    code_form = login_html.split('data-login-verify', 1)[1].split('</form>', 1)[0]
+    assert 'name="peace-id"' not in code_form
+    assert 'Enviar código no Discord' not in code_form
+    assert 'name="access-code"' in code_form
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
     assert "/api/member/auth/request" in script
@@ -967,7 +1431,8 @@ def test_public_site_files_are_complete():
     assert '60000' in script
     assert 'aria-busy' in script
     assert 'window.sessionStorage' in script
-    assert 'storeMemberSessionToken' in script
+    assert 'storeMemberSessionToken' not in script
+    assert 'payload.session.token' not in script
     assert '/api/entry/start' in script
     assert '/api/entry/status' in script
     assert '/api/entry/repair' in script
@@ -1012,6 +1477,8 @@ def test_public_site_files_are_complete():
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
+    for page_html in (homepage, entry_html, candidature_html, login_html):
+        assert '<script>' not in page_html
 
 
 def test_member_area_is_gated_and_has_no_unauthenticated_preview():
@@ -1050,8 +1517,54 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/api/status http://141.11.237.97:25072/api/status 200!" in redirects
     assert "/api/media http://141.11.237.97:25072/api/media 200!" in redirects
+    assert "/api/member/overview http://141.11.237.97:25072/api/member/overview 200!" in redirects
+    assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
         assert f"{route} {route}/ 301!" not in redirects
+
+
+def test_local_proxy_forwards_only_the_member_session_and_bearer():
+    from ops.peace_site_server import filtered_member_proxy_headers
+
+    session = "A" * 43
+    challenge = "C" * 43
+    bearer = "B" * 43
+    headers = filtered_member_proxy_headers(
+        f"unrelated=secret; peace_member_session={session}; peace_member_challenge={challenge}; legacy=ignored",
+        f"Bearer {bearer}",
+    )
+
+    assert headers == {
+        "Cookie": f"peace_member_session={session}; peace_member_challenge={challenge}",
+        "Authorization": f"Bearer {bearer}",
+    }
+
+
+def test_local_proxy_rejects_redirects_before_they_can_carry_credentials():
+    from ops.peace_site_server import ACL_OPENER
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - test server hook
+            self.send_response(302)
+            self.send_header("Location", "https://attacker.invalid/collect")
+            self.end_headers()
+
+        def log_message(self, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        try:
+            ACL_OPENER.open(Request(f"http://127.0.0.1:{server.server_port}/api/member/auth/session"), timeout=2)
+        except HTTPError as error:
+            assert error.code == 302
+        else:
+            raise AssertionError("the authenticated proxy opener followed a redirect")
+    finally:
+        server.shutdown()
+        worker.join(timeout=2)
 
 
 def test_local_site_server_handles_static_and_entry_routes():

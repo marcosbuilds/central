@@ -58,6 +58,7 @@ CATEGORY_NAMES = {
     "calls": "[🎙️] CALLS",
     "private_calls": "[🎙️] PRIVATE CALLS",
     "verification": VERIFICATION_CATEGORY_NAME,
+    "investigations": "[🔎] INVESTIGATIONS",
     "closed_tickets": "[🎟️] CLOSED TICKETS",
 }
 
@@ -105,6 +106,8 @@ ROLE_NAMES = {
     "a_is": "AIs",
     "not_verified": NOT_VERIFIED_ROLE_NAME,
     "intern": INTERN_ROLE_NAME,
+    "investigator": "Investigator",
+    "lead_investigator": "Lead Investigator",
 }
 
 ROLE_RENAMES = {
@@ -142,6 +145,8 @@ ROLE_COLOURS = {
     "Intern": 0x1ABC9C,
     "AIs": 0x8E44AD,
     "Not Verified": 0x7F8C8D,
+    "Investigator": 0x3498DB,
+    "Lead Investigator": 0x9B59B6,
     "General Director": 0xC27C0E,
     "Superintendent": 0x8E44AD,
 }
@@ -180,12 +185,13 @@ def role_by_id_or_name(
     guild: discord.Guild,
     role_id: int | None,
     name: str | None = None,
+    *aliases: str,
 ) -> discord.Role | None:
     if role_id is not None:
         role = guild.get_role(role_id)
         if role is not None:
             return role
-    return find_role(guild, name) if name else None
+    return find_role(guild, name, *aliases) if name else None
 
 
 async def set_role_access(
@@ -251,6 +257,15 @@ async def clear_role_overwrites(
         if subject.is_default() or subject.id in allowed_ids:
             continue
         await channel.set_permissions(subject, overwrite=None, reason="Limpeza de acesso legado Peace")
+
+
+async def clear_member_overwrites(
+    channel: discord.abc.GuildChannel,
+) -> None:
+    """Remove stale individual grants from a channel that must be role-only."""
+    for subject in list(channel.overwrites):
+        if isinstance(subject, discord.Member):
+            await channel.set_permissions(subject, overwrite=None, reason="Limpeza de acesso individual legado Peace")
 
 
 async def configure_text(
@@ -325,13 +340,16 @@ async def deny_role(
     await channel.set_permissions(role, overwrite=perms(**values), reason="Acesso negado pela política Peace")
 
 
-async def ensure_visual_role(
+async def ensure_zero_permission_role(
     guild: discord.Guild,
     name: str,
     colour: discord.Colour,
     aliases: tuple[str, ...] = (),
+    *,
+    role_id: int | None = None,
+    reason: str = "Padronização dos cargos Peace",
 ) -> discord.Role:
-    existing = find_role(guild, name) or find_role(guild, *aliases)
+    existing = role_by_id_or_name(guild, role_id, name, *aliases)
     if existing is not None:
         if (
             existing.name != name
@@ -342,7 +360,7 @@ async def ensure_visual_role(
                 name=name,
                 permissions=discord.Permissions.none(),
                 colour=colour,
-                reason="Padronização dos cargos visuais Peace",
+                reason=reason,
             )
         return existing
     return await guild.create_role(
@@ -351,7 +369,22 @@ async def ensure_visual_role(
         permissions=discord.Permissions.none(),
         hoist=False,
         mentionable=False,
-        reason="Criar cargo visual Peace",
+        reason=reason,
+    )
+
+
+async def ensure_visual_role(
+    guild: discord.Guild,
+    name: str,
+    colour: discord.Colour,
+    aliases: tuple[str, ...] = (),
+) -> discord.Role:
+    return await ensure_zero_permission_role(
+        guild,
+        name,
+        colour,
+        aliases,
+        reason="Padronização dos cargos visuais Peace",
     )
 
 
@@ -697,6 +730,8 @@ def validate_preflight(guild: discord.Guild) -> None:
     """Fail before mutation when the bot cannot manage this migration safely."""
     if guild.me is None:
         raise RuntimeError("O membro do bot não está disponível para validar a hierarquia")
+    if guild.me.top_role.is_default():
+        raise RuntimeError("O bot precisa de um cargo próprio acima de @everyone para aplicar a estrutura restrita")
     permissions = guild.me.guild_permissions
     if not permissions.manage_roles or not permissions.manage_channels:
         raise RuntimeError("O bot precisa de Gerenciar cargos e Gerenciar canais para a migração")
@@ -707,6 +742,8 @@ def validate_preflight(guild: discord.Guild) -> None:
             *OBSOLETE_ROLE_NAMES,
             NOT_VERIFIED_ROLE_NAME,
             INTERN_ROLE_NAME,
+            ROLE_NAMES["investigator"],
+            ROLE_NAMES["lead_investigator"],
         )
     }
     target_ids = (set(ROLE_IDS.values()) - {ROLE_IDS["founder"]}) | set(DEPRECATED_ROLE_IDS)
@@ -729,6 +766,8 @@ async def apply_structure(
     database: PeaceDatabase,
     central_access_role_id: int | None = None,
     *,
+    investigator_role_id: int | None = None,
+    lead_investigator_role_id: int | None = None,
     private_call_category_id: int | None = None,
     remove_chat_elite_channel: bool = False,
 ) -> None:
@@ -757,6 +796,22 @@ async def apply_structure(
         ROLE_NAMES["intern"],
         discord.Colour(ROLE_COLOURS["Intern"]),
         aliases=("Estagiário", "Estagiario"),
+    )
+    investigator = await ensure_zero_permission_role(
+        guild,
+        ROLE_NAMES["investigator"],
+        discord.Colour(ROLE_COLOURS["Investigator"]),
+        aliases=("Investigador",),
+        role_id=investigator_role_id,
+        reason="Criar cargo de acesso Investigator da Peace",
+    )
+    lead_investigator = await ensure_zero_permission_role(
+        guild,
+        ROLE_NAMES["lead_investigator"],
+        discord.Colour(ROLE_COLOURS["Lead Investigator"]),
+        aliases=("Chief Investigator", "Investigador-chefe", "Investigador chefe"),
+        role_id=lead_investigator_role_id,
+        reason="Criar cargo de acesso Lead Investigator da Peace",
     )
     await remove_obsolete_named_roles(guild, snapshot=False)
 
@@ -861,7 +916,8 @@ async def apply_structure(
         if not isinstance(channel, discord.TextChannel):
             continue
         await channel.edit(name=desired_name, category=staff_category, reason="Organização da área interna de Staff")
-        await configure_text(channel, guild, allowed=staff_roles, send=key != "logs")
+        log_roles = [*staff_roles, technical] if key == "logs" else staff_roles
+        await configure_text(channel, guild, allowed=log_roles, send=key != "logs")
         if guild.me is not None:
             await set_role_access(channel, guild.me.top_role, view=True, send=True, manage_messages=True)
 
@@ -1019,6 +1075,63 @@ async def apply_structure(
 
     await ensure_verification_surface(guild, not_verified)
 
+    investigations = discord.utils.find(
+        lambda item: isinstance(item, discord.CategoryChannel)
+        and item.name.casefold() in {
+            CATEGORY_NAMES["investigations"].casefold(),
+            "[🔎] investigacao",
+            "[🔎] investigação",
+        },
+        guild.categories,
+    )
+    if investigations is None:
+        investigations = await guild.create_category(
+            CATEGORY_NAMES["investigations"],
+            reason="Criar área restrita de investigação da Peace",
+        )
+    elif investigations.name != CATEGORY_NAMES["investigations"]:
+        await investigations.edit(
+            name=CATEGORY_NAMES["investigations"],
+            reason="Padronizar área restrita de investigação da Peace",
+        )
+    await configure_category(investigations, guild, [investigator, lead_investigator])
+    await clear_member_overwrites(investigations)
+    for oversight_role in (manager, founder):
+        await set_role_access(investigations, oversight_role, view=True, send=False)
+    if guild.me is not None and not guild.me.top_role.is_default():
+        await set_role_access(investigations, guild.me.top_role, view=True, send=True)
+    investigation_channel = discord.utils.find(
+        lambda item: isinstance(item, discord.TextChannel)
+        and item.name.casefold() in {
+            "╰🔎・investigations",
+            "investigations",
+            "investigação",
+            "investigacao",
+        }
+        and item.category_id == investigations.id,
+        guild.text_channels,
+    )
+    if investigation_channel is None:
+        investigation_channel = await guild.create_text_channel(
+            "╰🔎・investigations",
+            category=investigations,
+            topic="Área restrita para registros de investigação autorizados.",
+            reason="Criar canal restrito de investigação da Peace",
+        )
+    else:
+        await investigation_channel.edit(
+            name="╰🔎・investigations",
+            category=investigations,
+            topic="Área restrita para registros de investigação autorizados.",
+            reason="Padronizar canal restrito de investigação da Peace",
+        )
+    await configure_text(investigation_channel, guild, allowed=[investigator, lead_investigator], send=True)
+    await clear_member_overwrites(investigation_channel)
+    for oversight_role in (manager, founder):
+        await set_role_access(investigation_channel, oversight_role, view=True, send=False)
+    if guild.me is not None and not guild.me.top_role.is_default():
+        await set_role_access(investigation_channel, guild.me.top_role, view=True, send=True)
+
     registros = guild.get_channel(REGISTROS_CATEGORY_ID)
     registration_roles = [peace, technical, staff, manager, founder]
     if isinstance(registros, discord.CategoryChannel):
@@ -1028,6 +1141,10 @@ async def apply_structure(
         channel = guild.get_channel(CHANNEL_IDS[key])
         if isinstance(channel, discord.TextChannel):
             await configure_text(channel, guild, allowed=registration_roles, send=False)
+            if key == "parceiros":
+                # All verified internal roles can read partner posts; only
+                # Management may publish or edit them in Discord.
+                await set_role_access(channel, manager, view=True, send=True, manage_messages=True)
     # These channels belong to the records area; they are not public onboarding
     # surfaces and must not leak to Not Verified or Visitor.
     for key, send in (("midias", True), ("clipes", True), ("painel", False)):
@@ -1153,6 +1270,8 @@ def run_once(*, apply: bool, clean: bool, clean_dev: bool, remove_chat_elite_cha
                 guild,
                 database,
                 settings.central_access_role_id,
+                investigator_role_id=settings.investigator_role_id,
+                lead_investigator_role_id=settings.lead_investigator_role_id,
                 private_call_category_id=settings.private_call_category_id,
                 remove_chat_elite_channel=remove_chat_elite_channel,
             )

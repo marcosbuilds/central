@@ -25,14 +25,6 @@
       <p data-message>A nova guia está pronta. Assim que o Peace Tools confirmar o link, você será levado ao Discord.</p>
       <span class="loader" data-loader aria-hidden="true"></span>
     </main>
-    <script>
-      (function () {
-        var error = new URLSearchParams(window.location.search).get("state") === "error";
-        if (!error) return;
-        document.querySelector("[data-title]").textContent = "Não foi possível gerar o convite.";
-        document.querySelector("[data-message]").textContent = "Volte para a guia da Peace e tente novamente em alguns instantes.";
-        document.querySelector("[data-loader]").hidden = true;
-      }());
-    </script>
+    <script defer src="/candidatura/abrindo-discord.js?v=20261112-22"></script>
   </body>
 </html>

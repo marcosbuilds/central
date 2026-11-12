@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import parse_qs, urlsplit
 
 
 SITE_DIRECTORY = Path(__file__).resolve().parents[1] / "bot" / "site"
@@ -28,8 +30,43 @@ ACL_API_ROUTES = {
     "/api/member/auth/request",
     "/api/member/auth/verify",
     "/api/member/auth/session",
+    "/api/member/auth/revoke",
+    "/api/member/overview",
 }
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
+MEMBER_SESSION_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_session=([^;]*)")
+MEMBER_CHALLENGE_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_challenge=([^;]*)")
+MEMBER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+MEMBER_BEARER_PATTERN = re.compile(r"Bearer [A-Za-z0-9_-]{32,128}")
+LOCAL_PROXY_ORIGINS = {"http://127.0.0.1:4173", "http://localhost:4173"}
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Never carry authenticated headers into an unexpected origin."""
+
+    def redirect_request(self, *args, **kwargs):  # noqa: D401 - urllib hook
+        return None
+
+
+ACL_OPENER = build_opener(_NoRedirectHandler)
+
+
+def filtered_member_proxy_headers(cookie_header: str, authorization: str) -> dict[str, str]:
+    """Keep only the authenticated member credentials on the origin hop."""
+    headers: dict[str, str] = {}
+    allowed_cookies = []
+    for name, pattern in (
+        ("peace_member_session", MEMBER_SESSION_COOKIE_PATTERN),
+        ("peace_member_challenge", MEMBER_CHALLENGE_COOKIE_PATTERN),
+    ):
+        cookie_match = pattern.search(cookie_header or "")
+        if cookie_match and MEMBER_TOKEN_PATTERN.fullmatch(cookie_match.group(1)):
+            allowed_cookies.append(f"{name}={cookie_match.group(1)}")
+    if allowed_cookies:
+        headers["Cookie"] = "; ".join(allowed_cookies)
+    if MEMBER_BEARER_PATTERN.fullmatch(authorization or ""):
+        headers["Authorization"] = authorization
+    return headers
 
 
 class PeaceSiteHandler(SimpleHTTPRequestHandler):
@@ -89,6 +126,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/member/auth/request",
             "/api/member/auth/verify",
             "/api/member/auth/session",
+            "/api/member/auth/revoke",
         }:
             self.send_error(404)
             return
@@ -101,17 +139,28 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
 
     def _proxy_api(self, method: str) -> None:
         route = self.path.split("?", 1)[0]
-        target = ACL_ORIGIN + self.path
+        query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+        if route == "/api/entry/status" and "session_token" in query:
+            self.send_error(400, "Entry tokens must be sent in a POST body")
+            return
+        target_path = route if route == "/api/entry/status" else self.path
+        target = ACL_ORIGIN + target_path
         body = None
         headers = {"Accept": "application/json", "User-Agent": "PeaceSiteLocal/1.0"}
+        if route.startswith("/api/member/"):
+            headers.update(
+                filtered_member_proxy_headers(
+                    self.headers.get("Cookie", ""),
+                    self.headers.get("Authorization", ""),
+                )
+            )
+            origin = self.headers.get("Origin", "")
+            if origin in LOCAL_PROXY_ORIGINS:
+                headers["Origin"] = origin
         if method == "POST":
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length)
             headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
-            if route == "/api/member/auth/session":
-                authorization = self.headers.get("Authorization", "")
-                if authorization.startswith("Bearer "):
-                    headers["Authorization"] = authorization
         request = Request(
             target,
             data=body,
@@ -120,14 +169,16 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
         )
 
         try:
-            with urlopen(request, timeout=8) as response:  # noqa: S310 - fixed public URL
+            with ACL_OPENER.open(request, timeout=8) as response:  # noqa: S310 - fixed public URL
                 payload = response.read()
                 status = response.status
                 content_type = response.headers.get("Content-Type", "application/json")
+                set_cookies = response.headers.get_all("Set-Cookie", []) or []
         except HTTPError as error:
             payload = error.read()
             status = error.code
             content_type = error.headers.get("Content-Type", "application/json")
+            set_cookies = error.headers.get_all("Set-Cookie", []) or []
         except (TimeoutError, URLError, OSError):
             payload = json.dumps(
                 {
@@ -140,10 +191,37 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             ).encode("utf-8")
             status = 503
             content_type = "application/json; charset=utf-8"
+            set_cookies = []
+
+        if route.startswith("/api/member/"):
+            set_cookies = [
+                value
+                for value in set_cookies
+                if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
+            ]
+        else:
+            # The local proxy has no reason to establish browser state for any
+            # public route outside the member session contract.
+            set_cookies = []
+
+        if 300 <= status < 400:
+            payload = json.dumps(
+                {
+                    "ok": False,
+                    "code": "ACL_REDIRECT_REJECTED",
+                    "message": "ACLClouds retornou um redirecionamento inesperado.",
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            status = 502
+            content_type = "application/json; charset=utf-8"
+            set_cookies = []
 
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        for set_cookie in set_cookies:
+            self.send_header("Set-Cookie", set_cookie)
         self.end_headers()
         self.wfile.write(payload)
 

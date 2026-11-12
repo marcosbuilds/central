@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS central_login_challenges (
     discord_user_id TEXT NOT NULL,
     peace_id INTEGER NOT NULL,
     client_id TEXT NOT NULL DEFAULT '',
+    challenge_token_hash TEXT,
     code_hash TEXT NOT NULL,
     code_salt TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -199,6 +200,13 @@ CREATE TABLE IF NOT EXISTS central_login_challenges (
 CREATE INDEX IF NOT EXISTS idx_central_login_challenges_user
     ON central_login_challenges(discord_user_id, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_central_login_challenges_client_created
+    ON central_login_challenges(client_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_central_login_challenges_created
+    ON central_login_challenges(created_at);
+
+
 CREATE TABLE IF NOT EXISTS central_login_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     discord_user_id TEXT NOT NULL,
@@ -206,6 +214,7 @@ CREATE TABLE IF NOT EXISTS central_login_sessions (
     client_id TEXT NOT NULL,
     project_id TEXT,
     scope TEXT NOT NULL,
+    token_selector TEXT,
     token_hash TEXT NOT NULL,
     token_salt TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -215,6 +224,10 @@ CREATE TABLE IF NOT EXISTS central_login_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_central_login_sessions_client
     ON central_login_sessions(client_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_central_login_sessions_expiry
+    ON central_login_sessions(client_id, expires_at, revoked_at);
+
 """
 
 
@@ -238,6 +251,16 @@ def _central_token_hash(token: str, salt: str) -> str:
         salt.encode("utf-8"),
         120_000,
     ).hex()
+
+
+def _central_challenge_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _central_token_selector(token: str) -> str:
+    # The selector narrows validation to one row before the expensive PBKDF2
+    # check. It is not sufficient to authenticate by itself.
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:32]
 
 
 def _role_prefix(
@@ -307,6 +330,38 @@ class PeaceDatabase:
             challenge_columns = {row["name"] for row in connection.execute("PRAGMA table_info(central_login_challenges)")}
             if challenge_columns and "client_id" not in challenge_columns:
                 connection.execute("ALTER TABLE central_login_challenges ADD COLUMN client_id TEXT NOT NULL DEFAULT ''")
+            if challenge_columns and "challenge_token_hash" not in challenge_columns:
+                connection.execute("ALTER TABLE central_login_challenges ADD COLUMN challenge_token_hash TEXT")
+            session_columns = {row["name"] for row in connection.execute("PRAGMA table_info(central_login_sessions)")}
+            if session_columns and "token_selector" not in session_columns:
+                connection.execute("ALTER TABLE central_login_sessions ADD COLUMN token_selector TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_central_login_challenges_token "
+                "ON central_login_challenges(client_id, challenge_token_hash)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_central_login_sessions_selector "
+                "ON central_login_sessions(client_id, token_selector)"
+            )
+            auth_now = now_iso()
+            auth_retention_cutoff = (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).isoformat()
+            # Keep the challenge history long enough for the request-window
+            # throttles, while removing expired/revoked browser sessions as
+            # soon as they can no longer be presented.
+            connection.execute(
+                "DELETE FROM central_login_challenges WHERE created_at <= ?",
+                (auth_retention_cutoff,),
+            )
+            connection.execute(
+                """
+                DELETE FROM central_login_sessions
+                WHERE expires_at <= ?
+                   OR (revoked_at IS NOT NULL AND revoked_at <= ?)
+                """,
+                (auth_now, auth_retention_cutoff),
+            )
             connection.commit()
 
     def _next_peace_id(self, connection: sqlite3.Connection) -> int:
@@ -511,11 +566,75 @@ class PeaceDatabase:
         max_client_requests: int = 6,
     ) -> int | None:
         """Atomically enforce request throttles before storing a challenge."""
+        created = self._try_create_central_login_challenge(
+            discord_user_id=discord_user_id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+            expires_at=expires_at,
+            window_seconds=window_seconds,
+            max_user_requests=max_user_requests,
+            max_client_requests=max_client_requests,
+            bind_browser=False,
+            invalidate_previous=True,
+        )
+        return created[0] if created is not None else None
+
+    def try_create_public_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        code: str,
+        expires_at: str,
+        window_seconds: int = 600,
+        max_user_requests: int = 3,
+        max_client_requests: int = 6,
+    ) -> tuple[int, str] | None:
+        """Create a browser-bound public challenge without invalidating another tab."""
+        created = self._try_create_central_login_challenge(
+            discord_user_id=discord_user_id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+            expires_at=expires_at,
+            window_seconds=window_seconds,
+            max_user_requests=max_user_requests,
+            max_client_requests=max_client_requests,
+            bind_browser=True,
+            invalidate_previous=False,
+        )
+        if created is None or created[1] is None:
+            return None
+        return created[0], created[1]
+
+    def _try_create_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        code: str,
+        expires_at: str,
+        window_seconds: int,
+        max_user_requests: int,
+        max_client_requests: int,
+        bind_browser: bool,
+        invalidate_previous: bool,
+    ) -> tuple[int, str | None] | None:
+        """Shared atomic challenge creation for Central and public auth."""
         self.initialize()
         timestamp = now_iso()
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
         salt = secrets.token_hex(16)
         code_hash = _central_code_hash(code, salt)
+        challenge_token = secrets.token_urlsafe(32) if bind_browser else None
+        challenge_token_hash = (
+            _central_challenge_token_hash(challenge_token)
+            if challenge_token is not None
+            else None
+        )
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             user_count = connection.execute(
@@ -535,25 +654,27 @@ class PeaceDatabase:
             if int(user_count) >= max_user_requests or int(client_count) >= max_client_requests:
                 connection.rollback()
                 return None
-            connection.execute(
-                """
-                UPDATE central_login_challenges
-                SET consumed_at = ?
-                WHERE discord_user_id = ? AND consumed_at IS NULL
-                """,
-                (timestamp, str(discord_user_id)),
-            )
+            if invalidate_previous:
+                connection.execute(
+                    """
+                    UPDATE central_login_challenges
+                    SET consumed_at = ?
+                    WHERE discord_user_id = ? AND client_id = ? AND consumed_at IS NULL
+                    """,
+                    (timestamp, str(discord_user_id), client_id),
+                )
             cursor = connection.execute(
                 """
                 INSERT INTO central_login_challenges (
-                    discord_user_id, peace_id, client_id, code_hash, code_salt,
-                    attempts, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                    discord_user_id, peace_id, client_id, challenge_token_hash,
+                    code_hash, code_salt, attempts, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
                 """,
                 (
                     str(discord_user_id),
                     int(peace_id),
                     client_id,
+                    challenge_token_hash,
                     code_hash,
                     salt,
                     timestamp,
@@ -561,7 +682,7 @@ class PeaceDatabase:
                 ),
             )
             connection.commit()
-            return int(cursor.lastrowid)
+            return int(cursor.lastrowid), challenge_token
 
     def central_login_request_allowed(
         self,
@@ -619,21 +740,92 @@ class PeaceDatabase:
         client_id: str = "",
         max_attempts: int = 5,
     ) -> bool:
+        return self._consume_central_login_challenge(
+            discord_user_id=discord_user_id,
+            peace_id=peace_id,
+            code=code,
+            client_id=client_id,
+            max_attempts=max_attempts,
+            challenge_token=None,
+        ) is not None
+
+    def central_login_challenge_for_token(
+        self,
+        *,
+        challenge_token: str,
+        client_id: str,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        token_hash = _central_challenge_token_hash(challenge_token)
+        timestamp = now_iso()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM central_login_challenges
+                WHERE client_id = ?
+                  AND challenge_token_hash = ?
+                  AND consumed_at IS NULL
+                  AND expires_at > ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (client_id, token_hash, timestamp),
+            ).fetchone()
+
+    def consume_public_login_challenge(
+        self,
+        *,
+        challenge_token: str,
+        client_id: str,
+        code: str,
+        max_attempts: int = 5,
+    ) -> sqlite3.Row | None:
+        return self._consume_central_login_challenge(
+            discord_user_id=None,
+            peace_id=None,
+            code=code,
+            client_id=client_id,
+            max_attempts=max_attempts,
+            challenge_token=challenge_token,
+        )
+
+    def _consume_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int | None,
+        peace_id: int | None,
+        code: str,
+        client_id: str,
+        max_attempts: int,
+        challenge_token: str | None,
+    ) -> sqlite3.Row | None:
         self.initialize()
         timestamp = now_iso()
         with self.connect() as connection:
-            row = connection.execute(
-                """
-                SELECT * FROM central_login_challenges
-                WHERE discord_user_id = ? AND peace_id = ?
-                  AND client_id = ?
-                  AND consumed_at IS NULL
-                ORDER BY id DESC LIMIT 1
-                """,
-                (str(discord_user_id), int(peace_id), client_id),
-            ).fetchone()
+            connection.execute("BEGIN IMMEDIATE")
+            if challenge_token is not None:
+                row = connection.execute(
+                    """
+                    SELECT * FROM central_login_challenges
+                    WHERE client_id = ? AND challenge_token_hash = ?
+                      AND consumed_at IS NULL
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (client_id, _central_challenge_token_hash(challenge_token)),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT * FROM central_login_challenges
+                    WHERE discord_user_id = ? AND peace_id = ?
+                      AND client_id = ?
+                      AND consumed_at IS NULL
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (str(discord_user_id), int(peace_id), client_id),
+                ).fetchone()
             if row is None or row["expires_at"] <= timestamp or int(row["attempts"]) >= max_attempts:
-                return False
+                connection.rollback()
+                return None
             connection.execute(
                 "UPDATE central_login_challenges SET attempts = attempts + 1 WHERE id = ?",
                 (int(row["id"]),),
@@ -643,12 +835,36 @@ class PeaceDatabase:
                 _central_code_hash(code, str(row["code_salt"])),
             )
             if valid:
-                connection.execute(
-                    "UPDATE central_login_challenges SET consumed_at = ? WHERE id = ?",
-                    (timestamp, int(row["id"])),
+                consumed = connection.execute(
+                    """
+                    UPDATE central_login_challenges
+                    SET consumed_at = ?
+                    WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
+                    """,
+                    (timestamp, int(row["id"]), timestamp),
                 )
+                valid = consumed.rowcount == 1
             connection.commit()
-            return valid
+            if not valid:
+                return None
+            return connection.execute(
+                "SELECT * FROM central_login_challenges WHERE id = ?",
+                (int(row["id"]),),
+            ).fetchone()
+
+    def revoke_central_login_challenge_token(self, *, challenge_token: str, client_id: str) -> bool:
+        self.initialize()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE central_login_challenges
+                SET consumed_at = COALESCE(consumed_at, ?)
+                WHERE client_id = ? AND challenge_token_hash = ? AND consumed_at IS NULL
+                """,
+                (now_iso(), client_id, _central_challenge_token_hash(challenge_token)),
+            )
+            connection.commit()
+            return cursor.rowcount == 1
 
     def create_central_login_session(
         self,
@@ -669,8 +885,8 @@ class PeaceDatabase:
                 """
                 INSERT INTO central_login_sessions (
                     discord_user_id, peace_id, client_id, project_id, scope,
-                    token_hash, token_salt, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    token_selector, token_hash, token_salt, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(discord_user_id),
@@ -678,6 +894,7 @@ class PeaceDatabase:
                     client_id,
                     project_id,
                     scope,
+                    _central_token_selector(token),
                     token_hash,
                     salt,
                     now_iso(),
@@ -696,15 +913,29 @@ class PeaceDatabase:
     ) -> sqlite3.Row | None:
         self.initialize()
         timestamp = now_iso()
+        selector = _central_token_selector(token)
         with self.connect() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM central_login_sessions
-                WHERE client_id = ? AND revoked_at IS NULL AND expires_at > ?
+                WHERE client_id = ? AND token_selector = ?
+                  AND revoked_at IS NULL AND expires_at > ?
                 ORDER BY id DESC
                 """,
-                (client_id, timestamp),
+                (client_id, selector, timestamp),
             ).fetchall()
+            if not rows:
+                # Rows created before the selector migration remain valid and
+                # are checked through the legacy bounded fallback.
+                rows = connection.execute(
+                    """
+                    SELECT * FROM central_login_sessions
+                    WHERE client_id = ? AND token_selector IS NULL
+                      AND revoked_at IS NULL AND expires_at > ?
+                    ORDER BY id DESC
+                    """,
+                    (client_id, timestamp),
+                ).fetchall()
         for row in rows:
             if project_id is not None and row["project_id"] != project_id:
                 continue
@@ -726,6 +957,27 @@ class PeaceDatabase:
             )
             connection.commit()
         return True
+
+    def revoke_central_login_sessions_for_member(
+        self,
+        discord_user_id: int | str,
+        *,
+        peace_id: int | None = None,
+    ) -> int:
+        """Invalidate browser/bridge sessions before a Peace identity changes."""
+        self.initialize()
+        with self.connect() as connection:
+            where = "discord_user_id = ?"
+            values: list[object] = [str(discord_user_id)]
+            if peace_id is not None:
+                where += " OR peace_id = ?"
+                values.append(int(peace_id))
+            cursor = connection.execute(
+                f"UPDATE central_login_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE ({where}) AND revoked_at IS NULL",
+                [now_iso(), *values],
+            )
+            connection.commit()
+            return int(cursor.rowcount)
 
     def update_nickname(self, discord_user_id: int | str, nickname: str) -> None:
         self.initialize()
@@ -752,6 +1004,10 @@ class PeaceDatabase:
             ).fetchone()
             if row is None or int(row["is_founder"]):
                 return None
+            connection.execute(
+                "UPDATE central_login_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE (discord_user_id = ? OR peace_id = ?) AND revoked_at IS NULL",
+                (now_iso(), str(discord_user_id), int(row["peace_id"])),
+            )
             connection.execute(
                 """
                 INSERT OR REPLACE INTO peace_id_pool (
@@ -823,6 +1079,10 @@ class PeaceDatabase:
             ).fetchone()
             if row is None or int(row["is_founder"]):
                 return None
+            connection.execute(
+                "UPDATE central_login_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE (discord_user_id = ? OR peace_id = ?) AND revoked_at IS NULL",
+                (now_iso(), str(discord_user_id), int(row["peace_id"])),
+            )
             connection.execute(
                 """
                 INSERT OR REPLACE INTO peace_id_pool (
@@ -948,6 +1208,10 @@ class PeaceDatabase:
                     "registro Peace sem membro após auditoria de inicialização"
                     if user_id not in current_user_ids
                     else "cargo Peace ausente após auditoria de inicialização"
+                )
+                connection.execute(
+                    "UPDATE central_login_sessions SET revoked_at = COALESCE(revoked_at, ?) WHERE (discord_user_id = ? OR peace_id = ?) AND revoked_at IS NULL",
+                    (now_iso(), str(user_id), int(row["peace_id"])),
                 )
                 connection.execute(
                     """
@@ -1581,6 +1845,23 @@ class PeaceDatabase:
                 """,
                 (str(discord_user_id),),
             ).fetchone()
+
+    def active_clocks(self, limit: int = 24) -> list[sqlite3.Row]:
+        """Return a bounded snapshot for authorized read-only dashboards."""
+        self.initialize()
+        bounded_limit = max(1, min(int(limit), 100))
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM clocks
+                    WHERE ended_at IS NULL
+                    ORDER BY started_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (bounded_limit,),
+                ).fetchall()
+            )
 
     def start_clock(self, discord_user_id: int | str) -> sqlite3.Row:
         active = self.active_clock(discord_user_id)

@@ -145,6 +145,19 @@ def test_structured_log_prevents_duplicate_copy_for_terminal_source():
     approved.delete.assert_awaited_once()
 
 
+def test_equivalent_log_check_handles_legacy_banner_without_peace_id():
+    banner = _message(
+        "✅ SET APROVADO (pedir-set) 👤 Novo: <@137> 📕 Recrutador: <@107>",
+        message_id=58,
+    )
+    existing = SimpleNamespace(
+        content="",
+        embeds=[SimpleNamespace(title="Set aprovado", fields=[])],
+    )
+
+    assert destination_has_equivalent_log([existing], banner, "Set aprovado") is False
+
+
 def test_legacy_embed_keeps_actor_and_member_avatars_when_available():
     approved = _message(
         "✅ Set aprovado por <@107>. Membro: <@137>. ID Peace: `17`.",

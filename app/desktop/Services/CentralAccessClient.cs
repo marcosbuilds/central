@@ -93,7 +93,7 @@ public sealed class CentralAccessClient
         string peaceId,
         CancellationToken cancellationToken = default)
     {
-        if (!int.TryParse(peaceId.Trim(), out var parsedPeaceId) || parsedPeaceId <= 0)
+        if (!int.TryParse(peaceId.Trim(), out var parsedPeaceId) || parsedPeaceId < 0)
         {
             return new CentralAccessResult(false, "Informe um ID Peace válido.");
         }
@@ -114,7 +114,7 @@ public sealed class CentralAccessClient
         string code,
         CancellationToken cancellationToken = default)
     {
-        if (!int.TryParse(peaceId.Trim(), out var parsedPeaceId) || parsedPeaceId <= 0)
+        if (!int.TryParse(peaceId.Trim(), out var parsedPeaceId) || parsedPeaceId < 0)
         {
             return new CentralAccessResult(false, "Informe um ID Peace válido.");
         }
@@ -316,7 +316,7 @@ public sealed class CentralAccessClient
             return string.IsNullOrWhiteSpace(token)
                 || string.IsNullOrWhiteSpace(subject)
                 || string.IsNullOrWhiteSpace(clientId)
-                || peaceId <= 0
+                || peaceId < 0
                 || expiresAt <= DateTimeOffset.UtcNow
                 ? null
                 : new CentralAccessSession(token, expiresAt, subject, peaceId, clientId, scope, projectId);

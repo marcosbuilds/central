@@ -9,3 +9,5 @@
 /api/member/auth/request http://141.11.237.97:25072/api/member/auth/request 200!
 /api/member/auth/verify http://141.11.237.97:25072/api/member/auth/verify 200!
 /api/member/auth/session http://141.11.237.97:25072/api/member/auth/session 200!
+/api/member/auth/revoke http://141.11.237.97:25072/api/member/auth/revoke 200!
+/api/member/overview http://141.11.237.97:25072/api/member/overview 200!

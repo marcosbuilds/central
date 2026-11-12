@@ -70,6 +70,24 @@ public sealed class CentralAccessClientTests
     }
 
     [Fact]
+    public async Task Accepts_the_founder_zero_id_when_requesting_a_code()
+    {
+        var handler = new RecordingHandler();
+        var client = new CentralAccessClient(
+            handler,
+            "http://127.0.0.1:8765/",
+            new string('a', 32),
+            "client-test-1",
+            null);
+
+        var result = await client.RequestCodeAsync("0");
+        var body = await handler.Requests[0].Content!.ReadAsStringAsync();
+
+        Assert.True(result.Success);
+        Assert.Contains("\"peace_id\":0", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Rejects_a_session_for_another_client_or_project()
     {
         var handler = new RecordingHandler

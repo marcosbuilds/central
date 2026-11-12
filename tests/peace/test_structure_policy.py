@@ -15,6 +15,7 @@ def test_verification_and_structural_names_are_english():
         "calls": "[🎙️] CALLS",
         "private_calls": "[🎙️] PRIVATE CALLS",
         "verification": "[🔐] VERIFICATION",
+        "investigations": "[🔎] INVESTIGATIONS",
         "closed_tickets": "[🎟️] CLOSED TICKETS",
     }
 

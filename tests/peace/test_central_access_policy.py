@@ -102,9 +102,25 @@ def test_central_request_endpoint_throttles_and_does_not_log_codes(tmp_path, cap
     assert responses[3] == (429, {"ok": False, "message": CENTRAL_AUTH_THROTTLED})
     assert requester.send.await_count == 3
     for call in requester.send.call_args_list:
-        message = call.args[0]
-        code = re.search(r"Código: `(?P<code>\d{6})`", message).group("code")
+        embed = call.kwargs["embed"]
+        code = re.search(r"(?P<code>\d{6})", embed.fields[0].value).group("code")
         assert code not in caplog.text
+
+
+def test_central_bridge_accepts_the_founder_zero_id(tmp_path):
+    bot = make_bot(tmp_path)
+    requester = SimpleNamespace(id=10, send=AsyncMock())
+    bot.central_auth_member = AsyncMock(return_value=requester)
+
+    status, payload = run_endpoint(
+        bot.central_auth_request,
+        payload={"peace_id": "0", "client_id": "client-test-1"},
+    )
+
+    assert status == 200
+    assert payload == {"ok": True, "message": "Código enviado no Discord."}
+    assert requester.send.await_count == 1
+    assert requester.send.await_args.kwargs["embed"].fields[1].value == "`0`"
 
 
 def test_central_endpoints_issue_validate_revoke_and_recheck_role(tmp_path):
@@ -323,6 +339,47 @@ def test_session_is_scoped_and_revocable(tmp_path):
         expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     )
     assert database.validate_central_login_session(token=expired, client_id="client-test-1") is None
+
+
+def test_auth_storage_prunes_expired_sessions_and_retains_throttle_history_window(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    database.create_central_login_challenge(
+        discord_user_id=10,
+        peace_id=42,
+        client_id="client-test-1",
+        code="123456",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+    )
+    expired_session = database.create_central_login_session(
+        discord_user_id=10,
+        peace_id=42,
+        client_id="client-test-1",
+        project_id=None,
+        scope="central:access",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+    )
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE central_login_challenges SET created_at = ?",
+            ((datetime.now(timezone.utc) - timedelta(days=31)).isoformat(),),
+        )
+        connection.commit()
+
+    database.initialize()
+
+    with database.connect() as connection:
+        challenge_count = connection.execute("SELECT COUNT(*) FROM central_login_challenges").fetchone()[0]
+        session_count = connection.execute("SELECT COUNT(*) FROM central_login_sessions").fetchone()[0]
+        session_indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(central_login_sessions)").fetchall()
+        }
+
+    assert challenge_count == 0
+    assert session_count == 0
+    assert "idx_central_login_sessions_expiry" in session_indexes
+    assert "idx_central_login_sessions_selector" in session_indexes
+    assert database.validate_central_login_session(token=expired_session, client_id="client-test-1") is None
 
 
 def test_bridge_configuration_rejects_remote_urls_and_placeholders():

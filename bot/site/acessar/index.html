@@ -7,9 +7,8 @@
     <meta name="description" content="Acesso de membro da Peace com ID e código enviado no Discord.">
     <title>Acessar — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261112-20">
-    <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261112-20"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261112-22">
+    <script defer src="/script.js?v=20261112-22"></script>
   </head>
   <body data-page="login">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -40,6 +39,7 @@
               <div class="code-heading"><h2>Código recebido</h2></div>
               <label class="field code-field"><span>Código do Discord</span><div class="otp-shell"><input class="otp-input" name="access-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de acesso de 6 dígitos"><div class="otp-cells" aria-hidden="true"><span data-code-cell="0"></span><span data-code-cell="1"></span><span data-code-cell="2"></span><span data-code-cell="3"></span><span data-code-cell="4"></span><span data-code-cell="5"></span></div></div></label>
               <button class="button button--light button--large" type="submit"><span data-button-label>Entrar</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
+              <button class="button button--ghost button--large code-resend" data-login-resend type="button" hidden>Não recebi o código</button>
               <p class="form-status" data-login-result role="status" aria-live="polite"></p>
             </form>
 

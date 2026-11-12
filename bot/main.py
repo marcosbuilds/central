@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
@@ -45,18 +46,57 @@ ROOT = Path(__file__).resolve().parent.parent if __package__ == "bot" else Path(
 CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
 CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
 PUBLIC_MEMBER_AUTH_CLIENT_ID = "peacegg-web"
+PUBLIC_MEMBER_SESSION_COOKIE = "peace_member_session"
+PUBLIC_MEMBER_CHALLENGE_COOKIE = "peace_member_challenge"
+PUBLIC_MEMBER_CHALLENGE_PATH = "/api/member/auth"
 PUBLIC_MEMBER_AUTH_DENIAL = "Não foi possível validar esse ID Peace."
 PUBLIC_MEMBER_AUTH_THROTTLED = "Aguarde alguns minutos antes de solicitar outro código."
+PUBLIC_MEMBER_SESSION_EXPIRED = "Sua sessão expirou. Entre novamente para continuar."
+PUBLIC_MEMBER_AUTH_UNAVAILABLE = "A autenticação está temporariamente indisponível. Tente novamente em instantes."
+PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a área."
+PUBLIC_API_RATE_LIMITS = {
+    "/api/status": (120, 60),
+    "/api/media": (12, 60),
+    "/api/entry/start": (12, 60),
+    "/api/entry/status": (60, 60),
+    "/api/entry/repair": (24, 60),
+    "/api/entry/identify": (24, 60),
+    "/api/member/auth/request": (12, 600),
+    "/api/member/auth/verify": (24, 600),
+    "/api/member/auth/session": (120, 60),
+    "/api/member/auth/revoke": (24, 60),
+    "/api/member/overview": (60, 60),
+}
 PUBLIC_API_ORIGINS = frozenset(
     {
         "https://peacegg.com.br",
         "https://www.peacegg.com.br",
+        # The localhost preview is a development-only same-site proxy. It
+        # never receives production cookies because Secure cookies are not
+        # sent over plain HTTP outside the local preview.
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    }
+)
+PUBLIC_API_NO_STORE_ROUTES = frozenset(
+    {
+        "/api/entry/start",
+        "/api/entry/status",
+        "/api/entry/repair",
+        "/api/entry/identify",
+        "/api/member/auth/request",
+        "/api/member/auth/verify",
+        "/api/member/auth/session",
+        "/api/member/auth/revoke",
+        "/api/member/overview",
     }
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
 ENTRY_INVITE_MAX_USES = 2
 ENTRY_INVITE_PROPAGATION_GRACE_SECONDS = 30
 ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+AUTH_SESSION_MAX_TTL_SECONDS = 7 * 24 * 60 * 60
+MAX_SQLITE_INTEGER = 2**63 - 1
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -85,6 +125,9 @@ INTERN_ROLE_NAME = "Intern"
 FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
 MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
+PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
+INVESTIGATION_CHANNEL_NAMES = ("╰🔎・investigations", "investigations", "investigação", "investigacao")
+PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
 MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
 PUBLIC_MEDIA_HISTORY_LIMIT = 200
@@ -537,6 +580,7 @@ class PublicMediaCache:
 
     refreshed_at: float
     items: tuple[dict[str, object], ...]
+    available: bool
 
 
 class VerificationCaptchaView(discord.ui.View):
@@ -2659,6 +2703,8 @@ class PeaceBot(commands.Bot):
         self.announcement_collectors: set[int] = set()
         self.public_media_cache: dict[str, PublicMediaCache] = {}
         self.public_media_cache_lock = asyncio.Lock()
+        self.public_api_rate_limit_events: dict[str, list[float]] = {}
+        self.public_member_overview_last_request: dict[int, float] = {}
         self.booster_tasks: set[int] = set()
         self.managed_peace_role_removals: set[int] = set()
         self.member_mutation_locks: dict[int, asyncio.Lock] = {}
@@ -2723,11 +2769,36 @@ class PeaceBot(commands.Bot):
                 ("Estagiário", "Estagiario"),
                 discord.Colour(0x1ABC9C),
             ),
+            (
+                "Investigator",
+                getattr(self.settings, "investigator_role_id", None),
+                ("Investigador",),
+                discord.Colour(0x3498DB),
+            ),
+            (
+                "Lead Investigator",
+                getattr(self.settings, "lead_investigator_role_id", None),
+                ("Chief Investigator", "Investigador-chefe", "Investigador chefe"),
+                discord.Colour(0x9B59B6),
+            ),
         )
         for name, role_id, aliases, colour in specs:
-            role = role_named(self.guild, role_id, name, *aliases)
+            access_role = name in {"Investigator", "Lead Investigator"}
+            role = (
+                unique_role_named(self.guild, role_id, name, *aliases)
+                if access_role
+                else role_named(self.guild, role_id, name, *aliases)
+            )
+            if access_role and role is None and role_id is None:
+                alias_names = {name.casefold(), *(alias.casefold() for alias in aliases)}
+                if any(
+                    str(getattr(existing, "name", "")).casefold() in alias_names
+                    for existing in getattr(self.guild, "roles", ())
+                ):
+                    log.error("Cargo de acesso %s duplicado; autorização investigativa permanece fechada", name)
+                    continue
             if role is None:
-                await self.guild.create_role(
+                role = await self.guild.create_role(
                     name=name,
                     colour=colour,
                     permissions=discord.Permissions.none(),
@@ -2747,6 +2818,10 @@ class PeaceBot(commands.Bot):
                     permissions=discord.Permissions.none(),
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
+            if name == "Investigator" and getattr(self.settings, "investigator_role_id", None) is None:
+                self.settings.investigator_role_id = int(role.id)
+            elif name == "Lead Investigator" and getattr(self.settings, "lead_investigator_role_id", None) is None:
+                self.settings.lead_investigator_role_id = int(role.id)
 
     def entry_guild(self) -> discord.Guild | None:
         return self.guild or self.get_guild(self.settings.guild_id)
@@ -2984,6 +3059,9 @@ class PeaceBot(commands.Bot):
         }
 
     async def public_api_entry_start(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -3038,7 +3116,13 @@ class PeaceBot(commands.Bot):
         return web.json_response({"ok": True, **await self.entry_session_payload(session)})
 
     async def public_api_entry_status(self, request: web.Request) -> web.Response:
-        supplied_token = request.query.get("session_token")
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        # Entry tokens must not travel in URLs: browser history, referrers and
+        # reverse-proxy access logs can retain query strings. The supported
+        # client contract is the POST body below.
+        supplied_token = None
         if request.method == "POST":
             try:
                 payload = await request.json()
@@ -3057,6 +3141,9 @@ class PeaceBot(commands.Bot):
         return web.json_response({"ok": True, **await self.entry_session_payload(session)})
 
     async def public_api_entry_repair(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -3117,6 +3204,9 @@ class PeaceBot(commands.Bot):
         return web.json_response({"ok": True, "code": "ROLE_READY", "message": "Sua conta está pronta. Abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
 
     async def public_member_auth_request(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -3124,7 +3214,16 @@ class PeaceBot(commands.Bot):
         except (TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
 
-        peace_id = self.public_peace_id(payload.get("peace_id"))
+        raw_peace_id = payload.get("peace_id")
+        peace_id = self.public_peace_id(raw_peace_id)
+        challenge_token = self.public_member_challenge_token(request)
+        if peace_id is None and not str(raw_peace_id or "").strip() and challenge_token is not None:
+            previous = self.database.central_login_challenge_for_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+            if previous is not None:
+                peace_id = int(previous["peace_id"])
         if peace_id is None:
             return web.json_response({"ok": False, "code": "INVALID_PEACE_ID", "message": "O ID Peace deve conter somente números."}, status=400)
         guild = self.entry_guild()
@@ -3140,15 +3239,32 @@ class PeaceBot(commands.Bot):
             max_client_requests=60,
         ):
             return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
-        issued = await self.issue_public_auth_code(member, peace_id)
+        issued, challenge_token = await self.issue_public_auth_code(member, peace_id)
         if issued is None:
             return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
         if not issued:
             return web.json_response({"ok": False, "code": "DM_UNAVAILABLE", "message": "Não consegui enviar a mensagem privada. Abra suas DMs no Discord."}, status=502)
-        display_name = str(getattr(member, "display_name", None) or getattr(member, "name", "membro"))[:80]
-        return web.json_response({"ok": True, "message": "Código enviado para a sua DM no Discord.", "member_name": display_name})
+        code_ttl_seconds = self.bounded_auth_code_ttl()
+        response = web.json_response({
+            "ok": True,
+            "message": "Código enviado para a sua DM no Discord.",
+            "code_expires_in": code_ttl_seconds,
+        })
+        response.set_cookie(
+            PUBLIC_MEMBER_CHALLENGE_COOKIE,
+            challenge_token or "",
+            max_age=code_ttl_seconds,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            path=PUBLIC_MEMBER_CHALLENGE_PATH,
+        )
+        return response
 
     async def public_member_auth_verify(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -3156,22 +3272,31 @@ class PeaceBot(commands.Bot):
         except (TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
 
-        peace_id = self.public_peace_id(payload.get("peace_id"))
         code = str(payload.get("code", "")).strip()
-        if peace_id is None or not re.fullmatch(r"\d{6}", code):
+        keep_connected = payload.get("keep_connected") is True
+        challenge_token = self.public_member_challenge_token(request)
+        if challenge_token is None:
+            return web.json_response({"ok": False, "code": "AUTH_CHALLENGE_MISSING", "message": "Solicite um novo código para continuar."}, status=400)
+        if not re.fullmatch(r"\d{6}", code):
             return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "Digite o código de 6 números recebido no Discord."}, status=400)
+        challenge = self.database.central_login_challenge_for_token(
+            challenge_token=challenge_token,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+        )
+        if challenge is None:
+            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
+        peace_id = int(challenge["peace_id"])
         member = await self.public_auth_member(peace_id)
-        if member is None:
+        if member is None or not self.session_belongs_to_member(challenge, member):
             return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
-        valid = self.database.consume_central_login_challenge(
-            discord_user_id=member.id,
-            peace_id=peace_id,
+        consumed = self.database.consume_public_login_challenge(
+            challenge_token=challenge_token,
             client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
             code=code,
         )
-        if not valid:
+        if consumed is None:
             return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
-        ttl_seconds = max(60, int(getattr(self.settings, "central_auth_session_ttl_seconds", 1800)))
+        ttl_seconds = self.bounded_auth_session_ttl(persistent=keep_connected)
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         token = self.database.create_central_login_session(
             discord_user_id=member.id,
@@ -3187,23 +3312,472 @@ class PeaceBot(commands.Bot):
         )
         if row is None:
             return web.json_response({"ok": False, "code": "AUTH_SESSION_UNAVAILABLE", "message": "Não foi possível concluir o acesso agora."}, status=503)
-        return web.json_response({"ok": True, "message": "Acesso confirmado.", "session": self.public_auth_session_payload(row, member=member, token=token)})
+        response = web.json_response({
+            "ok": True,
+            "message": "Acesso confirmado.",
+            "session": self.public_auth_session_payload(row, member=member),
+        })
+        response.set_cookie(
+            PUBLIC_MEMBER_SESSION_COOKIE,
+            token,
+            max_age=ttl_seconds if keep_connected else None,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            path="/",
+        )
+        response.del_cookie(PUBLIC_MEMBER_CHALLENGE_COOKIE, path=PUBLIC_MEMBER_CHALLENGE_PATH)
+        return response
 
     async def public_member_auth_session(self, request: web.Request) -> web.Response:
-        token = self.central_bearer_token(request)
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token = self.public_member_token(request)
         if token is None:
             return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão expirou. Entre novamente."}, status=401)
+        try:
+            row = self.database.validate_central_login_session(
+                token=token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao validar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if row is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        try:
+            member = await self.public_auth_member(int(row["peace_id"]))
+        except (discord.DiscordException, asyncio.TimeoutError, OSError):
+            log.warning("Discord indisponível ao validar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if member is None or not self.session_belongs_to_member(row, member):
+            try:
+                self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            except (sqlite3.Error, OSError):
+                log.warning("Não consegui revogar sessão web sem membro ativo", exc_info=True)
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        return web.json_response({"ok": True, "message": "Sessão válida.", "session": self.public_auth_session_payload(row, member=member)})
+
+    async def public_member_auth_revoke(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        tokens = {
+            token
+            for token in (
+                self.public_member_token(request),
+                self.central_bearer_token(request),
+                request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE, ""),
+            )
+            if token and ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token)
+        }
+        if not tokens:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        try:
+            for token in tokens:
+                self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao encerrar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        response = web.json_response({"ok": True, "message": "Sessão encerrada."})
+        response.del_cookie(PUBLIC_MEMBER_SESSION_COOKIE, path="/")
+        response.del_cookie(PUBLIC_MEMBER_CHALLENGE_COOKIE, path=PUBLIC_MEMBER_CHALLENGE_PATH)
+        return response
+
+    async def public_member_session_context(
+        self,
+        request: web.Request,
+    ) -> tuple[str | None, object | None, discord.Member | None]:
+        """Validate the public bearer and live Peace role for every member API call."""
+        token = self.public_member_token(request)
+        if token is None:
+            return None, None, None
         row = self.database.validate_central_login_session(
             token=token,
             client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
         )
         if row is None:
-            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão expirou. Entre novamente."}, status=401)
+            return token, None, None
         member = await self.public_auth_member(int(row["peace_id"]))
-        if member is None:
+        if member is None or not self.session_belongs_to_member(row, member):
             self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
-            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão não está mais disponível."}, status=403)
-        return web.json_response({"ok": True, "message": "Sessão válida.", "session": self.public_auth_session_payload(row, member=member)})
+            return token, None, None
+        return token, row, member
+
+    def public_member_capabilities(self, member: discord.Member) -> dict[str, bool]:
+        """Derive capabilities from stable role IDs, never from role names."""
+
+        def configured_or_structural(setting_name: str, role_key: str | None = None) -> int | None:
+            configured = getattr(self.settings, setting_name, None)
+            if configured is not None:
+                return int(configured)
+            return canonical_role_id(role_key) if role_key else None
+
+        def has_role(role_id: int | None) -> bool:
+            return role_id is not None and role_member(member, role_id)
+
+        staff = has_role(configured_or_structural("staff_role_id", "staff"))
+        management = has_role(configured_or_structural("manager_role_id", "manager"))
+        founder = has_role(canonical_founder_role_id())
+        # Dev and the two investigative roles are intentionally fail-closed
+        # when their deployment IDs are not configured. Their labels are not
+        # authorization boundaries because Discord members with manage-roles
+        # could otherwise create a same-named visual role.
+        developer = has_role(getattr(self.settings, "central_access_role_id", None))
+        investigator = has_role(getattr(self.settings, "investigator_role_id", None))
+        lead_investigator = has_role(getattr(self.settings, "lead_investigator_role_id", None))
+        return {
+            "investigator": investigator or lead_investigator,
+            "lead_investigator": lead_investigator,
+            "management": management,
+            "staff": staff,
+            "developer": developer,
+            "scan_only": staff or management or founder,
+            "logs": staff or management or founder or developer,
+            "partners_edit": management,
+        }
+
+    @staticmethod
+    def public_avatar_url(subject: object) -> str | None:
+        avatar = getattr(subject, "display_avatar", None) or getattr(subject, "avatar", None)
+        url = getattr(avatar, "url", None)
+        return str(url) if url else None
+
+    @staticmethod
+    def public_message_text(message: object) -> str:
+        """Return bounded public text without allowing Discord mentions to notify."""
+        content = str(getattr(message, "content", "") or "").strip()
+        embeds = getattr(message, "embeds", ()) or ()
+        if (not content or re.fullmatch(r"(?:<@&?\d+>\s*)+", content)) and embeds:
+            description = str(getattr(embeds[0], "description", "") or "").strip()
+            title = str(getattr(embeds[0], "title", "") or "").strip()
+            content = "\n\n".join(part for part in (title, description) if part)
+        content = re.sub(r"<@!?\d+>", "@membro", content)
+        content = re.sub(r"<@&\d+>", "@cargo", content)
+        content = content.replace("@everyone", "@todos").replace("@here", "@canal")
+        return content[:1200]
+
+    @classmethod
+    def public_message_summary(cls, message: object, *, kind: str) -> dict[str, object]:
+        author = getattr(message, "author", None)
+        embeds = getattr(message, "embeds", ()) or ()
+        embed = embeds[0] if embeds else None
+        embed_author = getattr(embed, "author", None) if embed is not None else None
+        footer = getattr(embed, "footer", None) if embed is not None else None
+        footer_text = str(getattr(footer, "text", "") or "")
+        display_name = str(
+            footer_text.removeprefix("Publicado por ").strip()
+            if footer_text.startswith("Publicado por ")
+            else getattr(author, "display_name", None)
+            or getattr(author, "global_name", None)
+            or getattr(author, "name", "Peace")
+        )[:80]
+        avatar_url = cls.public_avatar_url(author)
+        embed_icon = getattr(embed_author, "icon_url", None) if embed_author is not None else None
+        if footer_text.startswith("Publicado por ") and embed_icon:
+            avatar_url = str(embed_icon)
+        created_at = getattr(message, "created_at", None)
+        if isinstance(created_at, datetime):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            published_at = created_at.astimezone(timezone.utc).isoformat()
+        else:
+            published_at = None
+        attachments = getattr(message, "attachments", ()) or ()
+        image_url = next(
+            (
+                str(getattr(attachment, "url", ""))
+                for attachment in attachments
+                if str(getattr(attachment, "content_type", "") or "").startswith("image/")
+                and str(getattr(attachment, "url", ""))
+            ),
+            None,
+        )
+        return {
+            "id": str(getattr(message, "id", "")),
+            "kind": kind,
+            "text": cls.public_message_text(message),
+            "author": display_name,
+            "avatar_url": avatar_url,
+            "published_at": published_at,
+            "image_url": image_url,
+            "url": str(getattr(message, "jump_url", "") or "") or None,
+        }
+
+    async def public_channel_messages(
+        self,
+        channel: object,
+        *,
+        kind: str,
+        limit: int,
+        requester: discord.Member | None = None,
+    ) -> tuple[list[dict[str, object]], bool]:
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return [], False
+        if requester is not None:
+            permissions_for = getattr(channel, "permissions_for", None)
+            if not callable(permissions_for):
+                return [], False
+            try:
+                permissions = permissions_for(requester)
+                if not getattr(permissions, "view_channel", False) or not getattr(permissions, "read_message_history", False):
+                    return [], False
+            except (AttributeError, TypeError, discord.DiscordException):
+                return [], False
+        items: list[dict[str, object]] = []
+        try:
+            async for message in history(limit=max(1, min(limit, 24))):
+                summary = self.public_message_summary(message, kind=kind)
+                if summary["text"] or summary["image_url"]:
+                    items.append(summary)
+                if len(items) >= limit:
+                    break
+        except (
+            discord.Forbidden,
+            discord.HTTPException,
+            asyncio.TimeoutError,
+            OSError,
+            AttributeError,
+            TypeError,
+        ):
+            log.info("Não consegui ler a fonte pública %s", kind)
+            return [], False
+        return items, True
+
+    def public_partner_channel(self) -> discord.TextChannel | None:
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        configured_id = getattr(self.settings, "website_partners_channel_id", None)
+        if configured_id is not None:
+            configured = guild.get_channel(int(configured_id))
+            if isinstance(configured, discord.TextChannel):
+                return configured
+        names = {name.casefold() for name in PARTNER_CHANNEL_NAMES}
+        return discord.utils.find(
+            lambda channel: isinstance(channel, discord.TextChannel)
+            and (
+                channel.name.casefold() in names
+                or channel.name.casefold().endswith("・parceiros")
+                or channel.name.casefold().endswith("・partners")
+            ),
+            guild.text_channels,
+        )
+
+    def public_investigation_channel(self) -> discord.TextChannel | None:
+        """Resolve only the migrated investigation channel, fail-closed."""
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        configured_id = getattr(self.settings, "website_investigation_channel_id", None)
+        candidates: list[discord.TextChannel] = []
+        if configured_id is not None:
+            configured = guild.get_channel(int(configured_id))
+            if isinstance(configured, discord.TextChannel):
+                candidates.append(configured)
+        candidates.extend(
+            channel
+            for channel in getattr(guild, "text_channels", ())
+            if isinstance(channel, discord.TextChannel) and channel not in candidates
+        )
+        category_names = {
+            "[🔎] investigations",
+            "[🔎] investigacao",
+            "[🔎] investigação",
+        }
+        channel_names = {name.casefold() for name in INVESTIGATION_CHANNEL_NAMES}
+        for channel in candidates:
+            if channel.name.casefold() not in channel_names:
+                continue
+            category = getattr(channel, "category", None)
+            if str(getattr(category, "name", "")).casefold() not in category_names:
+                continue
+            return channel
+        return None
+
+    async def public_member_auth_overview(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            token, row, member = await self.public_member_session_context(request)
+        except (sqlite3.Error, OSError, discord.DiscordException, asyncio.TimeoutError):
+            log.warning("Fonte de autenticação indisponível ao carregar overview", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if token is None or row is None or member is None:
+            return web.json_response(
+                {"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED},
+                status=401,
+            )
+        now = time.monotonic()
+        last_request = self.public_member_overview_last_request.get(member.id, 0.0)
+        if now - last_request < PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS:
+            return web.json_response(
+                {"ok": False, "code": "OVERVIEW_THROTTLED", "message": PUBLIC_MEMBER_OVERVIEW_THROTTLED},
+                status=429,
+                headers={"Retry-After": str(PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS)},
+            )
+        self.public_member_overview_last_request[member.id] = now
+        if len(self.public_member_overview_last_request) > 2048:
+            cutoff = now - 3600
+            self.public_member_overview_last_request = {
+                user_id: timestamp
+                for user_id, timestamp in self.public_member_overview_last_request.items()
+                if timestamp >= cutoff
+            }
+
+        guild = self.entry_guild()
+        capabilities = self.public_member_capabilities(member)
+        media_results = await asyncio.gather(
+            self.public_media_items_with_state("moments"),
+            self.public_media_items_with_state("clips"),
+            return_exceptions=True,
+        )
+        normalized_media: list[tuple[list[dict[str, object]], bool]] = []
+        for result in media_results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, Exception):
+                log.warning("Fonte de mídia pública falhou ao montar o overview: %s", type(result).__name__)
+                normalized_media.append(([], False))
+            else:
+                normalized_media.append(result)
+        (moments, moments_available), (clips, clips_available) = normalized_media
+        seed = secrets.randbelow(2**32)
+        media_items = self.select_public_media(moments, "moments", seed)[:3] + self.select_public_media(clips, "clips", seed)[:3]
+        media_available = moments_available or clips_available
+        media_complete = moments_available and clips_available
+        announcement_items, announcement_available = await self.public_channel_messages(
+            self.announcement_channel(),
+            kind="announcement",
+            limit=5,
+            requester=member,
+        )
+        partner_items, partner_available = await self.public_channel_messages(
+            self.public_partner_channel(),
+            kind="partner",
+            limit=8,
+            requester=member,
+        )
+
+        active_items: list[dict[str, object]] = []
+        active_available = True
+        try:
+            active_rows = self.database.active_clocks(limit=24)
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite de presença indisponível para o overview", exc_info=True)
+            active_rows = []
+            active_available = False
+        detailed_presence = capabilities["staff"] or capabilities["management"] or capabilities["developer"]
+        if guild is None:
+            active_available = False
+        for row_clock in active_rows if detailed_presence and active_available else []:
+            if guild is None:
+                break
+            get_member = getattr(guild, "get_member", None)
+            clock_member = get_member(int(row_clock["discord_user_id"])) if callable(get_member) else None
+            if clock_member is None or not self.public_member_has_peace_role(clock_member):
+                continue
+            active_items.append(
+                {
+                    "author": str(getattr(clock_member, "display_name", None) or getattr(clock_member, "name", "membro"))[:80],
+                    "avatar_url": self.public_avatar_url(clock_member),
+                    "started_at": row_clock["started_at"],
+                }
+            )
+
+        def block(
+            items: list[dict[str, object]],
+            source: str,
+            empty_message: str,
+            *,
+            available: bool = True,
+            count: int | None = None,
+            stale: bool | None = None,
+        ) -> dict[str, object]:
+            effective_stale = (not available) if stale is None else stale
+            return {
+                "state": "ready" if items else ("empty" if available else "unavailable"),
+                "source": source,
+                "updated_at": datetime.now(timezone.utc).isoformat() if available else None,
+                "stale": effective_stale,
+                "items": items,
+                "count": count,
+                "message": None if items else empty_message,
+            }
+
+        overview: dict[str, object] = {
+            "member_identity": self.public_auth_session_payload(row, member=member),
+            "next_action": {
+                "state": "discord_authority",
+                "source": "discord",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "stale": False,
+                "title": "Ações e suporte continuam no Discord",
+                "message": "Use o servidor para pedidos, verificação e atendimento. Esta área acompanha apenas informações autorizadas.",
+            },
+            "capabilities": capabilities,
+            "announcements": block(
+                announcement_items,
+                "discord:avisos",
+                "Nenhum aviso publicado foi sincronizado.",
+                available=announcement_available,
+            ),
+            "media": block(
+                media_items,
+                "discord:midias-clipes",
+                "Nenhuma mídia disponível agora.",
+                available=media_available,
+                stale=not media_complete,
+            ),
+            "active_members": block(
+                active_items,
+                "discord:ponto",
+                (
+                    f"{len(active_rows)} membro(s) com ponto ativo."
+                    if active_rows and not detailed_presence and active_available
+                    else "Nenhum membro está com ponto ativo agora."
+                ),
+                available=active_available,
+                count=len(active_rows) if active_available else None,
+            ),
+            "partners": block(
+                partner_items,
+                "discord:parceiros",
+                "Nenhum parceiro publicado agora.",
+                available=partner_available,
+            ),
+        }
+        if capabilities["investigator"]:
+            investigation_items, investigation_available = await self.public_channel_messages(
+                self.public_investigation_channel(),
+                kind="investigation",
+                limit=12,
+                requester=member,
+            )
+            overview["investigation"] = block(
+                investigation_items,
+                "discord:investigations",
+                "Nenhum registro investigativo disponível.",
+                available=investigation_available,
+            )
+        response = web.json_response({"ok": True, "overview": overview})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @staticmethod
     def public_discord_id_from_profile(value: object) -> int | None:
@@ -3227,12 +3801,6 @@ class PeaceBot(commands.Bot):
             )
             if str(value or "").strip()
         }
-
-    def public_member_role_named(self, member: discord.Member, role_id: int | None, *names: str) -> bool:
-        if role_id is not None and role_member(member, role_id):
-            return True
-        candidates = {name.casefold().strip() for name in names}
-        return any(str(getattr(role, "name", "")).casefold().strip() in candidates for role in getattr(member, "roles", ()))
 
     async def public_member_by_identity(
         self,
@@ -3277,6 +3845,9 @@ class PeaceBot(commands.Bot):
         return member, None
 
     async def public_entry_identify_member(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -3317,13 +3888,12 @@ class PeaceBot(commands.Bot):
         display_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "membro"))[:80]
         discord_user = {"username": display_name, "mention": f"@{display_name}"}
         peace_member = self.public_member_has_peace_role(member)
-        visitor = self.public_member_role_named(member, getattr(self.settings, "visitor_role_id", None), "Visitor")
-        not_verified = self.public_member_role_named(member, getattr(self.settings, "not_verified_role_id", None), NOT_VERIFIED_ROLE_NAME, "Não verificado", "Nao verificado")
-        self.database.initialize()
-        record = self.database.get_member(member.id)
-        peace_id = int(record["peace_id"]) if record is not None else self.public_nickname_peace_id(getattr(member, "nick", None) or display_name)
+        visitor_role_id = getattr(self.settings, "visitor_role_id", None)
+        not_verified_role_id = getattr(self.settings, "not_verified_role_id", None)
+        visitor = visitor_role_id is not None and role_member(member, visitor_role_id)
+        not_verified = not_verified_role_id is not None and role_member(member, not_verified_role_id)
         if peace_member:
-            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user, "peace_id": peace_id})
+            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user})
         if visitor:
             return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitor foi confirmada. Continue a entrevista.", "discord_user": discord_user})
         if not_verified:
@@ -3906,7 +4476,7 @@ class PeaceBot(commands.Bot):
                     items[index] = resolved
         return items
 
-    async def collect_public_media(self, channel_kind: str) -> list[dict[str, object]]:
+    async def collect_public_media(self, channel_kind: str) -> tuple[list[dict[str, object]], bool]:
         setting_name = {
             "moments": "website_media_channel_id",
             "clips": "website_clips_channel_id",
@@ -3914,21 +4484,21 @@ class PeaceBot(commands.Bot):
         channel_id = getattr(self.settings, setting_name, None) if setting_name else None
         guild = self.entry_guild()
         if guild is None or channel_id is None:
-            return []
+            return [], False
         get_channel = getattr(guild, "get_channel", None)
         channel = get_channel(int(channel_id)) if callable(get_channel) else None
         history = getattr(channel, "history", None) if channel is not None else None
         if not callable(history):
-            return []
+            return [], False
         bot_member = getattr(guild, "me", None)
         permissions_for = getattr(channel, "permissions_for", None)
         if bot_member is not None and callable(permissions_for):
             try:
                 permissions = permissions_for(bot_member)
                 if not getattr(permissions, "view_channel", True) or not getattr(permissions, "read_message_history", True):
-                    return []
+                    return [], False
             except (AttributeError, TypeError):
-                return []
+                return [], False
         items: list[dict[str, object]] = []
         try:
             async for message in history(limit=PUBLIC_MEDIA_HISTORY_LIMIT):
@@ -3937,11 +4507,11 @@ class PeaceBot(commands.Bot):
                     break
         except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
             log.info("Não consegui ler a mídia pública do canal %s", channel_kind)
-            return []
+            return [], False
         await self.public_media_resolve_medal_items(items)
-        return items[:PUBLIC_MEDIA_HISTORY_LIMIT]
+        return items[:PUBLIC_MEDIA_HISTORY_LIMIT], True
 
-    async def public_media_items(self, channel_kind: str) -> list[dict[str, object]]:
+    async def public_media_items_with_state(self, channel_kind: str) -> tuple[list[dict[str, object]], bool]:
         now = time.monotonic()
         try:
             cache_seconds = max(30, int(getattr(self.settings, "website_media_cache_seconds", 300)))
@@ -3949,19 +4519,28 @@ class PeaceBot(commands.Bot):
             cache_seconds = 300
         cached = self.public_media_cache.get(channel_kind)
         if cached is not None and now - cached.refreshed_at < cache_seconds:
-            return [dict(item) for item in cached.items]
+            return [dict(item) for item in cached.items], cached.available
 
         async with self.public_media_cache_lock:
             now = time.monotonic()
             cached = self.public_media_cache.get(channel_kind)
             if cached is not None and now - cached.refreshed_at < cache_seconds:
-                return [dict(item) for item in cached.items]
-            items = await self.collect_public_media(channel_kind)
+                return [dict(item) for item in cached.items], cached.available
+            try:
+                items, available = await self.collect_public_media(channel_kind)
+            except (ClientError, asyncio.TimeoutError, discord.DiscordException, OSError):
+                log.warning("Fonte de mídia pública indisponível: %s", channel_kind)
+                items, available = [], False
             self.public_media_cache[channel_kind] = PublicMediaCache(
                 refreshed_at=now,
                 items=tuple(dict(item) for item in items),
+                available=available,
             )
-            return [dict(item) for item in items]
+            return [dict(item) for item in items], available
+
+    async def public_media_items(self, channel_kind: str) -> list[dict[str, object]]:
+        items, _available = await self.public_media_items_with_state(channel_kind)
+        return items
 
     @staticmethod
     def select_public_media(
@@ -4024,22 +4603,40 @@ class PeaceBot(commands.Bot):
         return selected[:PUBLIC_MEDIA_SELECTION_LIMIT]
 
     async def public_api_media(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         raw_seed = request.query.get("seed", "")
         try:
             seed = abs(int(raw_seed)) % (2**32) if raw_seed else secrets.randbelow(2**32)
         except (TypeError, ValueError):
             seed = secrets.randbelow(2**32)
-        moments, clips = await asyncio.gather(
-            self.public_media_items("moments"),
-            self.public_media_items("clips"),
+        (moments, moments_available), (clips, clips_available) = await asyncio.gather(
+            self.public_media_items_with_state("moments"),
+            self.public_media_items_with_state("clips"),
         )
+        refreshed_at = datetime.now(timezone.utc).isoformat()
         response = web.json_response(
             {
                 "ok": True,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": refreshed_at,
                 "refresh_after": max(30, int(getattr(self.settings, "website_media_cache_seconds", 300) or 300)),
                 "moments": self.select_public_media(moments, "moments", seed),
                 "clips": self.select_public_media(clips, "clips", seed),
+                "sources": {
+                    "moments": {
+                        "state": "ready" if moments else ("empty" if moments_available else "unavailable"),
+                        "available": moments_available,
+                        "stale": not moments_available,
+                        "updated_at": refreshed_at if moments_available else None,
+                    },
+                    "clips": {
+                        "state": "ready" if clips else ("empty" if clips_available else "unavailable"),
+                        "available": clips_available,
+                        "stale": not clips_available,
+                        "updated_at": refreshed_at if clips_available else None,
+                    },
+                },
             }
         )
         response.headers["Cache-Control"] = "no-store"
@@ -4048,13 +4645,70 @@ class PeaceBot(commands.Bot):
     @staticmethod
     @web.middleware
     async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
-        response = await handler(request)
+        route = str(getattr(request, "path", "") or "").split("?", 1)[0]
         origin = request.headers.get("Origin")
+        if origin and origin not in PUBLIC_API_ORIGINS:
+            # Browsers will not send a JSON cross-origin request without a
+            # successful preflight, but reject a supplied hostile Origin at
+            # the application boundary as well. Requests without Origin are
+            # kept for direct technical clients that do not use cookies.
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "ORIGIN_NOT_ALLOWED",
+                    "message": "Origem não autorizada.",
+                },
+                status=403,
+                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+            )
+        cookie_mutation = route in {
+            "/api/member/auth/verify",
+            "/api/member/auth/revoke",
+        }
+        if (
+            request.method == "POST"
+            and cookie_mutation
+            and (
+                request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE)
+                or request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE)
+            )
+            and origin not in PUBLIC_API_ORIGINS
+        ):
+            # A cookie-authenticated mutation must prove that it came from
+            # the public Peace origin. Bearer-only legacy clients do not use
+            # this browser CSRF path.
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "ORIGIN_REQUIRED",
+                    "message": "A origem da sessão não pôde ser confirmada.",
+                },
+                status=403,
+                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+            )
+        response = await handler(request)
+        if route in PUBLIC_API_NO_STORE_ROUTES:
+            response.headers["Cache-Control"] = "no-store, private"
+            response.headers["Pragma"] = "no-cache"
+            vary = {
+                value.strip()
+                for value in response.headers.get("Vary", "").split(",")
+                if value.strip()
+            }
+            vary.update({"Cookie", "Authorization"})
+            if vary:
+                response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
         if origin in PUBLIC_API_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
-            response.headers["Vary"] = "Origin"
+            vary = {
+                value.strip()
+                for value in response.headers.get("Vary", "").split(",")
+                if value.strip()
+            }
+            vary.add("Origin")
+            response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
         return response
 
     async def public_api_health(self, request: web.Request) -> web.Response:
@@ -4063,6 +4717,9 @@ class PeaceBot(commands.Bot):
         return response
 
     async def public_api_status(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
         discord_connected = self.is_ready() and not self.is_closed()
         response = web.json_response(
             {
@@ -4075,6 +4732,52 @@ class PeaceBot(commands.Bot):
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    def public_api_rate_limit(self, request: web.Request) -> web.Response | None:
+        """Apply a bounded per-origin-process limit to public endpoints.
+
+        The public edge may add a stronger IP limit, but the bot must still
+        protect its Discord and SQLite work when it is reached directly or
+        through a proxy that does not preserve the client address.
+        """
+        route = str(getattr(request, "path", "") or "").split("?", 1)[0]
+        policy = PUBLIC_API_RATE_LIMITS.get(route)
+        if policy is None:
+            return None
+        limit, window_seconds = policy
+        remote = str(getattr(request, "remote", None) or "unknown").strip()[:128]
+        key = f"{route}|{remote}"
+        now = time.monotonic()
+        events = [
+            timestamp
+            for timestamp in self.public_api_rate_limit_events.get(key, [])
+            if now - timestamp < window_seconds
+        ]
+        if len(events) >= limit:
+            retry_after = max(1, int(window_seconds - (now - events[0])))
+            self.public_api_rate_limit_events[key] = events
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "RATE_LIMITED",
+                    "message": "Aguarde alguns segundos antes de tentar novamente.",
+                },
+                status=429,
+                headers={
+                    "Retry-After": str(retry_after),
+                    "Cache-Control": "no-store",
+                },
+            )
+        events.append(now)
+        self.public_api_rate_limit_events[key] = events
+        if len(self.public_api_rate_limit_events) > 4096:
+            cutoff = now - max(window for _, window in PUBLIC_API_RATE_LIMITS.values())
+            self.public_api_rate_limit_events = {
+                rate_key: timestamps
+                for rate_key, timestamps in self.public_api_rate_limit_events.items()
+                if timestamps and timestamps[-1] >= cutoff
+            }
+        return None
+
     async def public_api_options(self, request: web.Request) -> web.Response:
         response = web.Response(status=204)
         response.headers["Cache-Control"] = "no-store"
@@ -4082,7 +4785,10 @@ class PeaceBot(commands.Bot):
 
     def public_api_app(self) -> web.Application:
         """Build the intentionally small public API surface used by Netlify."""
-        app = web.Application(middlewares=(self.public_api_cors,))
+        app = web.Application(
+            client_max_size=64 * 1024,
+            middlewares=(self.public_api_cors,),
+        )
         app.router.add_get("/healthz", self.public_api_health)
         app.router.add_get("/api/status", self.public_api_status)
         app.router.add_get("/api/media", self.public_api_media)
@@ -4094,6 +4800,8 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/member/auth/request", self.public_member_auth_request)
         app.router.add_post("/api/member/auth/verify", self.public_member_auth_verify)
         app.router.add_post("/api/member/auth/session", self.public_member_auth_session)
+        app.router.add_post("/api/member/auth/revoke", self.public_member_auth_revoke)
+        app.router.add_get("/api/member/overview", self.public_member_auth_overview)
         for route in (
             "/api/status",
             "/api/media",
@@ -4104,6 +4812,8 @@ class PeaceBot(commands.Bot):
             "/api/member/auth/request",
             "/api/member/auth/verify",
             "/api/member/auth/session",
+            "/api/member/auth/revoke",
+            "/api/member/overview",
         ):
             app.router.add_route("OPTIONS", route, self.public_api_options)
         return app
@@ -4147,7 +4857,7 @@ class PeaceBot(commands.Bot):
         except RuntimeError:
             log.exception("Ponte local da Central desativada: CENTRAL_BRIDGE_URL inválida")
             return
-        app = web.Application()
+        app = web.Application(client_max_size=16 * 1024)
         app.router.add_post("/v1/central/auth/request", self.central_auth_request)
         app.router.add_post("/v1/central/auth/verify", self.central_auth_verify)
         app.router.add_post("/v1/central/auth/session", self.central_auth_session)
@@ -4194,8 +4904,25 @@ class PeaceBot(commands.Bot):
     @staticmethod
     def central_bearer_token(request: web.Request) -> str | None:
         authorization = request.headers.get("Authorization", "")
-        match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{40,})", authorization)
+        match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{32,128})", authorization)
         return match.group(1) if match else None
+
+    @classmethod
+    def public_member_token(cls, request: web.Request) -> str | None:
+        """Prefer the HttpOnly web cookie; accept bearer for legacy sessions."""
+        cookie = request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE, "")
+        if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(cookie):
+            return cookie
+        return cls.central_bearer_token(request)
+
+    @classmethod
+    def public_member_challenge_token(cls, request: web.Request) -> str | None:
+        token = request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE, "")
+        return token if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def session_belongs_to_member(row: object, member: discord.Member) -> bool:
+        return str(getattr(member, "id", "")) == str(row["discord_user_id"])
 
     async def central_auth_member(self, peace_id: int) -> discord.Member | None:
         self.database.initialize()
@@ -4223,21 +4950,12 @@ class PeaceBot(commands.Bot):
         # ID 0 is the valid Founder identity in the Peace database. The
         # public member route still requires the live Peace role below, so
         # accepting zero here does not turn it into an unauthorised lookup.
-        return int(text)
-
-    @staticmethod
-    def public_nickname_peace_id(value: object) -> int | None:
-        match = re.search(r"(?:^|\s)([0-9]{1,19})\s*$", str(value or "").strip())
-        return int(match.group(1)) if match else None
+        parsed = int(text)
+        return parsed if parsed <= MAX_SQLITE_INTEGER else None
 
     def public_member_has_peace_role(self, member: discord.Member) -> bool:
         role_id = getattr(self.settings, "peace_role_id", None)
-        if role_id is not None and role_member(member, role_id):
-            return True
-        return any(
-            str(getattr(role, "name", "")).casefold().strip() == "peace"
-            for role in getattr(member, "roles", ())
-        )
+        return role_id is not None and role_member(member, role_id)
 
     async def public_auth_member(self, peace_id: int) -> discord.Member | None:
         """Resolve one active Peace member without exposing lookup details."""
@@ -4247,27 +4965,23 @@ class PeaceBot(commands.Bot):
 
         self.database.initialize()
         record = self.database.member_by_peace_id(peace_id)
-        member = None
-        if record is not None:
-            member_id = int(record["discord_user_id"])
+        if record is None:
+            return None
+        member_id = int(record["discord_user_id"])
+        fetch_member = getattr(guild, "fetch_member", None)
+        if callable(fetch_member):
+            # Authentication must use Discord's current role state. The cache
+            # remains a test/local fallback only when the guild object cannot
+            # perform an authoritative fetch at all.
+            try:
+                member = await fetch_member(member_id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
+                member = None
+        else:
             get_member = getattr(guild, "get_member", None)
             member = get_member(member_id) if callable(get_member) else None
-            if member is None:
-                fetch_member = getattr(guild, "fetch_member", None)
-                if callable(fetch_member):
-                    try:
-                        member = await fetch_member(member_id)
-                    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                        member = None
-
-        if member is None:
-            for candidate in getattr(guild, "members", ()):
-                nickname = getattr(candidate, "nick", None) or getattr(candidate, "display_name", None)
-                if self.public_nickname_peace_id(nickname) == peace_id:
-                    member = candidate
-                    break
-
-        if member is None or not self.public_member_has_peace_role(member):
+        configured_role_id = getattr(self.settings, "peace_role_id", None)
+        if member is None or configured_role_id is None or not role_member(member, configured_role_id):
             return None
         return member
 
@@ -4286,15 +5000,20 @@ class PeaceBot(commands.Bot):
                 or getattr(member, "name", "membro")
             )[:80] if member is not None else "membro",
             "expires_at": row["expires_at"],
+            "avatar_url": PeaceBot.public_avatar_url(member) if member is not None else None,
         }
         if token is not None:
             payload["token"] = token
         return payload
 
-    async def issue_public_auth_code(self, member: discord.Member, peace_id: int) -> bool | None:
+    async def issue_public_auth_code(
+        self,
+        member: discord.Member,
+        peace_id: int,
+    ) -> tuple[bool, str] | tuple[None, None] | tuple[bool, None]:
         code = f"{secrets.randbelow(1_000_000):06d}"
-        ttl_seconds = max(60, int(getattr(self.settings, "central_auth_code_ttl_seconds", 600)))
-        challenge_id = self.database.try_create_central_login_challenge(
+        ttl_seconds = self.bounded_auth_code_ttl()
+        created = self.database.try_create_public_login_challenge(
             discord_user_id=member.id,
             peace_id=peace_id,
             client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
@@ -4303,27 +5022,78 @@ class PeaceBot(commands.Bot):
             max_user_requests=3,
             max_client_requests=60,
         )
-        if challenge_id is None:
-            return None
-        display_name = str(
-            getattr(member, "display_name", None)
-            or getattr(member, "global_name", None)
-            or getattr(member, "name", "membro")
-        )[:80]
+        if created is None:
+            return None, None
+        _, challenge_token = created
         try:
             await member.send(
-                "Peace · código de acesso\n\n"
-                f"Olá, {display_name}.\n"
-                f"ID Peace: `{peace_id}`\n"
-                f"Código: `{code}`\n"
-                f"Validade: {ttl_seconds // 60} minutos.\n\n"
-                "Digite este código somente no site oficial da Peace. Não compartilhe este código."
+                embed=self.access_code_embed(member, peace_id, code, ttl_seconds),
+                allowed_mentions=discord.AllowedMentions(
+                    users=True,
+                    roles=False,
+                    everyone=False,
+                    replied_user=False,
+                ),
             )
         except (discord.Forbidden, discord.HTTPException):
-            self.database.revoke_central_login_challenges(member.id, PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            self.database.revoke_central_login_challenge_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
             log.info("DM fechada para o código de acesso público do membro %s", member.id)
-            return False
-        return True
+            return False, None
+        return True, challenge_token
+
+    def bounded_auth_session_ttl(self, *, persistent: bool) -> int:
+        setting_name = (
+            "central_auth_persistent_session_ttl_seconds"
+            if persistent
+            else "central_auth_session_ttl_seconds"
+        )
+        default = AUTH_SESSION_MAX_TTL_SECONDS if persistent else 30 * 60
+        try:
+            configured = int(getattr(self.settings, setting_name, default))
+        except (TypeError, ValueError):
+            configured = default
+        return min(AUTH_SESSION_MAX_TTL_SECONDS, max(60, configured))
+
+    def bounded_auth_code_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "central_auth_code_ttl_seconds", 600))
+        except (TypeError, ValueError):
+            configured = 600
+        return min(15 * 60, max(60, configured))
+
+    def access_code_embed(
+        self,
+        member: discord.Member,
+        peace_id: int,
+        code: str,
+        ttl_seconds: int,
+    ) -> discord.Embed:
+        try:
+            local_now = datetime.now(ZoneInfo(getattr(self.settings, "peace_timezone", "America/Sao_Paulo")))
+        except (ZoneInfoNotFoundError, ValueError):
+            local_now = datetime.now(timezone.utc)
+        if 5 <= local_now.hour < 12:
+            greeting = "Bom dia"
+        elif 12 <= local_now.hour < 18:
+            greeting = "Boa tarde"
+        else:
+            greeting = "Boa noite"
+        embed = discord.Embed(
+            title="Peace · código de acesso",
+            description=f"{greeting}, <@{member.id}>.",
+            colour=discord.Colour(0x2B2D31),
+        )
+        embed.add_field(name="Código", value=f"`{code}`", inline=True)
+        embed.add_field(name="ID Peace", value=f"`{peace_id}`", inline=True)
+        embed.add_field(name="Validade", value=f"{max(1, ttl_seconds // 60)} minutos", inline=True)
+        embed.set_footer(text="Digite este código somente no site oficial da Peace. Não compartilhe este código.")
+        avatar_url = self.public_avatar_url(member)
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+        return embed
 
     @staticmethod
     def central_denied() -> web.Response:
@@ -4350,11 +5120,11 @@ class PeaceBot(commands.Bot):
             payload = await request.json()
             if not isinstance(payload, dict):
                 raise TypeError
-            peace_id = int(payload.get("peace_id", 0))
+            peace_id = self.public_peace_id(payload.get("peace_id"))
             client_id = self.central_client_id(payload.get("client_id"))
         except (ValueError, TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
-        if peace_id <= 0 or client_id is None:
+        if peace_id is None or client_id is None:
             return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
         project_id = self.central_project_id(payload.get("project_id"))
         if payload.get("project_id") and project_id is None:
@@ -4392,12 +5162,12 @@ class PeaceBot(commands.Bot):
             payload = await request.json()
             if not isinstance(payload, dict):
                 raise TypeError
-            peace_id = int(payload.get("peace_id", 0))
+            peace_id = self.public_peace_id(payload.get("peace_id"))
             code = str(payload.get("code", "")).strip()
             client_id = self.central_client_id(payload.get("client_id"))
         except (ValueError, TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
-        if peace_id <= 0 or not re.fullmatch(r"\d{6}", code) or client_id is None:
+        if peace_id is None or not re.fullmatch(r"\d{6}", code) or client_id is None:
             return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
         project_id = self.central_project_id(payload.get("project_id"))
         if payload.get("project_id") and project_id is None:
@@ -4414,7 +5184,7 @@ class PeaceBot(commands.Bot):
         if not valid:
             return web.json_response({"ok": False, "message": "Código inválido, expirado ou já utilizado."}, status=401)
         expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=self.settings.central_auth_session_ttl_seconds
+            seconds=self.bounded_auth_session_ttl(persistent=False)
         )
         scope = "central:access central:sync" if project_id else "central:access"
         token = self.database.create_central_login_session(
@@ -4460,7 +5230,7 @@ class PeaceBot(commands.Bot):
         if row is None:
             return self.central_denied()
         member = await self.central_auth_member(int(row["peace_id"]))
-        if member is None:
+        if member is None or not self.session_belongs_to_member(row, member):
             self.database.revoke_central_login_session(token=token, client_id=client_id)
             return self.central_denied()
         return web.json_response({
@@ -6528,11 +7298,12 @@ class PeaceBot(commands.Bot):
         return True
 
     def announcement_channel(self) -> discord.TextChannel | None:
-        if self.guild is None:
+        guild = self.entry_guild()
+        if guild is None:
             return None
         configured_id = getattr(self.settings, "announcement_channel_id", None)
         if configured_id is not None:
-            configured = self.guild.get_channel(configured_id)
+            configured = guild.get_channel(configured_id)
             if isinstance(configured, discord.TextChannel):
                 return configured
         names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
@@ -6543,7 +7314,7 @@ class PeaceBot(commands.Bot):
                 or channel.name.casefold().endswith("・announcements")
                 or channel.name.casefold().endswith("・avisos")
             ),
-            self.guild.text_channels,
+            guild.text_channels,
         )
 
     @staticmethod
@@ -7669,8 +8440,9 @@ class PeaceBot(commands.Bot):
 
     async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
         code = f"{secrets.randbelow(1_000_000):06d}"
+        ttl_seconds = self.bounded_auth_code_ttl()
         expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=self.settings.central_auth_code_ttl_seconds
+            seconds=ttl_seconds
         )
         challenge_id = self.database.try_create_central_login_challenge(
             discord_user_id=member.id,
@@ -7683,11 +8455,13 @@ class PeaceBot(commands.Bot):
             return None
         try:
             await member.send(
-                "Código de acesso da Central\n"
-                f"ID Peace: `{peace_id}`\n"
-                f"Código: `{code}`\n"
-                f"Validade: {self.settings.central_auth_code_ttl_seconds // 60} minutos.\n"
-                "Não compartilhe este código."
+                embed=self.access_code_embed(member, peace_id, code, ttl_seconds),
+                allowed_mentions=discord.AllowedMentions(
+                    users=True,
+                    roles=False,
+                    everyone=False,
+                    replied_user=False,
+                ),
             )
         except (discord.Forbidden, discord.HTTPException):
             self.database.revoke_central_login_challenges(member.id, client_id)
