@@ -4,6 +4,7 @@
 
   var currentScript = document.currentScript;
   var baseUrl = new URL("./", currentScript ? currentScript.src : document.baseURI);
+  var assetVersion = "20261112-24";
   var pageModules = {
     home: ["js/public-media.js"],
     candidatura: ["js/candidature.js"],
@@ -15,7 +16,7 @@
   function loadModule(path) {
     return new Promise(function (resolve, reject) {
       var script = document.createElement("script");
-      script.src = new URL(path, baseUrl).href;
+      script.src = new URL(path + "?v=" + assetVersion, baseUrl).href;
       script.async = false;
       script.onload = resolve;
       script.onerror = function () { reject(new Error("Peace site module failed: " + path)); };

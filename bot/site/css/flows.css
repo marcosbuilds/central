@@ -1,5 +1,15 @@
 /* Public entry, candidature, access and directory surfaces */
 .flow-page { background: var(--canvas); }
+.entry-loading-page { background: var(--canvas); }
+.entry-loading-main { display: grid; min-height: 100vh; min-height: 100dvh; place-items: center; padding: 1.5rem; }
+.entry-loading-card { width: min(100%, 30rem); padding: clamp(1.5rem, 5vw, 2.4rem); border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--container-background); box-shadow: var(--container-shadow); backdrop-filter: var(--container-blur); text-align: center; }
+.entry-loading-mark { width: 3.5rem; height: 3.5rem; object-fit: contain; margin: 0 auto 1.35rem; filter: grayscale(1) brightness(1.35); }
+.entry-loading-card .eyebrow { margin: 0 0 0.7rem; }
+.entry-loading-card h1 { margin: 0; font-size: clamp(1.7rem, 5vw, 2.35rem); letter-spacing: -0.06em; line-height: 0.98; }
+.entry-loading-message { max-width: 24rem; margin: 0.8rem auto 0; color: var(--muted); line-height: 1.65; }
+.entry-loading-spinner { display: block; width: 2rem; height: 2rem; margin: 1.5rem auto 0; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: entry-loading-spin 900ms linear infinite; }
+@keyframes entry-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .entry-loading-spinner { animation: none; } }
 .flow-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; width: min(100%, var(--content)); margin: 0 auto; padding: 1.1rem 1.25rem; }
 .flow-header--minimal { grid-template-columns: auto auto; justify-content: space-between; }
 .flow-header-context { display: inline-flex; align-items: center; justify-self: center; gap: 0.6rem; color: var(--muted); font-size: 0.72rem; }

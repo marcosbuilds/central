@@ -1465,6 +1465,13 @@ def test_public_site_files_are_complete():
     assert "reserveEntryInviteWindow" in script
     assert "endpoint unavailable" not in script
     assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
+    opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
+    assert 'data-page="entry-loading"' in opening_html
+    assert 'href="/styles.css?v=20261112-24"' in opening_html
+    assert 'src="/script.js?v=20261112-24"' in opening_html
+    assert '<style>' not in opening_html
+    assert 'src="/candidatura/abrindo-discord.js?v=20261112-24"' in opening_html
+    assert 'entry-loading-card' in stylesheet
     assert 'data-entry-confirm' not in candidature_html
     assert 'Progresso restaurado neste navegador' not in script
     assert 'Revisão salva neste navegador' not in script
