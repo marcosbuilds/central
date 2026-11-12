@@ -1073,7 +1073,7 @@ def test_public_auth_member_uses_fresh_discord_role_state(tmp_path):
     assert payload["code"] == "AUTH_DENIED"
 
 
-def test_investigation_overview_reads_only_the_authorized_channel(tmp_path):
+def test_investigation_overview_is_site_owned(tmp_path):
     member = SimpleNamespace(
         id=12345678901234567,
         name="investigador",
@@ -1083,22 +1083,6 @@ def test_investigation_overview_reads_only_the_authorized_channel(tmp_path):
         roles=[SimpleNamespace(id=100, name="Peace"), SimpleNamespace(id=101, name="Investigator")],
         bot=False,
     )
-
-    class Channel:
-        def permissions_for(self, _member):
-            return SimpleNamespace(view_channel=True, read_message_history=True)
-
-        async def history(self, limit):
-            assert limit == 12
-            yield SimpleNamespace(
-                id=1,
-                content="Registro autorizado",
-                author=SimpleNamespace(display_name="Staff", global_name="Staff", name="staff"),
-                embeds=[],
-                attachments=[],
-                created_at=datetime.now(timezone.utc),
-                jump_url="https://discord.com/channels/1/2/1",
-            )
 
     bot = make_bot(tmp_path)
     bot.database.ensure_runtime_member(
@@ -1117,7 +1101,6 @@ def test_investigation_overview_reads_only_the_authorized_channel(tmp_path):
         text_channels=[],
         get_member=lambda user_id: member if user_id == member.id else None,
     )
-    bot.public_investigation_channel = lambda: Channel()
     token = bot.database.create_central_login_session(
         discord_user_id=member.id,
         peace_id=42,
@@ -1135,8 +1118,9 @@ def test_investigation_overview_reads_only_the_authorized_channel(tmp_path):
 
     assert status == 200
     investigation = payload["overview"]["investigation"]
-    assert investigation["state"] == "ready"
-    assert investigation["items"][0]["text"] == "Registro autorizado"
+    assert investigation["state"] == "empty"
+    assert investigation["source"] == "site:investigations"
+    assert investigation["stale"] is False
 
 
 def test_member_overview_marks_sqlite_presence_as_unavailable(tmp_path):

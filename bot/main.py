@@ -126,7 +126,6 @@ FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
 MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
-INVESTIGATION_CHANNEL_NAMES = ("╰🔎・investigations", "investigations", "investigação", "investigacao")
 PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
 MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
@@ -3575,37 +3574,6 @@ class PeaceBot(commands.Bot):
             guild.text_channels,
         )
 
-    def public_investigation_channel(self) -> discord.TextChannel | None:
-        """Resolve only the migrated investigation channel, fail-closed."""
-        guild = self.entry_guild()
-        if guild is None:
-            return None
-        configured_id = getattr(self.settings, "website_investigation_channel_id", None)
-        candidates: list[discord.TextChannel] = []
-        if configured_id is not None:
-            configured = guild.get_channel(int(configured_id))
-            if isinstance(configured, discord.TextChannel):
-                candidates.append(configured)
-        candidates.extend(
-            channel
-            for channel in getattr(guild, "text_channels", ())
-            if isinstance(channel, discord.TextChannel) and channel not in candidates
-        )
-        category_names = {
-            "[🔎] investigations",
-            "[🔎] investigacao",
-            "[🔎] investigação",
-        }
-        channel_names = {name.casefold() for name in INVESTIGATION_CHANNEL_NAMES}
-        for channel in candidates:
-            if channel.name.casefold() not in channel_names:
-                continue
-            category = getattr(channel, "category", None)
-            if str(getattr(category, "name", "")).casefold() not in category_names:
-                continue
-            return channel
-        return None
-
     async def public_member_auth_overview(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
@@ -3763,17 +3731,11 @@ class PeaceBot(commands.Bot):
             ),
         }
         if capabilities["investigator"]:
-            investigation_items, investigation_available = await self.public_channel_messages(
-                self.public_investigation_channel(),
-                kind="investigation",
-                limit=12,
-                requester=member,
-            )
             overview["investigation"] = block(
-                investigation_items,
-                "discord:investigations",
-                "Nenhum registro investigativo disponível.",
-                available=investigation_available,
+                [],
+                "site:investigations",
+                "A área investigativa é gerida no site e ainda não tem registros publicados.",
+                available=True,
             )
         response = web.json_response({"ok": True, "overview": overview})
         response.headers["Cache-Control"] = "no-store"

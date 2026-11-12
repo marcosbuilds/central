@@ -111,10 +111,11 @@ nickname, the database approval is rolled back and the request remains pending.
 
 The public member area does not create or edit Discord permissions. The
 explicit maintenance migration creates the zero-global-permission access roles
-`Investigator` and `Lead Investigator`, gives them access only to the
-restricted investigations surface, adds Dev visibility to `logs`, and leaves
-partner publishing to Management. The migration remains operator-controlled;
-`/start` never creates roles or channels.
+`Investigator` and `Lead Investigator`, which gate the site-only investigative
+area, adds Dev visibility to `logs`, and leaves partner publishing to
+Management. No investigation category or channel is created in Discord; the
+migration remains operator-controlled and `/start` never creates roles or
+channels.
 
 When `DISCORD_AFK_CHANNEL_ID` is configured, the bot keeps one idempotent voice
 connection in that channel while online and applies self-mute after startup,

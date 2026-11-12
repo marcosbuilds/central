@@ -173,7 +173,6 @@ class Settings:
     website_media_channel_id: int | None
     website_clips_channel_id: int | None
     website_partners_channel_id: int | None
-    website_investigation_channel_id: int | None
     website_media_cache_seconds: int
     peace_timezone: str
     investigator_role_id: int | None
@@ -252,7 +251,6 @@ class Settings:
             website_media_channel_id=_optional_int_env("PEACE_SITE_MEDIA_CHANNEL_ID"),
             website_clips_channel_id=_optional_int_env("PEACE_SITE_CLIPS_CHANNEL_ID"),
             website_partners_channel_id=_optional_int_env("PEACE_SITE_PARTNERS_CHANNEL_ID"),
-            website_investigation_channel_id=_optional_int_env("PEACE_SITE_INVESTIGATION_CHANNEL_ID"),
             website_media_cache_seconds=max(30, _int_env("PEACE_SITE_MEDIA_CACHE_SECONDS", 300)),
             peace_timezone=os.getenv("PEACE_TIMEZONE", "America/Sao_Paulo").strip() or "America/Sao_Paulo",
             investigator_role_id=_optional_int_env("DISCORD_INVESTIGATOR_ROLE_ID"),

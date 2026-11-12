@@ -58,7 +58,6 @@ CATEGORY_NAMES = {
     "calls": "[🎙️] CALLS",
     "private_calls": "[🎙️] PRIVATE CALLS",
     "verification": VERIFICATION_CATEGORY_NAME,
-    "investigations": "[🔎] INVESTIGATIONS",
     "closed_tickets": "[🎟️] CLOSED TICKETS",
 }
 
@@ -1075,62 +1074,10 @@ async def apply_structure(
 
     await ensure_verification_surface(guild, not_verified)
 
-    investigations = discord.utils.find(
-        lambda item: isinstance(item, discord.CategoryChannel)
-        and item.name.casefold() in {
-            CATEGORY_NAMES["investigations"].casefold(),
-            "[🔎] investigacao",
-            "[🔎] investigação",
-        },
-        guild.categories,
-    )
-    if investigations is None:
-        investigations = await guild.create_category(
-            CATEGORY_NAMES["investigations"],
-            reason="Criar área restrita de investigação da Peace",
-        )
-    elif investigations.name != CATEGORY_NAMES["investigations"]:
-        await investigations.edit(
-            name=CATEGORY_NAMES["investigations"],
-            reason="Padronizar área restrita de investigação da Peace",
-        )
-    await configure_category(investigations, guild, [investigator, lead_investigator])
-    await clear_member_overwrites(investigations)
-    for oversight_role in (manager, founder):
-        await set_role_access(investigations, oversight_role, view=True, send=False)
-    if guild.me is not None and not guild.me.top_role.is_default():
-        await set_role_access(investigations, guild.me.top_role, view=True, send=True)
-    investigation_channel = discord.utils.find(
-        lambda item: isinstance(item, discord.TextChannel)
-        and item.name.casefold() in {
-            "╰🔎・investigations",
-            "investigations",
-            "investigação",
-            "investigacao",
-        }
-        and item.category_id == investigations.id,
-        guild.text_channels,
-    )
-    if investigation_channel is None:
-        investigation_channel = await guild.create_text_channel(
-            "╰🔎・investigations",
-            category=investigations,
-            topic="Área restrita para registros de investigação autorizados.",
-            reason="Criar canal restrito de investigação da Peace",
-        )
-    else:
-        await investigation_channel.edit(
-            name="╰🔎・investigations",
-            category=investigations,
-            topic="Área restrita para registros de investigação autorizados.",
-            reason="Padronizar canal restrito de investigação da Peace",
-        )
-    await configure_text(investigation_channel, guild, allowed=[investigator, lead_investigator], send=True)
-    await clear_member_overwrites(investigation_channel)
-    for oversight_role in (manager, founder):
-        await set_role_access(investigation_channel, oversight_role, view=True, send=False)
-    if guild.me is not None and not guild.me.top_role.is_default():
-        await set_role_access(investigation_channel, guild.me.top_role, view=True, send=True)
+    # Investigation is a site-owned surface. Keep the access roles in Discord,
+    # but never create, rename, or permission a Discord category/channel for it.
+    # Existing legacy objects are intentionally left untouched; cleanup requires
+    # a separate, explicit operator action.
 
     registros = guild.get_channel(REGISTROS_CATEGORY_ID)
     registration_roles = [peace, technical, staff, manager, founder]

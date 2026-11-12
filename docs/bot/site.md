@@ -89,9 +89,8 @@ overview. The overview returns only authorized blocks: next action, recent
 public notices, bounded media, partner posts, and a privacy-limited active
 clock summary. Investigator data is omitted from the payload unless the live
 member has `Investigator` or `Lead Investigator`. When present, the block reads
-only real messages from the role-restricted `╰🔎・investigations` channel and
-fails closed when the channel, category, or member permission cannot be
-verified. Query strings such as
+from the site-owned investigative surface and does not read an investigation
+category or channel from Discord. Query strings such as
 `?preview=member` and `?preview=investigativa` cannot bypass this gate.
 Every public API route also has a bounded in-process rate limit; the member
 overview keeps a separate per-member refresh throttle. Source blocks report
@@ -190,9 +189,8 @@ refreshes each channel cache after `PEACE_SITE_MEDIA_CACHE_SECONDS` (minimum 30
 seconds, default 300).
 
 `PEACE_SITE_PARTNERS_CHANNEL_ID` optionally identifies the partner source for
-the authenticated overview. `PEACE_SITE_INVESTIGATION_CHANNEL_ID` optionally
-pins the role-restricted investigation channel; otherwise the migrated
-decorated channel name and category are resolved and the lookup fails closed.
+the authenticated overview. Investigation data is site-owned and has no
+Discord channel or category configuration.
 `DISCORD_INVESTIGATOR_ROLE_ID` and
 `DISCORD_LEAD_INVESTIGATOR_ROLE_ID` are the preferred stable production role
 IDs. The bot creates the canonical zero-permission roles when needed and may

@@ -15,7 +15,6 @@ def test_verification_and_structural_names_are_english():
         "calls": "[🎙️] CALLS",
         "private_calls": "[🎙️] PRIVATE CALLS",
         "verification": "[🔐] VERIFICATION",
-        "investigations": "[🔎] INVESTIGATIONS",
         "closed_tickets": "[🎟️] CLOSED TICKETS",
     }
 
@@ -46,6 +45,13 @@ def test_records_channels_are_not_public_onboarding_surfaces():
     source = Path("bot/operations/maintenance.py").read_text(encoding="utf-8")
     assert 'configure_text(channel, guild, allowed=registration_roles, send=send)' in source
     assert 'configure_text(channel, guild, allowed=[], public=True, send=send)' not in source
+
+
+def test_investigation_surface_is_site_owned():
+    source = Path("bot/operations/maintenance.py").read_text(encoding="utf-8")
+    assert 'CATEGORY_NAMES["investigations"]' not in source
+    assert "Criar área restrita de investigação da Peace" not in source
+    assert "Criar canal restrito de investigação da Peace" not in source
 
 
 def test_visitor_surface_is_explicit_and_spam_control_is_private():
