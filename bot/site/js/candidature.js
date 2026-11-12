@@ -50,6 +50,7 @@
     var manualEntryNote = document.querySelector("[data-entry-manual-note]");
     var memberResult = document.querySelector("[data-entry-member-result]");
     var stageContext = document.querySelector("[data-entry-stage-context]");
+    var candidatureToast = document.querySelector("[data-candidature-toast]");
     var storageKey = "peace.candidature.v2";
     var entryStorageKey = "peace.entry.v1";
     var entryMetaStorageKey = "peace.entry.meta.v1";
@@ -66,6 +67,21 @@
     var manualEntryIdentity = null;
     var existingPreviousFocus = null;
     var entryInviteWindowName = "peace-discord-invite";
+    var candidatureToastTimer = null;
+
+    function showCandidatureToast(message) {
+      if (!candidatureToast) return;
+      window.clearTimeout(candidatureToastTimer);
+      candidatureToast.textContent = message;
+      candidatureToast.hidden = false;
+      candidatureToast.classList.add("is-visible");
+      candidatureToastTimer = window.setTimeout(function () {
+        candidatureToast.classList.remove("is-visible");
+        candidatureToastTimer = window.setTimeout(function () {
+          candidatureToast.hidden = true;
+        }, 220);
+      }, 4200);
+    }
 
     function readDraft() {
       try {
@@ -817,8 +833,8 @@
         return;
       }
       saveDraft();
-      if (result) result.textContent = "Candidatura pronta para revisão.";
       setStage(4, false);
+      showCandidatureToast("Candidatura enviada para análise.");
     });
 
     window.addEventListener("pagehide", function () { saveDraft(); });

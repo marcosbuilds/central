@@ -30,7 +30,7 @@
 .media-card-author-handle { color: var(--quiet); font-weight: 500; }
 .media-card-source { display: inline-flex; max-width: 100%; margin-top: 0.65rem; color: var(--accent); font-size: 0.65rem; font-weight: 700; overflow-wrap: anywhere; }
 .media-card-source:hover, .media-card-source:focus-visible { color: var(--text); }
-.media-lightbox { width: min(92vw, 70rem); max-width: none; padding: 1rem; border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--surface-raised); color: var(--text); box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.5); }
+.media-lightbox { width: min(92vw, 70rem); max-width: none; padding: 1rem; border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--surface-raised); color: var(--text); box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.5); overscroll-behavior: contain; }
 .media-lightbox::backdrop { background: rgba(2, 3, 4, 0.82); backdrop-filter: blur(8px); }
 .media-lightbox[hidden] { display: none; }
 .media-lightbox-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 0 0 0.85rem; }

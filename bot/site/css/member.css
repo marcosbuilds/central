@@ -215,6 +215,17 @@
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  html.js-ready body { animation: none !important; }
+  body.is-leaving .site-shell { opacity: 1; transform: none; transition: none !important; }
+  .entry-loading-spinner,
+  .entry-invite-waiting[data-state="pending"] .status-mark,
+  .button-spinner,
+  .button.is-loading::after,
+  .media-skeleton,
+  .media-skeleton-visual,
+  .member-auth-skeleton span,
+  .member-workspace-skeleton span,
+  .flight-mark { animation: none !important; }
   .button-spinner { animation: none; border-right-color: currentColor; opacity: 0.65; }
   .js-ready [data-reveal] { opacity: 1; transform: none; }
 }

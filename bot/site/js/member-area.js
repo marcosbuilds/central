@@ -28,6 +28,24 @@
     var hasAuthenticatedWorkspace = false;
     var logoutPending = false;
 
+    function formatMemberTimestamp(value) {
+      var date = new Date(value || "");
+      if (Number.isNaN(date.getTime())) return "horário indisponível";
+      try {
+        return new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "short"
+        }).format(date);
+      } catch (error) {
+        return date.toLocaleString("pt-BR");
+      }
+    }
+
+    function freshnessLabel(block) {
+      if (!block || block.stale) return "Desatualizado · tentando atualizar";
+      return "Atualizado em " + formatMemberTimestamp(block.updated_at);
+    }
+
     function renderMemberBlock(container, block, title) {
       if (!container || !block) return;
       container.textContent = "";
@@ -74,7 +92,8 @@
       }
       var freshness = document.createElement("small");
       freshness.className = "member-block-freshness";
-      freshness.textContent = block.stale ? "Desatualizado · tentando atualizar" : "Fonte: " + (block.source || "Peace");
+      freshness.textContent = freshnessLabel(block) + " · fonte: " + (block.source || "Peace");
+      freshness.dataset.state = block.stale ? "stale" : "ready";
       container.appendChild(freshness);
     }
 
@@ -104,7 +123,12 @@
         var capability = node.getAttribute("data-member-capability");
         node.hidden = !data.capabilities || data.capabilities[capability] !== true;
       });
-      if (connection) connection.textContent = "Atualizado agora · sessão validada pelo Discord";
+      if (connection) {
+        connection.textContent = data.stale
+          ? "Dados parcialmente desatualizados · sessão validada pelo Discord"
+          : "Atualizado em " + formatMemberTimestamp(data.updated_at) + " · sessão validada pelo Discord";
+        connection.dataset.state = data.stale ? "stale" : "ready";
+      }
     }
 
     function parseOverviewResponse(response) {

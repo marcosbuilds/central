@@ -1156,6 +1156,8 @@ def test_investigation_overview_is_site_owned(tmp_path):
     assert investigation["state"] == "empty"
     assert investigation["source"] == "site:investigations"
     assert investigation["stale"] is False
+    assert payload["overview"]["updated_at"]
+    assert isinstance(payload["overview"]["stale"], bool)
 
 
 def test_member_overview_marks_sqlite_presence_as_unavailable(tmp_path):
@@ -1206,6 +1208,7 @@ def test_member_overview_marks_sqlite_presence_as_unavailable(tmp_path):
     assert status == 200
     assert payload["overview"]["active_members"]["state"] == "unavailable"
     assert payload["overview"]["active_members"]["stale"] is True
+    assert payload["overview"]["stale"] is True
 
 
 def test_public_member_auth_accepts_founder_zero_id(tmp_path):
@@ -1505,6 +1508,12 @@ def test_public_site_files_are_complete():
     assert "request timeout" not in script
     assert 'data-button-label' in login_html and 'button-spinner' in login_html
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
+    assert 'data-candidature-toast' in candidature_html
+    assert 'Candidatura pronta para revisão.' not in script
+    assert 'showCandidatureToast' in script
+    assert 'firstLink.focus()' in script
+    assert 'copyAllowedFrom' not in script
+    assert 'user-select: none' not in stylesheet
     assert '60000' in script
     assert 'aria-busy' in script
     assert 'window.sessionStorage' in script
@@ -1532,10 +1541,11 @@ def test_public_site_files_are_complete():
     assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
-    assert 'href="/styles.css?v=20261112-27"' in opening_html
-    assert 'src="/script.js?v=20261112-27"' in opening_html
+    assert 'width="1254" height="1254"' in opening_html
+    assert 'href="/styles.css?v=20261112-28"' in opening_html
+    assert 'src="/script.js?v=20261112-28"' in opening_html
     assert '<style>' not in opening_html
-    assert 'src="/candidatura/abrindo-discord.js?v=20261112-27"' in opening_html
+    assert 'src="/candidatura/abrindo-discord.js?v=20261112-28"' in opening_html
     assert 'entry-loading-card' in stylesheet
     assert 'data-entry-confirm' not in candidature_html
     assert 'Progresso restaurado neste navegador' not in script
@@ -1559,6 +1569,7 @@ def test_public_site_files_are_complete():
     assert '.site-header { display: grid;' in stylesheet
     assert '.flow-copy,' in stylesheet and '.application-stage,' in stylesheet
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
+    assert 'html.js-ready body { animation: none !important; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
     for page_html in (homepage, entry_html, candidature_html, login_html):
@@ -1571,6 +1582,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     site_root = Path(__file__).parents[2] / "bot" / "site"
     member_html = (site_root / "area" / "index.html").read_text(encoding="utf-8")
     script = (site_root / "script.js").read_text(encoding="utf-8")
+    member_script = (site_root / "js" / "member-area.js").read_text(encoding="utf-8")
 
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
@@ -1590,6 +1602,15 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
+    assert member_html.count("<h1") == 1
+    assert 'data-member-block="announcements" aria-live' not in member_html
+    assert 'data-member-block="media" aria-live' not in member_html
+    assert "Intl.DateTimeFormat" in member_script
+    assert "data.updated_at" in member_script
+    public_media_script = (site_root / "js" / "public-media.js").read_text(encoding="utf-8")
+    assert "thumbnail.width = 320" in public_media_script
+    assert "avatarImage.width = 32" in public_media_script
+    assert "Última leitura · uma fonte está desatualizada" in public_media_script
 
 
 def test_netlify_redirects_keep_the_short_discord_route():

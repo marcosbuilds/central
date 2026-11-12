@@ -451,6 +451,8 @@ body[data-page="candidatura"] .stage-note { margin-top: 0.85rem; font-size: 0.68
 .verification-steps li:last-child { border-bottom: 0; }
 .application-stage .verification-state { margin: 1.35rem 0 0; padding: 0.9rem 0; }
 .verification-state small, .review-state small { font-size: 0.68rem; }
+.site-toast { position: fixed; z-index: 40; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); width: min(calc(100% - 2rem), 25rem); padding: 0.9rem 1rem; border: 1px solid var(--container-border); border-radius: 0.75rem; background: rgba(18, 24, 32, 0.94); box-shadow: var(--container-shadow); color: var(--text); font-size: 0.76rem; line-height: 1.45; opacity: 0; pointer-events: none; transform: translateY(0.65rem); transition: opacity 180ms var(--ease-fast), transform 180ms var(--ease-fast); }
+.site-toast.is-visible { opacity: 1; transform: translateY(0); }
 .wizard { margin-top: 1.35rem; padding-top: 0.9rem; }
 .wizard-track { display: none; }
 .wizard-topline { color: var(--quiet); font-size: 0.61rem; }
@@ -460,7 +462,7 @@ body[data-page="candidatura"] .stage-note { margin-top: 0.85rem; font-size: 0.68
 .entry-help-panel h3 { margin-bottom: 0.45rem; font-size: 1.45rem; }
 .dialog-close { position: absolute; top: 0.7rem; right: 0.7rem; display: inline-grid; width: 2.2rem; height: 2.2rem; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; font-size: 1.25rem; line-height: 1; }
 .dialog-close:hover, .dialog-close:focus-visible { border-color: var(--accent); color: var(--text); }
-.entry-existing-panel { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(2, 3, 4, 0.78); backdrop-filter: blur(8px); }
+.entry-existing-panel { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(2, 3, 4, 0.78); backdrop-filter: blur(8px); overscroll-behavior: contain; }
 .entry-existing-panel[hidden] { display: none !important; }
 .entry-existing-dialog { position: relative; width: min(100%, 34rem); max-height: min(100%, 42rem); overflow: auto; padding: clamp(1.2rem, 4vw, 2rem); border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--surface-raised); box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35); }
 .entry-existing-dialog h2 { max-width: 24rem; margin: 0 0 0.75rem; font-size: clamp(1.8rem, 5vw, 2.8rem); letter-spacing: -0.06em; line-height: 0.96; }

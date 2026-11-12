@@ -59,12 +59,10 @@ body {
 html.js-ready body { animation: peace-page-enter 240ms var(--ease) both; }
 body.is-leaving .site-shell { opacity: 0; transform: translateY(-0.25rem); transition: opacity 150ms var(--ease-fast), transform 150ms var(--ease-fast); }
 
-body { user-select: none; -webkit-user-select: none; }
-input, textarea, code, pre, [data-copyable], [contenteditable="true"] { user-select: text; -webkit-user-select: text; }
 img { display: block; max-width: 100%; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; }
-button, a { -webkit-tap-highlight-color: transparent; }
+button, a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 [hidden] { display: none !important; }
 
 :focus-visible {

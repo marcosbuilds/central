@@ -29,6 +29,7 @@
     var mediaTimer = null;
     var mediaLoading = false;
     var hasRendered = false;
+    var lastValidItems = { moments: null, clips: null };
     var lastLoadAt = 0;
     var seed = readMediaSeed();
     var lightboxPreviousFocus = null;
@@ -123,6 +124,8 @@
         var thumbnail = makeNode("img", "media-source-fallback-image");
         thumbnail.src = thumbnailUrl;
         thumbnail.alt = "";
+        thumbnail.width = 320;
+        thumbnail.height = 200;
         thumbnail.loading = "lazy";
         thumbnail.decoding = "async";
         thumbnail.addEventListener("error", function () { thumbnail.remove(); }, { once: true });
@@ -174,6 +177,8 @@
         node = makeNode("img", className || "media-card-image");
         node.loading = "lazy";
         node.decoding = "async";
+        node.width = 16;
+        node.height = 10;
         node.alt = mediaDisplayText(item);
         node.src = item.url || item.thumbnail_url || "";
         node.dataset.provider = item.provider || "";
@@ -264,6 +269,10 @@
           var avatarImage = makeNode("img", "media-card-author-image");
           avatarImage.src = item.author.avatar_url;
           avatarImage.alt = "";
+          avatarImage.width = 32;
+          avatarImage.height = 32;
+          avatarImage.loading = "lazy";
+          avatarImage.decoding = "async";
           avatar.appendChild(avatarImage);
         } else {
           avatar.textContent = String(item.author.display_name || "M").charAt(0).toUpperCase();
@@ -296,7 +305,13 @@
     function renderList(kind, items, source) {
       var list = lists[kind];
       var empty = emptyStates[kind];
-      if (!list) return;
+      if (!list) return 0;
+      var sourceUnavailable = source && source.state === "unavailable";
+      if (sourceUnavailable && Array.isArray(lastValidItems[kind])) {
+        items = lastValidItems[kind];
+      } else if (!sourceUnavailable && Array.isArray(items) && items.length) {
+        lastValidItems[kind] = items.slice();
+      }
       list.replaceChildren();
       list.setAttribute("aria-busy", "false");
       if (!Array.isArray(items) || !items.length) {
@@ -308,10 +323,11 @@
               : "Os próximos momentos aparecem aqui quando a comunidade compartilhar algo novo.");
           empty.hidden = false;
         }
-        return;
+        return 0;
       }
       if (empty) empty.hidden = true;
       items.forEach(function (item) { list.appendChild(mediaCard(item)); });
+      return items.length;
     }
 
     function parseMediaResponse(response) {
@@ -345,11 +361,16 @@
         .then(parseMediaResponse)
         .then(function (payload) {
           var sources = payload.sources || {};
-          renderList("moments", payload.moments || [], sources.moments);
-          renderList("clips", payload.clips || [], sources.clips);
-          var count = (payload.moments || []).length + (payload.clips || []).length;
-          if (updated) updated.textContent = count ? "Atualizado agora · registros do Discord" : "A comunidade continua em movimento no Discord.";
-          if (status) status.textContent = count ? "Momentos atualizados." : "Os próximos registros aparecem aqui quando forem publicados.";
+          var momentsCount = renderList("moments", payload.moments || [], sources.moments);
+          var clipsCount = renderList("clips", payload.clips || [], sources.clips);
+          var count = momentsCount + clipsCount;
+          var stale = Boolean(sources.moments && sources.moments.stale) || Boolean(sources.clips && sources.clips.stale);
+          if (updated) updated.textContent = count
+            ? (stale ? "Última leitura · uma fonte está desatualizada" : "Atualizado agora · registros do Discord")
+            : "A comunidade continua em movimento no Discord.";
+          if (status) status.textContent = count
+            ? (stale ? "A última leitura continua disponível." : "Momentos atualizados.")
+            : "Os próximos registros aparecem aqui quando forem publicados.";
           lastLoadAt = Date.now();
           hasRendered = true;
           scheduleMediaRefresh(payload.refresh_after);

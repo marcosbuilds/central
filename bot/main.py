@@ -3731,12 +3731,15 @@ class PeaceBot(commands.Bot):
                 "message": None if items else empty_message,
             }
 
+        overview_updated_at = datetime.now(timezone.utc).isoformat()
         overview: dict[str, object] = {
+            "updated_at": overview_updated_at,
+            "stale": not (announcement_available and media_complete and active_available and partner_available),
             "member_identity": self.public_auth_session_payload(row, member=member),
             "next_action": {
                 "state": "discord_authority",
                 "source": "discord",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": overview_updated_at,
                 "stale": False,
                 "title": "Ações e suporte continuam no Discord",
                 "message": "Use o servidor para pedidos, verificação e atendimento. Esta área acompanha apenas informações autorizadas.",

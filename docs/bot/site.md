@@ -298,12 +298,13 @@ recognizable without turning into a large secondary button:
 - accessible behavior: the button keeps an `aria-label`, a native tooltip and a live copy result;
 - constraint: use only for the copy action, never as a substitute for the visible link.
 
-The public page uses a small allowlist for copying: the visible invite is
-explicitly marked as copyable and shows `peacegg.com.br/discord`; ordinary
-editorial text is not placed on the clipboard by the page. This is
-browser-level friction, not a security boundary: source inspection, DevTools,
-OCR, screenshots, and assistive technology remain outside the control of a
-static site.
+The public page keeps the visible invite explicitly marked as copyable and
+shows `peacegg.com.br/discord`; the browser may select and copy ordinary
+editorial text normally. The copy control only writes the invite to the
+clipboard after an explicit user action. Clipboard behavior is browser-level
+convenience, not a security boundary: source inspection, DevTools, OCR,
+screenshots, and assistive technology remain outside the control of a static
+site.
 
 The home media region uses skeleton cards during its first request, a truthful
 empty state when either configured channel has no eligible items, and a quiet

@@ -68,6 +68,10 @@
       var isOpen = header.classList.toggle("menu-open");
       menuButton.setAttribute("aria-expanded", String(isOpen));
       syncNavigationInteraction(isOpen);
+      if (isOpen) {
+        var firstLink = navigation.querySelector("a:not([hidden])");
+        if (firstLink) firstLink.focus();
+      }
     });
 
     navigation.querySelectorAll("a").forEach(function (link) {
@@ -100,18 +104,6 @@
 
     revealItems.forEach(function (element) { observer.observe(element); });
   }
-
-  function copyAllowedFrom(node) {
-    var element = node && node.nodeType === 1 ? node : node && node.parentElement;
-    return Boolean(element && element.closest("[data-copyable], code, pre, input, textarea, [contenteditable=\"true\"]"));
-  }
-
-  document.addEventListener("copy", function (event) {
-    var selection = window.getSelection();
-    if (!selection || (!copyAllowedFrom(selection.anchorNode) && !copyAllowedFrom(selection.focusNode))) {
-      event.preventDefault();
-    }
-  });
 
   function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
