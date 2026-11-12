@@ -439,14 +439,38 @@ def verification_eligible(
     )
 
 
-async def respond(interaction: discord.Interaction, content: str, *, ephemeral: bool = True, view: discord.ui.View | None = None) -> None:
+def outcome_embed(
+    title: str,
+    description: str,
+    *,
+    color: int,
+    footer: str = "Peace · resultado",
+) -> discord.Embed:
+    """Build the compact embed used for actionable success and failure feedback."""
+    embed = discord.Embed(title=title, description=description, color=color)
+    embed.set_footer(text=footer)
+    return embed
+
+
+async def respond(
+    interaction: discord.Interaction,
+    content: str | None = None,
+    *,
+    embed: discord.Embed | None = None,
+    ephemeral: bool = True,
+    view: discord.ui.View | None = None,
+) -> None:
     kwargs: dict[str, object] = {"ephemeral": ephemeral}
+    if content is not None:
+        kwargs["content"] = content
+    if embed is not None:
+        kwargs["embed"] = embed
     if view is not None:
         kwargs["view"] = view
     if interaction.response.is_done():
-        await interaction.followup.send(content, **kwargs)
+        await interaction.followup.send(**kwargs)
     else:
-        await interaction.response.send_message(content, **kwargs)
+        await interaction.response.send_message(**kwargs)
 
 
 async def ignore_interaction(interaction: discord.Interaction) -> None:
@@ -1229,7 +1253,12 @@ class SetApprovalView(discord.ui.View):
         if message is None:
             return
         try:
-            await message.delete(reason="Remover cartão de set já processado do scan-only")
+            try:
+                await message.delete(reason="Remover cartão de set já processado do scan-only")
+            except TypeError as error:
+                if "reason" not in str(error):
+                    raise
+                await message.delete()
         except discord.NotFound:
             return
         except (discord.Forbidden, discord.HTTPException):
@@ -1239,8 +1268,12 @@ class SetApprovalView(discord.ui.View):
             log.exception("Não consegui remover o cartão de set processado %s", getattr(message, "id", "?"))
             try:
                 await message.edit(
-                    content="Processado. O registro final está no canal logs; este cartão não aceita mais ações.",
-                    embed=None,
+                    embed=outcome_embed(
+                        "Processado · cartão mantido",
+                        "O registro final está no canal logs, mas não consegui remover este cartão do scan-only. Ele não aceita mais ações.",
+                        color=0xF1C40F,
+                        footer="Peace · scan-only",
+                    ),
                     view=self,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
@@ -1248,23 +1281,48 @@ class SetApprovalView(discord.ui.View):
                 log.exception("Não consegui marcar o cartão de set processado %s", getattr(message, "id", "?"))
 
     @staticmethod
-    async def terminal_feedback(interaction: discord.Interaction, content: str) -> None:
+    async def terminal_feedback(
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+        *,
+        color: int,
+    ) -> None:
         """Give the reviewer a private confirmation when the client supports it."""
         followup = getattr(interaction, "followup", None)
         send = getattr(followup, "send", None)
         if callable(send):
             try:
-                await send(content, ephemeral=True)
+                await send(
+                    embed=outcome_embed(title, description, color=color, footer="Peace · set"),
+                    ephemeral=True,
+                )
             except (discord.Forbidden, discord.HTTPException):
                 log.debug("Não consegui enviar a confirmação privada do set", exc_info=True)
 
     async def guard(self, interaction: discord.Interaction):
         request = self.bot.database.set_request(self.request_id)
         if request is None or request["status"] != "pending":
-            await respond(interaction, "Este pedido já foi processado.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Pedido já processado",
+                    "Este pedido não aceita novas ações.",
+                    color=0x95A5A6,
+                    footer="Peace · set",
+                ),
+            )
             return None
         if not isinstance(interaction.user, discord.Member) or not self.bot.can_approve_set_request(request, interaction.user):
-            await respond(interaction, "Somente Staff ou Management autorizado pode aprovar este pedido.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode aprovar este pedido.",
+                    color=0xED4245,
+                    footer="Peace · set",
+                ),
+            )
             return None
         return request
 
@@ -1278,25 +1336,66 @@ class SetApprovalView(discord.ui.View):
         if current is None or current["status"] != "approved":
             if interaction.message is not None:
                 await interaction.message.edit(
-                    content=f"⚠️ {result}",
-                    embed=self.bot.set_approval_embed(request),
+                    embed=outcome_embed(
+                        "Set não concluído",
+                        result,
+                        color=0xED4245,
+                        footer="Peace · set",
+                    ),
                     view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
+        if result.startswith("⚠️"):
+            self.disable_all()
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    embed=outcome_embed(
+                        "Set aplicado · log pendente",
+                        result,
+                        color=0xF1C40F,
+                        footer="Peace · set",
+                    ),
+                    view=None,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             return
         self.disable_all()
         await self.remove_terminal_card(interaction)
-        await self.terminal_feedback(interaction, "Set aprovado e registrado no canal logs.")
+        await self.terminal_feedback(
+            interaction,
+            "Set aprovado",
+            "O set foi aplicado e o resultado foi registrado no canal logs.",
+            color=0x57F287,
+        )
 
     async def reject(self, interaction: discord.Interaction) -> None:
         request = await self.guard(interaction)
         if request is None:
             return
         await interaction.response.defer()
-        await self.bot.reject_set_request(request, interaction.user)
+        logged = await self.bot.reject_set_request(request, interaction.user)
         self.disable_all()
+        if not logged:
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    embed=outcome_embed(
+                        "Recusa não registrada",
+                        "Não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                        color=0xED4245,
+                        footer="Peace · set",
+                    ),
+                    view=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
         await self.remove_terminal_card(interaction)
-        await self.terminal_feedback(interaction, "Set recusado e registrado no canal logs.")
+        await self.terminal_feedback(
+            interaction,
+            "Set recusado",
+            "A candidatura foi recusada e o resultado foi registrado no canal logs.",
+            color=0xED4245,
+        )
 
 
 class ReturnApprovalView(discord.ui.View):
@@ -1328,6 +1427,61 @@ class ReturnApprovalView(discord.ui.View):
         for item in self.children:
             item.disabled = False
 
+    @staticmethod
+    async def terminal_feedback(
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+        *,
+        color: int,
+    ) -> None:
+        """Give the reviewer a private embed after a return decision."""
+        followup = getattr(interaction, "followup", None)
+        send = getattr(followup, "send", None)
+        if callable(send):
+            try:
+                await send(
+                    embed=outcome_embed(title, description, color=color, footer="Peace · retorno"),
+                    ephemeral=True,
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                log.debug("Não consegui enviar a confirmação privada do retorno", exc_info=True)
+
+    async def remove_terminal_card(self, interaction: discord.Interaction) -> bool:
+        """Delete a processed return card after its audit log is delivered."""
+
+        message = interaction.message
+        delete = getattr(message, "delete", None) if message is not None else None
+        if not callable(delete):
+            log.error("Cartão de retorno %s não expôs operação de remoção", self.request_id)
+            return False
+        try:
+            try:
+                await delete(reason="Remover cartão de retorno já processado do scan-only")
+            except TypeError as error:
+                if "reason" not in str(error):
+                    raise
+                await delete()
+            return True
+        except discord.NotFound:
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Não consegui remover o cartão de retorno processado %s", getattr(message, "id", "?"))
+            try:
+                await message.edit(
+                    embed=outcome_embed(
+                        "Processado · cartão mantido",
+                        "O resultado foi registrado no canal logs, mas não consegui remover este cartão do scan-only. Ele não aceita mais ações.",
+                        color=0xF1C40F,
+                        footer="Peace · retorno",
+                    ),
+                    view=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                log.exception("Não consegui marcar o cartão de retorno processado %s", getattr(message, "id", "?"))
+            return False
+
     async def edit_source(self, interaction: discord.Interaction, **kwargs) -> None:
         if interaction.response.is_done():
             if interaction.message is not None:
@@ -1340,7 +1494,15 @@ class ReturnApprovalView(discord.ui.View):
     async def release_id(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
         if member is None or not reviewer_member(member, self.bot.settings):
-            await respond(interaction, "Somente Staff ou Management autorizado pode liberar este retorno.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode liberar este retorno.",
+                    color=0xED4245,
+                    footer="Peace · retorno",
+                ),
+            )
             return
         if self.processing:
             await interaction.response.defer()
@@ -1351,25 +1513,53 @@ class ReturnApprovalView(discord.ui.View):
             async with self.bot.return_mutation_lock(self.request_id):
                 request = self.bot.database.return_request(self.request_id)
                 if request is None or request["status"] != "pending":
-                    await self.edit_source(interaction, content="Este retorno já foi processado.", embed=None, view=None)
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno já processado",
+                            "Este retorno não aceita novas ações.",
+                            color=0x95A5A6,
+                            footer="Peace · retorno",
+                        ),
+                        view=None,
+                    )
                     return
                 target = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
                 if target is None:
                     self.enable_all()
-                    await self.edit_source(interaction, content="O membro não está disponível no servidor.", view=self)
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "O membro não está disponível no servidor. A solicitação continua pendente.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
                     return
                 peace_role = target.guild.get_role(self.bot.settings.peace_role_id)
                 if peace_role is None:
                     self.enable_all()
                     await self.edit_source(
                         interaction,
-                        content="O cargo Peace não está configurado; o retorno continua pendente.",
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "O cargo Peace não está configurado; o retorno continua pendente.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
                         view=self,
                     )
                     return
                 await self.edit_source(
                     interaction,
-                    content="**Retorno em andamento**\nAplicando Peace, removendo os cargos de entrada e atualizando o apelido.",
+                    embed=outcome_embed(
+                        "Retorno em andamento",
+                        "Aplicando Peace, removendo os cargos de entrada e atualizando o apelido.",
+                        color=0x5865F2,
+                        footer="Peace · retorno",
+                    ),
                     view=self,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
@@ -1406,11 +1596,14 @@ class ReturnApprovalView(discord.ui.View):
                     log.exception("Falha ao registrar a aprovação do retorno Peace %s", self.request_id)
                     self.enable_all()
                     self.processing = False
-                    pending = self.bot.database.return_request(self.request_id)
                     await self.edit_source(
                         interaction,
-                        content="⚠️ Não consegui registrar a liberação do ID. O retorno continua pendente; tente novamente após conferir o banco.",
-                        embed=self.bot.return_request_embed(pending) if pending is not None else None,
+                        embed=outcome_embed(
+                            "Liberação não registrada",
+                            "Não consegui registrar a liberação do ID. O retorno continua pendente; tente novamente após conferir o banco.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
                         view=self,
                     )
                     return
@@ -1421,12 +1614,25 @@ class ReturnApprovalView(discord.ui.View):
                         self.processing = False
                         await self.edit_source(
                             interaction,
-                            content="⚠️ Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
-                            embed=self.bot.return_request_embed(current),
+                            embed=outcome_embed(
+                                "Retorno não confirmado",
+                                "Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
+                                color=0xED4245,
+                                footer="Peace · retorno",
+                            ),
                             view=self,
                         )
                     else:
-                        await self.edit_source(interaction, content="Este retorno já foi processado.", embed=None, view=None)
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Retorno já processado",
+                                "Este retorno não aceita novas ações.",
+                                color=0x95A5A6,
+                                footer="Peace · retorno",
+                            ),
+                            view=None,
+                        )
                     return
                 _, old_id, new_id = result
                 try:
@@ -1444,11 +1650,14 @@ class ReturnApprovalView(discord.ui.View):
                     log.info("Retorno Peace %s voltou a pendente após falha no Discord", self.request_id)
                     self.enable_all()
                     self.processing = False
-                    pending = self.bot.database.return_request(self.request_id)
                     await self.edit_source(
                         interaction,
-                        content="⚠️ Não consegui aplicar os cargos do retorno. A solicitação continua pendente e o ID permanece reservado.",
-                        embed=self.bot.return_request_embed(pending) if pending is not None else None,
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "Não consegui aplicar os cargos do retorno. A solicitação continua pendente e o ID permanece reservado.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
                         view=self,
                     )
                     return
@@ -1458,9 +1667,10 @@ class ReturnApprovalView(discord.ui.View):
                     )
                 except (discord.Forbidden, discord.HTTPException):
                     log.info("Não consegui enviar a confirmação do retorno Peace %s", target.id)
-                await self.bot.send_log(
+                logged = await self.bot.send_log(
                     "Retorno Peace aprovado",
                     actor=member,
+                    subject=target,
                     fields=(
                         ("Usuário", target.mention),
                         ("ID anterior", f"`{old_id}`"),
@@ -1469,12 +1679,28 @@ class ReturnApprovalView(discord.ui.View):
                         ("Horário", f"<t:{now_unix()}:F>"),
                     ),
                 )
-                await self.edit_source(
+                if not logged:
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno aplicado · log pendente",
+                            "O retorno foi aplicado, mas não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                            color=0xF1C40F,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    return
+                removed = await self.remove_terminal_card(interaction)
+                await self.terminal_feedback(
                     interaction,
-                    content=f"ID liberado por {member.mention}. Antigo: `{old_id}` · novo: `{new_id}`.",
-                    embed=None,
-                    view=None,
-                    allowed_mentions=discord.AllowedMentions(users=True),
+                    "Retorno aprovado",
+                    (
+                        f"O ID antigo `{old_id}` foi liberado e o novo ID `{new_id}` foi aplicado. "
+                        + ("O resultado está no canal logs." if removed else "O resultado está no canal logs, mas o cartão permaneceu no scan-only para conferência.")
+                    ),
+                    color=0x57F287,
                 )
         finally:
             if self.processing:
@@ -1483,7 +1709,15 @@ class ReturnApprovalView(discord.ui.View):
     async def reject_return(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
         if member is None or not reviewer_member(member, self.bot.settings):
-            await respond(interaction, "Somente Staff ou Management autorizado pode recusar este retorno.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode recusar este retorno.",
+                    color=0xED4245,
+                    footer="Peace · retorno",
+                ),
+            )
             return
         if self.processing:
             await interaction.response.defer()
@@ -1494,11 +1728,25 @@ class ReturnApprovalView(discord.ui.View):
             async with self.bot.return_mutation_lock(self.request_id):
                 request = self.bot.database.return_request(self.request_id)
                 if request is None or request["status"] != "pending":
-                    await self.edit_source(interaction, content="Este retorno já foi processado.", embed=None, view=None)
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno já processado",
+                            "Este retorno não aceita novas ações.",
+                            color=0x95A5A6,
+                            footer="Peace · retorno",
+                        ),
+                        view=None,
+                    )
                     return
                 await self.edit_source(
                     interaction,
-                    content="**Recusa em andamento**\nO retorno será recusado e o ID continuará reservado.",
+                    embed=outcome_embed(
+                        "Recusa em andamento",
+                        "O retorno será recusado e o ID continuará reservado.",
+                        color=0x5865F2,
+                        footer="Peace · retorno",
+                    ),
                     view=self,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
@@ -1508,11 +1756,14 @@ class ReturnApprovalView(discord.ui.View):
                     log.exception("Falha ao registrar a recusa do retorno Peace %s", self.request_id)
                     self.enable_all()
                     self.processing = False
-                    pending = self.bot.database.return_request(self.request_id)
                     await self.edit_source(
                         interaction,
-                        content="⚠️ Não consegui registrar a recusa. O retorno continua pendente e o ID permanece reservado.",
-                        embed=self.bot.return_request_embed(pending) if pending is not None else None,
+                        embed=outcome_embed(
+                            "Recusa não registrada",
+                            "Não consegui registrar a recusa. O retorno continua pendente e o ID permanece reservado.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
                         view=self,
                     )
                     return
@@ -1523,12 +1774,25 @@ class ReturnApprovalView(discord.ui.View):
                         self.processing = False
                         await self.edit_source(
                             interaction,
-                            content="⚠️ Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
-                            embed=self.bot.return_request_embed(current),
+                            embed=outcome_embed(
+                                "Recusa não confirmada",
+                                "Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
+                                color=0xED4245,
+                                footer="Peace · retorno",
+                            ),
                             view=self,
                         )
                     else:
-                        await self.edit_source(interaction, content="Este retorno já foi processado.", embed=None, view=None)
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Retorno já processado",
+                                "Este retorno não aceita novas ações.",
+                                color=0x95A5A6,
+                                footer="Peace · retorno",
+                            ),
+                            view=None,
+                        )
                     return
                 target = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
                 if target is not None:
@@ -1538,9 +1802,10 @@ class ReturnApprovalView(discord.ui.View):
                         )
                     except (discord.Forbidden, discord.HTTPException):
                         log.info("Não consegui enviar a recusa do retorno Peace %s", target.id)
-                await self.bot.send_log(
+                logged = await self.bot.send_log(
                     "Retorno Peace recusado",
                     actor=member,
+                    subject=target,
                     fields=(
                         ("Usuário", mention(request["discord_user_id"])),
                         ("ID reservado", f"`{int(request['old_peace_id'])}`"),
@@ -1549,12 +1814,28 @@ class ReturnApprovalView(discord.ui.View):
                         ("Horário", f"<t:{now_unix()}:F>"),
                     ),
                 )
-                await self.edit_source(
+                if not logged:
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Recusa registrada · log pendente",
+                            "O retorno foi recusado, mas não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                            color=0xF1C40F,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    return
+                removed = await self.remove_terminal_card(interaction)
+                await self.terminal_feedback(
                     interaction,
-                    content=f"Retorno recusado por {member.mention}. O ID `{int(request['old_peace_id'])}` continua reservado.",
-                    embed=None,
-                    view=None,
-                    allowed_mentions=discord.AllowedMentions(users=True),
+                    "Retorno recusado",
+                    (
+                        f"O ID `{int(request['old_peace_id'])}` continua reservado. "
+                        + ("O resultado está no canal logs." if removed else "O resultado está no canal logs, mas o cartão permaneceu no scan-only para conferência.")
+                    ),
+                    color=0xED4245,
                 )
         finally:
             if self.processing:
@@ -3939,8 +4220,10 @@ class PeaceBot(commands.Bot):
         text = str(value or "").strip()
         if not re.fullmatch(r"[0-9]{1,19}", text):
             return None
-        peace_id = int(text)
-        return peace_id if peace_id > 0 else None
+        # ID 0 is the valid Founder identity in the Peace database. The
+        # public member route still requires the live Peace role below, so
+        # accepting zero here does not turn it into an unauthorised lookup.
+        return int(text)
 
     @staticmethod
     def public_nickname_peace_id(value: object) -> int | None:
@@ -6058,13 +6341,29 @@ class PeaceBot(commands.Bot):
         *,
         fields: tuple[tuple[str, str], ...],
         actor: discord.abc.User | None = None,
+        subject: discord.abc.User | None = None,
     ) -> discord.Embed:
         embed = discord.Embed(title=title, color=0x2B2D31)
         for name, value in fields:
             embed.add_field(name=name, value=value, inline=False)
-        avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
-        if avatar:
-            embed.set_thumbnail(url=str(avatar))
+        actor_avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
+        subject_avatar = getattr(getattr(subject, "display_avatar", None), "url", None)
+        if subject is not None:
+            actor_name = str(
+                getattr(actor, "display_name", None)
+                or getattr(actor, "name", None)
+                or "membro Peace"
+            )
+            if actor_avatar:
+                embed.set_author(name=f"Ação por {actor_name}", icon_url=str(actor_avatar))
+            else:
+                embed.set_author(name=f"Ação por {actor_name}")
+            if subject_avatar:
+                embed.set_thumbnail(url=str(subject_avatar))
+            elif actor_avatar:
+                embed.set_thumbnail(url=str(actor_avatar))
+        elif actor_avatar:
+            embed.set_thumbnail(url=str(actor_avatar))
         embed.set_footer(text="Peace · logs")
         return embed
 
@@ -6074,10 +6373,11 @@ class PeaceBot(commands.Bot):
         *,
         fields: tuple[tuple[str, str], ...],
         actor: discord.abc.User | None = None,
-    ) -> None:
-        await self.send_to_channel(
+        subject: discord.abc.User | None = None,
+    ) -> bool:
+        return await self.send_to_channel(
             getattr(self.settings, "log_channel_id", None),
-            embed=self.log_card(title, fields=fields, actor=actor),
+            embed=self.log_card(title, fields=fields, actor=actor, subject=subject),
         )
 
     async def send_to_channel(
@@ -6087,9 +6387,9 @@ class PeaceBot(commands.Bot):
         content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
-    ) -> None:
+    ) -> bool:
         if self.guild is None or channel_id is None:
-            return
+            return False
         channel = self.guild.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
             try:
@@ -6099,8 +6399,10 @@ class PeaceBot(commands.Bot):
                     view=view,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
+                return True
             except (discord.Forbidden, discord.HTTPException):
                 log.exception("Falha ao escrever no canal %s", channel_id)
+        return False
 
     async def close_ticket_channel(self, channel: discord.TextChannel, ticket, actor: discord.Member) -> None:
         if ticket["status"] != "open":
@@ -7328,9 +7630,10 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
             log.exception("Falha ao aplicar set pendente em %s", member.id)
             return "Não consegui aplicar o set. Verifique permissões, hierarquia e tente novamente."
-        await self.send_log(
+        logged = await self.send_log(
             "Set aprovado",
             actor=recruiter,
+            subject=member,
             fields=(
                 ("Usuário", member.mention),
                 ("ID Peace", f"`{peace_id}`"),
@@ -7340,9 +7643,12 @@ class PeaceBot(commands.Bot):
             ),
         )
         dm_note = "" if dm_sent else " A DM de boas-vindas está fechada."
-        return f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`.{dm_note}"
+        result = f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`.{dm_note}"
+        if not logged:
+            return f"⚠️ {result} O set foi aplicado, mas não consegui registrar o resultado no canal logs."
+        return result
 
-    async def reject_set_request(self, request, recruiter: discord.Member) -> None:
+    async def reject_set_request(self, request, recruiter: discord.Member) -> bool:
         self.database.update_set_request_status(request["id"], "rejected")
         member = await self.member(recruiter.guild, int(request["discord_user_id"]))
         if member is not None:
@@ -7350,9 +7656,10 @@ class PeaceBot(commands.Bot):
                 await member.send("Seu pedido de set foi recusado por Staff ou Management. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
-        await self.send_log(
+        return await self.send_log(
             "Set recusado",
             actor=recruiter,
+            subject=member,
             fields=(
                 ("Usuário", member.mention if member is not None else mention(request["discord_user_id"])),
                 ("Recusado por", recruiter.mention),

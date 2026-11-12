@@ -67,9 +67,12 @@ again.
 Operational action records are sent as embeds to the channel configured by
 `DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use
 vertical fields and include the actor's display avatar when Discord provides
-one. Founder actions, announcements, Peace-ID reservations and return
-approvals use the same card format. Runtime diagnostics remain application
-logs and are not copied into the server channel.
+one. Set approvals and rejections include the reviewer avatar as the embed
+author and the affected member avatar as the thumbnail when both are
+available. Founder actions, announcements, Peace-ID reservations and return
+approvals use the same card format. Set and return decisions also give the
+reviewer a compact success or failure embed after the action. Runtime
+diagnostics remain application logs and are not copied into the server channel.
 
 Human members enter with the visual `Not Verified` role. The bot exposes one
 verification channel, `verify`, only to that role; its persistent panel starts
@@ -133,13 +136,15 @@ permissions, and remove the requested legacy roles. Use
 reviewing the dry run. The `--remove-chat-elite` flag is intentionally explicit
 because channel deletion is irreversible.
 
-Legacy set outcome messages are handled separately so a log cleanup cannot
-apply the broader structural migration. Run
+Legacy set and reserved-ID outcome messages are handled separately so a log
+cleanup cannot apply the broader structural migration. Run
 `python -m bot.operations.legacy_scan_logs` for a read-only count, then add
 `--apply` only after reviewing the result. The command copies only bot-authored
-terminal set approval/rejection messages from `scan-only` into the configured
-logs channel, uses a source marker for retry safety, and deletes the source
-message only after the copy succeeds.
+terminal set approval/rejection and reserved-ID return messages from
+`scan-only` into the configured logs channel, reconciles terminal cards already
+represented by a structured log, uses a source marker for retry safety, and
+deletes the source message only after the destination is known to contain the
+outcome.
 
 The Central bridge is optional at startup but, when enabled, requires an
 explicit `DISCORD_CENTRAL_ACCESS_ROLE_ID`, a loopback-only

@@ -8,6 +8,35 @@
   var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var mobileNavigation = window.matchMedia("(max-width: 840px)");
+  var memberSessionStorageKey = "peace.member.session.v1";
+
+  function readMemberSessionToken() {
+    try {
+      var persistent = window.localStorage.getItem(memberSessionStorageKey) || "";
+      if (persistent) return persistent;
+    } catch (error) { /* optional */ }
+    try {
+      return window.sessionStorage.getItem(memberSessionStorageKey) || "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function storeMemberSessionToken(token, keepConnected) {
+    try {
+      if (keepConnected) window.localStorage.setItem(memberSessionStorageKey, token);
+      else window.localStorage.removeItem(memberSessionStorageKey);
+    } catch (error) { /* optional */ }
+    try {
+      if (keepConnected) window.sessionStorage.removeItem(memberSessionStorageKey);
+      else window.sessionStorage.setItem(memberSessionStorageKey, token);
+    } catch (error) { /* optional */ }
+  }
+
+  function clearMemberSessionToken() {
+    try { window.localStorage.removeItem(memberSessionStorageKey); } catch (error) { /* optional */ }
+    try { window.sessionStorage.removeItem(memberSessionStorageKey); } catch (error) { /* optional */ }
+  }
 
   document.documentElement.classList.add("js-ready");
 
@@ -67,6 +96,10 @@
 
     mobileNavigation.addEventListener("change", function () { closeMenu(false); });
   }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && header && header.classList.contains("menu-open")) closeMenu(true);
+  });
 
   function reveal(element) { element.classList.add("is-visible"); }
 
@@ -1480,6 +1513,7 @@
     var verifyButton = verifyForm && verifyForm.querySelector("button[type=submit]");
     var result = verifyForm && verifyForm.querySelector("[data-login-result]");
     var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
+    var keepConnected = requestForm && requestForm.querySelector('[name="keep-connected"]');
     var codeInput = verifyForm && verifyForm.querySelector('[name="access-code"]');
     var requestedPeaceId = "";
 
@@ -1511,7 +1545,7 @@
     if (requestForm) requestForm.addEventListener("submit", function (event) {
       event.preventDefault();
       if (!idInput || !/^\d{1,19}$/.test(idInput.value.trim())) {
-        if (idInput) { idInput.setCustomValidity("Use somente números, de 1 a 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
+        if (idInput) { idInput.setCustomValidity("Use somente números, com até 19 dígitos."); idInput.reportValidity(); idInput.setCustomValidity(""); }
         return;
       }
       requestedPeaceId = idInput.value.trim();
@@ -1557,7 +1591,7 @@
       }, 60000)
         .then(parseLoginResponse)
         .then(function (payload) {
-          try { window.localStorage.setItem("peace.member.session.v1", payload.session.token); } catch (error) { /* optional */ }
+          storeMemberSessionToken(payload.session.token, Boolean(keepConnected && keepConnected.checked));
           setStatusMessage(status, "Acesso confirmado", "Abrindo sua área da Peace…", "success");
           window.setTimeout(function () { window.location.assign("/area/"); }, 260);
         })
@@ -1573,26 +1607,6 @@
     }
   }
 
-  function setMemberTab(name, moveFocus) {
-    var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-member-tab]"));
-    var panels = Array.prototype.slice.call(document.querySelectorAll("[data-member-panel]"));
-    if (!tabs.length || !panels.length) return;
-
-    tabs.forEach(function (tab) {
-      var active = tab.dataset.memberTab === name;
-      tab.classList.toggle("is-active", active);
-      tab.setAttribute("aria-selected", String(active));
-      tab.tabIndex = active ? 0 : -1;
-      if (active && moveFocus) tab.focus();
-    });
-
-    panels.forEach(function (panel) {
-      var active = panel.dataset.memberPanel === name;
-      panel.classList.toggle("is-active", active);
-      panel.hidden = !active;
-    });
-  }
-
   function initMemberArea() {
     if (body.dataset.page !== "member") return;
 
@@ -1603,22 +1617,9 @@
     var memberName = authenticated && authenticated.querySelector("[data-member-name]");
     var memberId = authenticated && authenticated.querySelector("[data-member-id]");
     var logoutButton = authenticated && authenticated.querySelector("[data-member-logout]");
-    var preview = document.querySelector("[data-member-preview]");
-    var previewOpeners = document.querySelectorAll("[data-preview-toggle]");
-    var previewCloser = document.querySelector("[data-preview-close]");
-    var query = new URLSearchParams(window.location.search);
-    var urlPreview = query.get("preview") === "member";
-    var requestedPreview = query.get("preview") === "investigativa" ? "investigativa" : "workspace";
-    var lastPreviewOpener = null;
-    var workspaceShell = document.querySelector("[data-workspace-shell]");
-    var workspaceSidebar = document.querySelector("[data-workspace-sidebar]");
-    var workspaceMenu = document.querySelector("[data-workspace-menu]");
-    var previewFeedback = document.querySelector("[data-preview-feedback]");
-    var feedbackTimer;
 
     function loadMemberSession() {
-      var token = "";
-      try { token = window.localStorage.getItem("peace.member.session.v1") || ""; } catch (error) { token = ""; }
+      var token = readMemberSessionToken();
       if (!token || !authenticated) return;
 
       authenticated.hidden = false;
@@ -1643,143 +1644,22 @@
           if (authSkeleton) authSkeleton.hidden = true;
           if (authContent) authContent.hidden = false;
           if (memberName) memberName.textContent = payload.session.member_name || "membro.";
-          if (memberId) memberId.textContent = String(payload.session.peace_id || "—");
+          if (memberId) memberId.textContent = payload.session.peace_id === null || payload.session.peace_id === undefined
+            ? "—"
+            : String(payload.session.peace_id);
         })
         .catch(function () {
-          try { window.localStorage.removeItem("peace.member.session.v1"); } catch (error) { /* optional */ }
+          clearMemberSessionToken();
           if (authenticated) authenticated.hidden = true;
         });
     }
 
-    function showPreviewFeedback(message) {
-      if (!previewFeedback) return;
-      previewFeedback.textContent = message;
-      previewFeedback.hidden = false;
-      window.clearTimeout(feedbackTimer);
-      feedbackTimer = window.setTimeout(function () { previewFeedback.hidden = true; }, 5200);
-    }
-
-    function setPreviewScreen(name, moveFocus) {
-      var screens = Array.prototype.slice.call(document.querySelectorAll("[data-preview-screen]"));
-      if (!screens.length) return;
-
-      screens.forEach(function (screen) {
-        var active = screen.dataset.previewScreen === name;
-        screen.classList.toggle("is-active", active);
-        screen.hidden = !active;
-      });
-
-      var activeNav = document.querySelector('[data-preview-screen-target="' + name + '"]');
-      document.querySelectorAll("[data-preview-screen-target]").forEach(function (item) { item.classList.remove("is-active"); });
-      if (activeNav) activeNav.classList.add("is-active");
-
-      if (moveFocus) {
-        window.setTimeout(function () {
-          var heading = name === "investigativa" ? document.querySelector("#investigative-title") : document.querySelector("#preview-title");
-          if (heading) heading.focus({ preventScroll: true });
-        }, 0);
-      }
-    }
-
-    function syncWorkspaceMenu(isOpen, restoreFocus) {
-      if (!workspaceShell || !workspaceMenu) return;
-      workspaceShell.classList.toggle("menu-open", isOpen);
-      workspaceMenu.setAttribute("aria-expanded", String(isOpen));
-      if (workspaceSidebar) {
-        var sidebarHidden = mobileNavigation.matches && !isOpen;
-        workspaceSidebar.inert = sidebarHidden;
-        workspaceSidebar.setAttribute("aria-hidden", String(sidebarHidden));
-      }
-      if (!isOpen && restoreFocus) workspaceMenu.focus();
-    }
-
-    function openPreview(event, mode) {
-      if (!preview) return;
-      lastPreviewOpener = event && event.currentTarget ? event.currentTarget : lastPreviewOpener;
-      preview.hidden = false;
-      preview.setAttribute("data-preview-state", "open");
-      if (gate) gate.setAttribute("data-preview-state", "open");
-      setPreviewScreen(mode || "workspace", true);
-      window.setTimeout(function () {
-        var heading = (mode || "workspace") === "investigativa" ? document.querySelector("#investigative-title") : document.querySelector("#preview-title");
-        if (heading) heading.focus({ preventScroll: true });
-      }, 0);
-    }
-
-    function closePreview() {
-      if (!preview) return;
-      preview.hidden = true;
-      preview.removeAttribute("data-preview-state");
-      if (gate) gate.removeAttribute("data-preview-state");
-      syncWorkspaceMenu(false, false);
-      if (lastPreviewOpener) {
-        lastPreviewOpener.focus();
-        lastPreviewOpener = null;
-      }
-    }
-
-    previewOpeners.forEach(function (opener) { opener.addEventListener("click", openPreview); });
-    if (previewCloser) previewCloser.addEventListener("click", closePreview);
     if (logoutButton) logoutButton.addEventListener("click", function () {
-      try { window.localStorage.removeItem("peace.member.session.v1"); } catch (error) { /* optional */ }
+      clearMemberSessionToken();
       if (authenticated) authenticated.hidden = true;
       if (gate) gate.hidden = false;
     });
-
-    document.querySelectorAll("[data-preview-screen-target]").forEach(function (item) {
-      item.addEventListener("click", function () {
-        setPreviewScreen(item.dataset.previewScreenTarget, true);
-        syncWorkspaceMenu(false, false);
-        if (item.dataset.previewMessage) showPreviewFeedback(item.dataset.previewMessage);
-      });
-    });
-
-    document.querySelectorAll("[data-preview-message]").forEach(function (item) {
-      item.addEventListener("click", function () { showPreviewFeedback(item.dataset.previewMessage); });
-    });
-
-    if (workspaceMenu) {
-      workspaceMenu.addEventListener("click", function () {
-        syncWorkspaceMenu(!workspaceShell.classList.contains("menu-open"), false);
-      });
-    }
-
-    mobileNavigation.addEventListener("change", function () { syncWorkspaceMenu(false, false); });
-
-    document.querySelectorAll("[data-member-tab]").forEach(function (tab) {
-      tab.addEventListener("click", function () { setMemberTab(tab.dataset.memberTab, false); });
-      tab.addEventListener("keydown", function (event) {
-        var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-member-tab]"));
-        var index = tabs.indexOf(tab);
-        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-        event.preventDefault();
-        var nextIndex = event.key === "ArrowRight" ? index + 1 : index - 1;
-        if (nextIndex < 0) nextIndex = tabs.length - 1;
-        if (nextIndex >= tabs.length) nextIndex = 0;
-        setMemberTab(tabs[nextIndex].dataset.memberTab, true);
-      });
-    });
-
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape") {
-        syncWorkspaceMenu(false, true);
-        if (header && header.classList.contains("menu-open")) closeMenu(true);
-      }
-    });
-
-    document.addEventListener("click", function (event) {
-      if (workspaceShell && workspaceShell.classList.contains("menu-open") && !workspaceShell.contains(event.target)) syncWorkspaceMenu(false, true);
-    });
-
-    syncWorkspaceMenu(false, false);
     loadMemberSession();
-
-    if (urlPreview || query.get("preview") === "investigativa") {
-      openPreview(null, requestedPreview);
-      window.setTimeout(function () {
-        if (preview) preview.scrollIntoView({ block: "start" });
-      }, 0);
-    }
   }
 
   initPublicMedia();

@@ -7,9 +7,9 @@
     <meta name="description" content="Acesso de membro da Peace com ID e código enviado no Discord.">
     <title>Acessar — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-18">
+    <link rel="stylesheet" href="/styles.css?v=20261112-20">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-18"></script>
+    <script defer src="/script.js?v=20261112-20"></script>
   </head>
   <body data-page="login">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -29,7 +29,8 @@
             <h1 id="login-title">Acessar a <em>Peace.</em></h1>
             <p class="login-lede">Informe seu ID Peace. Enviaremos um código de uso único para o Discord vinculado.</p>
             <form class="auth-form" data-login-request novalidate>
-              <label class="field field--id"><span>ID Peace</span><span class="field-control"><img class="field-icon" src="/assets/id-card.svg" alt="" aria-hidden="true" width="24" height="24"><input name="peace-id" type="text" required autocomplete="username" inputmode="numeric" maxlength="19" pattern="[0-9]{1,19}" autocapitalize="off" spellcheck="false" placeholder="Somente números" aria-describedby="peace-id-help"></span><small id="peace-id-help">Somente números · até 19 dígitos.</small></label>
+              <label class="field field--id"><span>ID Peace</span><span class="field-control"><img class="field-icon" src="/assets/id-card.svg" alt="" aria-hidden="true" width="24" height="24"><input name="peace-id" type="text" required autocomplete="username" inputmode="numeric" maxlength="19" pattern="[0-9]{1,19}" autocapitalize="off" spellcheck="false" placeholder="Somente números" aria-describedby="peace-id-help"></span><small id="peace-id-help">Somente números · até 19 dígitos. O ID 0 também é válido.</small></label>
+              <label class="check-field auth-keep-connected"><input name="keep-connected" type="checkbox" value="1"><span>Manter conectado neste dispositivo</span></label>
               <button class="button button--light button--large" type="submit"><span data-button-label>Enviar código no Discord</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
             </form>
 

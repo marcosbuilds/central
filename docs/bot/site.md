@@ -69,18 +69,21 @@ create a Discord OAuth session. If the visitor already belongs to the server,
 the candidature flow can identify the existing member by required username and
 optional Discord ID/profile URL, then route `Visitor` to the interview or
 route an existing `Peace` member to `/acessar/` without requesting a new
-setagem. `/acessar/` validates the numeric Peace ID against the runtime member
-record or Peace nickname, requires the Peace role, sends a short-lived
-single-use code to that member's Discord DM, and creates a short-lived web
-session only after the code is consumed. No static page creates an
+setagem. `/acessar/` validates the numeric Peace ID, including the valid
+Founder ID `0`, against the runtime member record or Peace nickname, requires
+the Peace role, sends a short-lived single-use code to that member's Discord
+DM, and creates a short-lived web session only after the code is consumed. The
+login can keep that session in local storage when the member explicitly checks
+“Manter conectado neste dispositivo”; otherwise it remains in session storage
+for the current browser session. No static page creates an
 application, approval, or member record.
 
 The `/area/` route is the member-area UI shell. Without a valid authenticated
-session it shows an access gate; with the public member session it validates the
-bearer token and shows the confirmed member identity. The query strings `?preview=member` and
-`?preview=investigativa` are local-only visual previews populated with synthetic
-records; they are not login paths, do not contact the bot, and must never be
-described as member or case data.
+session it shows only an access gate; it never renders a member workspace,
+investigative case, or synthetic record. With the public member session it
+validates the bearer token and shows only the confirmed member identity. Query
+strings such as `?preview=member` and `?preview=investigativa` are ignored and
+cannot bypass this gate.
 
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
@@ -173,10 +176,11 @@ The pages use a dark editorial palette derived from the supplied Peace mark:
 graphite canvas, restrained slate surfaces, feather-white text, and cold blue
 accents. CSS-only radial, grid, and line textures echo flight geometry without
 introducing a second background asset. The pages also keep visible focus states,
-semantic headings, skip links, keyboard-accessible mobile navigation, member
-tabs, and a `prefers-reduced-motion` path. On compact home layouts, the main
-header centers a labeled three-line menu control; its navigation panel opens
-below the control with a centered pointer and keeps the same keyboard/inert
+semantic headings, skip links, keyboard-accessible mobile navigation, the
+authenticated-area gate, and a `prefers-reduced-motion` path. On compact home
+layouts, the main header centers a lowercase `menu` disclosure with a real
+two-stroke arrow; its navigation panel opens below the control as a rounded
+translucent 2×2 grid with a centered pointer and keeps the same keyboard/inert
 state contract. The reveal behavior uses
 `IntersectionObserver` without an external motion dependency, continuous scroll
 listener, ticker, or auto-scrolling content.

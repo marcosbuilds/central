@@ -787,6 +787,45 @@ def test_public_member_auth_rejects_ids_outside_numeric_limit(tmp_path):
     assert payload["code"] == "INVALID_PEACE_ID"
 
 
+def test_public_member_auth_accepts_founder_zero_id(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="founder",
+        display_name="Founder",
+        global_name="Founder",
+        nick="F ⎰ Founder 0",
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+        send=AsyncMock(),
+    )
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member.id,
+        username=member.name,
+        nickname=member.nick,
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=member.id,
+    )
+    bot.guild = SimpleNamespace(
+        members=[member],
+        get_member=lambda user_id: member if user_id == member.id else None,
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/member/auth/request",
+        method="POST",
+        payload={"peace_id": "0"},
+    )
+
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["member_name"] == "Founder"
+
+
 def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
     from bot.main import EntryInviteSession
 
@@ -877,8 +916,11 @@ def test_public_site_files_are_complete():
     assert 'class="peace-icon"' in homepage
     assert 'id="avisos"' not in homepage
     assert 'id="parceiros"' not in homepage
-    menu_icon = homepage.split('class="menu-toggle-lines"', 1)[1].split('</span>', 1)[0]
-    assert menu_icon.count('<i></i>') == 3
+    menu_control = homepage.split('class="menu-toggle"', 1)[1].split('</button>', 1)[0]
+    assert '<span class="menu-toggle-label">menu</span>' in menu_control
+    assert 'class="menu-toggle-arrow"' in menu_control
+    assert menu_control.count('<i></i>') == 2
+    assert 'menu-toggle-lines' not in homepage
     header_cta = homepage.split('class="button button--outline header-cta"', 1)[1].split("</a>", 1)[0]
     hero_cta = homepage.split('class="button button--light button--large"', 1)[1].split("</a>", 1)[0]
     assert "peace-icon" in header_cta and "discord-icon" not in header_cta
@@ -904,6 +946,8 @@ def test_public_site_files_are_complete():
     assert 'maxlength="19"' in login_html
     assert 'inputmode="numeric"' in login_html
     assert 'src="/assets/id-card.svg"' in login_html
+    assert 'name="keep-connected"' in login_html
+    assert "Manter conectado neste dispositivo" in login_html
     assert "Enviar código no Discord" in login_html
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
@@ -922,6 +966,8 @@ def test_public_site_files_are_complete():
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert '60000' in script
     assert 'aria-busy' in script
+    assert 'window.sessionStorage' in script
+    assert 'storeMemberSessionToken' in script
     assert '/api/entry/start' in script
     assert '/api/entry/status' in script
     assert '/api/entry/repair' in script
@@ -955,6 +1001,12 @@ def test_public_site_files_are_complete():
     assert '.media-card, .media-skeleton {' in stylesheet and 'flex-direction: column;' in stylesheet
     assert '.media-card-copy {\n  flex: 1 1 auto;\n  overflow: visible;' in stylesheet
     assert '.site-nav::before' in stylesheet and '.menu-open .site-nav' in stylesheet
+    assert 'grid-template-columns: repeat(2, minmax(0, 1fr))' in stylesheet
+    assert 'border-radius: var(--container-radius)' in stylesheet
+    assert 'backdrop-filter: var(--container-blur)' in stylesheet
+    assert '-webkit-backdrop-filter: var(--container-blur)' in stylesheet
+    assert '.menu-toggle-arrow i:first-child' in stylesheet
+    assert '.menu-toggle-arrow i:last-child' in stylesheet
     assert '.site-header { display: grid;' in stylesheet
     assert '.flow-copy,' in stylesheet and '.application-stage,' in stylesheet
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
@@ -962,7 +1014,7 @@ def test_public_site_files_are_complete():
         assert "flow-header-context" not in flow_html
 
 
-def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
+def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     from pathlib import Path
 
     site_root = Path(__file__).parents[2] / "bot" / "site"
@@ -971,14 +1023,20 @@ def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
 
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
-    assert "data-member-preview" in member_html
-    assert 'data-preview-screen="investigativa"' in member_html
+    assert "data-member-preview" not in member_html
+    assert "data-preview-toggle" not in member_html
+    assert "data-preview-screen" not in member_html
+    assert "prévia" not in member_html.lower()
     assert "member-header" in member_html
     assert "site-header site-header--area" not in member_html
-    assert member_html.count('class="menu-toggle-lines"') == 1
-    assert member_html.split('class="menu-toggle-lines"', 1)[1].split('</span>', 1)[0].count('<i></i>') == 3
-    assert "registros abaixo são sintéticos" in member_html
-    assert 'get("preview") === "member"' in script
+    assert 'data-workspace-menu' not in member_html
+    assert "workspace-shell" not in member_html
+    assert "registros abaixo são sintéticos" not in member_html
+    assert 'data-preview-toggle' not in script
+    assert 'data-member-preview' not in script
+    assert 'get("preview")' not in script
+    assert "openPreview" not in script
+    assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
 

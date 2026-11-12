@@ -201,6 +201,28 @@ def test_log_card_uses_actor_thumbnail_and_vertical_fields():
     assert embed.footer.text == "Peace · logs"
 
 
+def test_log_card_distinguishes_actor_and_affected_member_avatars():
+    actor = SimpleNamespace(
+        display_name="Aprovador",
+        display_avatar=SimpleNamespace(url="https://cdn.example.test/actor.png"),
+    )
+    subject = SimpleNamespace(
+        display_name="Membro aprovado",
+        display_avatar=SimpleNamespace(url="https://cdn.example.test/member.png"),
+    )
+
+    embed = PeaceBot.log_card(
+        "Set aprovado",
+        actor=actor,
+        subject=subject,
+        fields=(("Aprovado por", "@Aprovador"), ("Usuário", "@Membro aprovado")),
+    )
+
+    assert embed.author.name == "Ação por Aprovador"
+    assert embed.author.icon_url == "https://cdn.example.test/actor.png"
+    assert embed.thumbnail.url == "https://cdn.example.test/member.png"
+
+
 def test_send_log_routes_embed_to_configured_log_channel(tmp_path):
     log_channel_id = 987654321012345678
     settings = SimpleNamespace(

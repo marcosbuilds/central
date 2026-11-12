@@ -1,7 +1,10 @@
 # Peace site and member area
 
-Status: implemented UI shell; authenticated member integration is proposed and
-not implemented
+Status: historical baseline; superseded by the current member-area contract in
+`docs/bot/site.md`
+
+This record captures the initial member-area proposal. Its local synthetic
+preview and proposed authenticated contract are not current behavior.
 
 Decision owner: Peace product and bot maintainers
 

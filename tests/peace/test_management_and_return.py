@@ -628,7 +628,7 @@ def test_delete_confirmation_updates_the_same_message_after_processing(tmp_path)
     bot.delete_peace_users = AsyncMock(return_value=["ok"])
     view = DeleteUserConfirmationView(bot, 1, (10,))
     response = SimpleNamespace(edit_message=AsyncMock(), defer=AsyncMock())
-    message = SimpleNamespace(edit=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock(), delete=AsyncMock())
     interaction = SimpleNamespace(
         user=actor,
         guild=None,
@@ -665,7 +665,7 @@ def test_delete_confirmation_renders_progress_bar_and_processed_users(tmp_path):
     bot.delete_peace_users = AsyncMock(side_effect=delete_with_progress)
     view = DeleteUserConfirmationView(bot, 1, (10, 11))
     response = SimpleNamespace(edit_message=AsyncMock(), defer=AsyncMock())
-    message = SimpleNamespace(edit=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock(), delete=AsyncMock())
     interaction = SimpleNamespace(
         user=actor,
         guild=None,
@@ -1236,11 +1236,13 @@ def test_reject_return_callback_edits_card_and_keeps_reserved_id(tmp_path):
     reviewer.guild = guild
     reviewer.mention = "<@1>"
     response = SimpleNamespace(is_done=lambda: response.edit_message.await_count > 0, edit_message=AsyncMock())
-    message = SimpleNamespace(edit=AsyncMock())
+    followup = SimpleNamespace(send=AsyncMock())
+    message = SimpleNamespace(edit=AsyncMock(), delete=AsyncMock())
     interaction = SimpleNamespace(
         user=reviewer,
         guild=guild,
         response=response,
+        followup=followup,
         message=message,
     )
 
@@ -1254,8 +1256,10 @@ def test_reject_return_callback_edits_card_and_keeps_reserved_id(tmp_path):
     assert target.send.await_count == 1
     assert bot.send_log.await_count == 1
     response.edit_message.assert_awaited_once()
-    message.edit.assert_awaited_once()
-    assert "continua reservado" in message.edit.call_args.kwargs["content"]
+    followup.send.assert_awaited_once()
+    assert followup.send.await_args.kwargs["embed"].title == "Retorno recusado"
+    message.edit.assert_not_awaited()
+    message.delete.assert_awaited_once()
     assert all(button.disabled for button in view.children)
 
 
@@ -1312,11 +1316,13 @@ def test_return_approval_assigns_peace_removes_entry_roles_and_updates_nickname(
     reviewer.guild = guild
     reviewer.mention = "<@1>"
     response = SimpleNamespace(is_done=lambda: response.edit_message.await_count > 0, edit_message=AsyncMock())
+    followup = SimpleNamespace(send=AsyncMock())
     interaction = SimpleNamespace(
         user=reviewer,
         guild=guild,
         response=response,
-        message=SimpleNamespace(edit=AsyncMock()),
+        followup=followup,
+        message=SimpleNamespace(edit=AsyncMock(), delete=AsyncMock()),
     )
 
     view = ReturnApprovalView(bot, int(request["id"]))
@@ -1328,4 +1334,7 @@ def test_return_approval_assigns_peace_removes_entry_roles_and_updates_nickname(
     assert bot.database.get_member(target.id)["peace_id"] == 2
     assert bot.send_log.await_count == 1
     interaction.response.edit_message.assert_awaited_once()
-    interaction.message.edit.assert_awaited_once()
+    followup.send.assert_awaited_once()
+    assert followup.send.await_args.kwargs["embed"].title == "Retorno aprovado"
+    interaction.message.edit.assert_not_awaited()
+    interaction.message.delete.assert_awaited_once()
