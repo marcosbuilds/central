@@ -91,7 +91,7 @@ $sourceFiles = foreach ($relativeFromRepository in $trackedBotFiles) {
 }
 
 foreach ($sourceFile in $sourceFiles) {
-    $relative = Get-RelativePath $botRoot $sourceFile.FullName
+    $relative = (Get-RelativePath $repositoryRoot $sourceFile.FullName).Substring(4)
     $destination = Join-Path $deployDirectory $relative
     $parent = Split-Path -Parent $destination
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
