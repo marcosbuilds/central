@@ -7,6 +7,25 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Get-RelativePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BasePath,
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPath
+    )
+
+    # System.IO.Path.GetRelativePath is unavailable in Windows PowerShell 5.1.
+    # URI resolution keeps this script usable on the provider workstation as
+    # well as in PowerShell 7 without changing the package layout.
+    $base = [IO.Path]::GetFullPath($BasePath).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $target = [IO.Path]::GetFullPath($TargetPath)
+    $baseUri = New-Object System.Uri($base)
+    $targetUri = New-Object System.Uri($target)
+    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+    return [Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', [IO.Path]::DirectorySeparatorChar)
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $botRoot = Join-Path $repositoryRoot 'bot'
 $assetRoot = Join-Path $repositoryRoot 'assets\bot'
@@ -34,7 +53,7 @@ New-Item -ItemType Directory -Force -Path $deployDirectory | Out-Null
 $excludedDirectories = @('__pycache__', 'site')
 $excludedExtensions = @('.pyc', '.pyo', '.pyd', '.sqlite3')
 $sourceFiles = Get-ChildItem -LiteralPath $botRoot -File -Recurse | Where-Object {
-    $relative = [IO.Path]::GetRelativePath($botRoot, $_.FullName)
+    $relative = Get-RelativePath $botRoot $_.FullName
     $segments = $relative -split '[\\/]'
     ($segments | Where-Object { $_ -in $excludedDirectories }).Count -eq 0 -and
     $_.Extension.ToLowerInvariant() -notin $excludedExtensions -and
@@ -42,7 +61,7 @@ $sourceFiles = Get-ChildItem -LiteralPath $botRoot -File -Recurse | Where-Object
 }
 
 foreach ($sourceFile in $sourceFiles) {
-    $relative = [IO.Path]::GetRelativePath($botRoot, $sourceFile.FullName)
+    $relative = Get-RelativePath $botRoot $sourceFile.FullName
     $destination = Join-Path $deployDirectory $relative
     $parent = Split-Path -Parent $destination
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
@@ -59,7 +78,7 @@ foreach ($requirementsName in @('requirements.txt', 'requirements-aclclouds.txt'
 if (Test-Path -LiteralPath $assetRoot) {
     $destinationAssetRoot = Join-Path $deployDirectory 'assets\bot'
     Get-ChildItem -LiteralPath $assetRoot -File -Recurse | ForEach-Object {
-        $relative = [IO.Path]::GetRelativePath($assetRoot, $_.FullName)
+        $relative = Get-RelativePath $assetRoot $_.FullName
         $destination = Join-Path $destinationAssetRoot $relative
         $parent = Split-Path -Parent $destination
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
@@ -68,7 +87,7 @@ if (Test-Path -LiteralPath $assetRoot) {
 }
 
 $forbidden = Get-ChildItem -LiteralPath $deployDirectory -File -Recurse | Where-Object {
-    $relative = [IO.Path]::GetRelativePath($deployDirectory, $_.FullName)
+    $relative = Get-RelativePath $deployDirectory $_.FullName
     $relative -match '(^|[\\/])site([\\/]|$)' -or
     $_.Extension.ToLowerInvariant() -in $excludedExtensions -or
     $_.Name -in @('.env', '.env.example')
@@ -86,7 +105,7 @@ $manifest = @{
     files = @(
         Get-ChildItem -LiteralPath $deployDirectory -File -Recurse | ForEach-Object {
             [ordered]@{
-                path = [IO.Path]::GetRelativePath($deployDirectory, $_.FullName).Replace('\', '/')
+                path = (Get-RelativePath $deployDirectory $_.FullName).Replace('\', '/')
                 sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             }
         }

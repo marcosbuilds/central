@@ -81,7 +81,7 @@ public sealed class CentralAccessClientTests
             null);
 
         var result = await client.RequestCodeAsync("0");
-        var body = await handler.Requests[0].Content!.ReadAsStringAsync();
+        var body = handler.RequestBodies[0];
 
         Assert.True(result.Success);
         Assert.Contains("\"peace_id\":0", body, StringComparison.Ordinal);
@@ -111,21 +111,23 @@ public sealed class CentralAccessClientTests
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = new();
+        public List<string> RequestBodies { get; } = new();
         public string SessionClientId { get; init; } = "client-test-1";
         public string SessionProjectId { get; init; } = "00000000-0000-4000-8000-000000000001";
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             Requests.Add(request);
+            RequestBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
             var body = request.RequestUri!.AbsolutePath.EndsWith("/session", StringComparison.Ordinal)
                 ? $"{{\"ok\":true,\"message\":\"Sessão válida.\",\"session\":{{\"peace_id\":42,\"subject\":\"discord:10\",\"client_id\":\"{SessionClientId}\",\"scope\":[\"central:access\",\"central:sync\"],\"project_id\":\"{SessionProjectId}\",\"expires_at\":\"2099-01-01T00:00:00+00:00\"}}}}"
                 : $"{{\"ok\":true,\"message\":\"Acesso liberado.\",\"session\":{{\"token\":\"session-token\",\"peace_id\":42,\"subject\":\"discord:10\",\"client_id\":\"{SessionClientId}\",\"scope\":[\"central:access\",\"central:sync\"],\"project_id\":\"{SessionProjectId}\",\"expires_at\":\"2099-01-01T00:00:00+00:00\"}}}}";
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body),
-            });
+            };
         }
     }
 }

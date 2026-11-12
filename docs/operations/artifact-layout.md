@@ -10,11 +10,12 @@ that consumes it:
 artifacts/
 ├── acl/
 │   ├── deploy/YYYY-MM-DD/deploys/<commit>/
-│   └── archive/YYYY-MM-DD/<legacy-package>/
+│   └── archive/YYYY-MM-DD/legacy-layout/<legacy-package>/
 ├── netlify/deploy/YYYY-MM-DD/deploys/<commit>/
+├── netlify/archive/YYYY-MM-DD/legacy-layout/<legacy-package>/
 ├── desktop/{delivery,installers,preview,publish}/YYYY-MM-DD/
 ├── qa/{screenshots,test-results}/YYYY-MM-DD/
-└── legacy/generated/
+└── (bytecode quarantine lives under data/runtime/quarantine/)
 ```
 
 Browser profiles, cookies, tokens, local logs, and other diagnostic state do
@@ -36,13 +37,19 @@ The same date-and-purpose convention is used for desktop installers, preview
 builds, published binaries, screenshots, and test results. These directories
 are local evidence and are never added with a broad `git add`.
 
+Legacy generated folders are not kept under a generic `legacy/generated`
+bucket. Historical ACL and Netlify material is placed in the matching
+consumer's dated `archive/YYYY-MM-DD/legacy-layout/` directory; Python
+bytecode and browser state stay in `data/runtime/quarantine/`.
+
 Create a new sanitized ACL package with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ops/scripts/Build-PeaceAclPackage.ps1
 ```
 
-The script refuses to overwrite an existing commit/date directory, excludes
+The script runs on Windows PowerShell 5.1 and PowerShell 7, refuses to
+overwrite an existing commit/date directory, excludes
 `bot/site`, secrets, databases, and bytecode, copies the runtime artwork, and
 writes a SHA-256 manifest beside the package. It does not upload or restart a
 provider; production publication remains a separate authorized operation.
