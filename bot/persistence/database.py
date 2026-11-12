@@ -921,18 +921,22 @@ class PeaceDatabase:
         peace_role_id: int,
         current_peace_user_ids: set[int] | None = None,
     ) -> list[sqlite3.Row]:
-        """Reserve Peace records missing from the current member/role snapshot."""
+        """Reserve active Peace records missing from the current member/role snapshot.
+
+        ``members`` is populated only for Peace members (or the Founder), so
+        checking the active table directly is intentional. A stale
+        ``member_roles`` snapshot must not hide a record whose live Discord
+        member no longer has the Peace role.
+        """
         self.initialize()
         reserved: list[sqlite3.Row] = []
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT DISTINCT members.*
+                SELECT members.*
                 FROM members
-                JOIN member_roles ON member_roles.discord_user_id = members.discord_user_id
-                WHERE member_roles.role_id = ? AND members.is_founder = 0
+                WHERE members.peace_id > 0 AND members.is_founder = 0
                 """,
-                (str(peace_role_id),),
             ).fetchall()
             for row in rows:
                 user_id = int(row["discord_user_id"])

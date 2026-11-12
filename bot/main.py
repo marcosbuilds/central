@@ -1223,6 +1223,41 @@ class SetApprovalView(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
+    async def remove_terminal_card(self, interaction: discord.Interaction) -> None:
+        """Remove a processed review card so scan-only stays actionable only."""
+        message = interaction.message
+        if message is None:
+            return
+        try:
+            await message.delete(reason="Remover cartão de set já processado do scan-only")
+        except discord.NotFound:
+            return
+        except (discord.Forbidden, discord.HTTPException):
+            # The outcome is already recorded in logs. Keep a disabled status
+            # card only when Discord refuses the cleanup, and make the failure
+            # observable for the next operator review.
+            log.exception("Não consegui remover o cartão de set processado %s", getattr(message, "id", "?"))
+            try:
+                await message.edit(
+                    content="Processado. O registro final está no canal logs; este cartão não aceita mais ações.",
+                    embed=None,
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                log.exception("Não consegui marcar o cartão de set processado %s", getattr(message, "id", "?"))
+
+    @staticmethod
+    async def terminal_feedback(interaction: discord.Interaction, content: str) -> None:
+        """Give the reviewer a private confirmation when the client supports it."""
+        followup = getattr(interaction, "followup", None)
+        send = getattr(followup, "send", None)
+        if callable(send):
+            try:
+                await send(content, ephemeral=True)
+            except (discord.Forbidden, discord.HTTPException):
+                log.debug("Não consegui enviar a confirmação privada do set", exc_info=True)
+
     async def guard(self, interaction: discord.Interaction):
         request = self.bot.database.set_request(self.request_id)
         if request is None or request["status"] != "pending":
@@ -1239,9 +1274,19 @@ class SetApprovalView(discord.ui.View):
             return
         await interaction.response.defer()
         result = await self.bot.approve_set_request(request, interaction.user)
+        current = self.bot.database.set_request(self.request_id)
+        if current is None or current["status"] != "approved":
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content=f"⚠️ {result}",
+                    embed=self.bot.set_approval_embed(request),
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
         self.disable_all()
-        if interaction.message is not None:
-            await interaction.message.edit(content=f"✅ {result}", embed=None, view=self)
+        await self.remove_terminal_card(interaction)
+        await self.terminal_feedback(interaction, "Set aprovado e registrado no canal logs.")
 
     async def reject(self, interaction: discord.Interaction) -> None:
         request = await self.guard(interaction)
@@ -1250,13 +1295,8 @@ class SetApprovalView(discord.ui.View):
         await interaction.response.defer()
         await self.bot.reject_set_request(request, interaction.user)
         self.disable_all()
-        if interaction.message is not None:
-            await interaction.message.edit(
-                content=f"× Pedido de set recusado por {interaction.user.mention}.",
-                embed=None,
-                view=self,
-                allowed_mentions=discord.AllowedMentions(users=True),
-            )
+        await self.remove_terminal_card(interaction)
+        await self.terminal_feedback(interaction, "Set recusado e registrado no canal logs.")
 
 
 class ReturnApprovalView(discord.ui.View):
@@ -5544,10 +5584,22 @@ class PeaceBot(commands.Bot):
     async def sync_missing_peace_ids(self) -> None:
         if self.guild is None:
             return
-        current_ids = {member.id for member in self.guild.members}
+        # A partial gateway cache can make every uncached member look like a
+        # missing Peace record. Fetch the authoritative member list before any
+        # database mutation; if Discord refuses the fetch, keep the database
+        # untouched and retry on the next startup.
+        current_members = list(self.guild.members)
+        fetch_members = getattr(self.guild, "fetch_members", None)
+        if callable(fetch_members):
+            try:
+                current_members = [member async for member in fetch_members(limit=None)]
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning("Não consegui obter a lista completa de membros; auditoria de IDs não aplicada")
+                return
+        current_ids = {member.id for member in current_members}
         current_peace_ids = {
             member.id
-            for member in self.guild.members
+            for member in current_members
             if role_member(member, self.settings.peace_role_id)
         }
         current_peace_ids.update(
@@ -7298,6 +7350,15 @@ class PeaceBot(commands.Bot):
                 await member.send("Seu pedido de set foi recusado por Staff ou Management. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
+        await self.send_log(
+            "Set recusado",
+            actor=recruiter,
+            fields=(
+                ("Usuário", member.mention if member is not None else mention(request["discord_user_id"])),
+                ("Recusado por", recruiter.mention),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
 
     async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
         code = f"{secrets.randbelow(1_000_000):06d}"

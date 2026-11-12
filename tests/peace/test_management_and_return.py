@@ -735,6 +735,32 @@ def test_database_records_reservation_reason_actor_and_return_context(tmp_path):
     assert same_request["id"] == request_id
 
 
+def test_database_reconciles_active_record_even_when_role_snapshot_is_stale(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    database.initialize()
+    database.ensure_runtime_member(
+        discord_user_id=10,
+        username="member",
+        nickname=None,
+        role_ids=[200],
+        role_names=["Peace"],
+        founder_id=1,
+    )
+    with database.connect() as connection:
+        connection.execute("DELETE FROM member_roles WHERE discord_user_id = '10'")
+        connection.commit()
+
+    reserved = database.reserve_missing_peace_members(
+        current_user_ids={10},
+        peace_role_id=200,
+        current_peace_user_ids=set(),
+    )
+
+    assert len(reserved) == 1
+    assert database.get_member(10) is None
+    assert database.reserved_peace_id_for_user(10) is not None
+
+
 def test_delete_peace_user_keeps_member_and_releases_only_valid_record(tmp_path):
     config = settings(tmp_path)
     bot = PeaceBot(config)

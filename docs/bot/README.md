@@ -133,6 +133,14 @@ permissions, and remove the requested legacy roles. Use
 reviewing the dry run. The `--remove-chat-elite` flag is intentionally explicit
 because channel deletion is irreversible.
 
+Legacy set outcome messages are handled separately so a log cleanup cannot
+apply the broader structural migration. Run
+`python -m bot.operations.legacy_scan_logs` for a read-only count, then add
+`--apply` only after reviewing the result. The command copies only bot-authored
+terminal set approval/rejection messages from `scan-only` into the configured
+logs channel, uses a source marker for retry safety, and deletes the source
+message only after the copy succeeds.
+
 The Central bridge is optional at startup but, when enabled, requires an
 explicit `DISCORD_CENTRAL_ACCESS_ROLE_ID`, a loopback-only
 `CENTRAL_BRIDGE_URL`, and a randomly generated `CENTRAL_BRIDGE_KEY` of at least

@@ -877,6 +877,8 @@ def test_public_site_files_are_complete():
     assert 'class="peace-icon"' in homepage
     assert 'id="avisos"' not in homepage
     assert 'id="parceiros"' not in homepage
+    menu_icon = homepage.split('class="menu-toggle-lines"', 1)[1].split('</span>', 1)[0]
+    assert menu_icon.count('<i></i>') == 3
     header_cta = homepage.split('class="button button--outline header-cta"', 1)[1].split("</a>", 1)[0]
     hero_cta = homepage.split('class="button button--light button--large"', 1)[1].split("</a>", 1)[0]
     assert "peace-icon" in header_cta and "discord-icon" not in header_cta
@@ -947,6 +949,14 @@ def test_public_site_files_are_complete():
     assert 'button.disabled = stageNumber > currentStage' in script
     assert '--container-background' in stylesheet
     assert '.application-card' in stylesheet and '.login-card' in stylesheet
+    assert 'scrollbar-gutter: stable' in stylesheet
+    assert '--scrollbar-thumb' in stylesheet and '::-webkit-scrollbar-corner' in stylesheet
+    assert 'grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr))' in stylesheet
+    assert '.media-card, .media-skeleton {' in stylesheet and 'flex-direction: column;' in stylesheet
+    assert '.media-card-copy {\n  flex: 1 1 auto;\n  overflow: visible;' in stylesheet
+    assert '.site-nav::before' in stylesheet and '.menu-open .site-nav' in stylesheet
+    assert '.site-header { display: grid;' in stylesheet
+    assert '.flow-copy,' in stylesheet and '.application-stage,' in stylesheet
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
@@ -965,6 +975,8 @@ def test_member_area_is_gated_and_preview_is_explicitly_synthetic():
     assert 'data-preview-screen="investigativa"' in member_html
     assert "member-header" in member_html
     assert "site-header site-header--area" not in member_html
+    assert member_html.count('class="menu-toggle-lines"') == 1
+    assert member_html.split('class="menu-toggle-lines"', 1)[1].split('</span>', 1)[0].count('<i></i>') == 3
     assert "registros abaixo são sintéticos" in member_html
     assert 'get("preview") === "member"' in script
     assert "grant" not in script.lower()

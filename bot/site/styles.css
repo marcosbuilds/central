@@ -159,12 +159,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 @keyframes button-spin { to { transform: rotate(360deg); } }
 
-.menu-toggle { display: none; align-items: center; gap: 0.65rem; padding: 0.5rem 0; border: 0; background: transparent; color: var(--text); cursor: pointer; }
-.menu-toggle-label { color: var(--muted); font-size: 0.72rem; }
-.menu-toggle-lines { display: grid; gap: 0.25rem; width: 1.3rem; }
-.menu-toggle-lines i { display: block; width: 100%; height: 1px; background: currentColor; transition: transform 180ms var(--ease-fast); }
-.menu-open .menu-toggle-lines i:first-child { transform: translateY(3px) rotate(45deg); }
-.menu-open .menu-toggle-lines i:last-child { transform: translateY(-3px) rotate(-45deg); }
+.menu-toggle { display: none; align-items: center; justify-items: center; gap: 0.28rem; min-width: 3.4rem; padding: 0.32rem 0.4rem 0.4rem; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+.menu-toggle-label { color: var(--muted); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; line-height: 1; text-transform: uppercase; }
+.menu-toggle-lines { display: grid; gap: 0.16rem; width: 1.35rem; height: 0.8rem; align-content: center; }
+.menu-toggle-lines i { display: block; width: 100%; height: 1px; background: currentColor; transform-origin: center; transition: width 220ms var(--ease-fast), transform 220ms var(--ease-fast), opacity 180ms var(--ease-fast); }
+.menu-open .menu-toggle-lines i:nth-child(1) { width: 0.85rem; transform: translateX(-0.22rem) rotate(45deg); transform-origin: right center; }
+.menu-open .menu-toggle-lines i:nth-child(2) { width: 0.62rem; transform: scaleX(0.9); }
+.menu-open .menu-toggle-lines i:nth-child(3) { width: 0.85rem; transform: translateX(0.22rem) rotate(-45deg); transform-origin: left center; }
 
 .hero { position: relative; display: grid; min-height: clamp(36rem, 100svh, 56rem); place-items: center; overflow: hidden; padding: 9rem 1.25rem 6.5rem; background: radial-gradient(ellipse at 50% 45%, rgba(30, 42, 48, 0.34), transparent 38%), var(--canvas-deep); isolation: isolate; }
 .hero::after { position: absolute; z-index: -1; inset: 0; background: radial-gradient(ellipse at 50% 80%, rgba(137, 163, 176, 0.06), transparent 45%), linear-gradient(180deg, transparent, rgba(2, 3, 4, 0.52)); content: ""; pointer-events: none; }
@@ -532,15 +533,20 @@ kbd { padding: 0.18rem 0.32rem; border: 1px solid var(--border); color: var(--mu
 @media (max-width: 840px) {
   html { scroll-behavior: auto; }
   :root { --header-height: 4.5rem; }
-  .site-header { min-height: var(--header-height); padding-inline: 1.1rem; }
-  .site-nav { position: absolute; top: calc(100% + 0.55rem); right: 1rem; left: 1rem; display: none; gap: 0; padding: 0.55rem; border: 1px solid var(--border); background: rgba(12, 16, 20, 0.98); box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.4); }
-  .menu-open .site-nav { display: grid; }
+  .site-header { display: grid; min-height: var(--header-height); grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 0.75rem; padding-inline: 1.1rem; }
+  .site-header .brand { grid-column: 1; grid-row: 1; min-width: 0; }
+  .site-header .header-actions { grid-column: 3; grid-row: 1; min-width: 0; margin-left: 0; justify-self: end; }
+  .site-header .menu-toggle { grid-column: 2; grid-row: 1; justify-self: center; }
+  .site-nav { position: absolute; top: calc(100% + 0.8rem); right: 1rem; left: 1rem; display: grid; gap: 0; padding: 0.55rem; border: 1px solid var(--border); background: rgba(12, 16, 20, 0.98); box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.4); opacity: 0; pointer-events: none; transform: translateY(-0.65rem) scale(0.98); transform-origin: top center; transition: opacity 180ms var(--ease-fast), transform 220ms var(--ease), visibility 0s linear 220ms; visibility: hidden; }
+  .site-nav::before, .site-nav::after { position: absolute; left: 50%; width: 0; height: 0; border-right: 0.5rem solid transparent; border-left: 0.5rem solid transparent; content: ""; transform: translateX(-50%); }
+  .site-nav::before { top: -0.55rem; border-bottom: 0.55rem solid var(--border); }
+  .site-nav::after { top: -0.42rem; border-right-width: 0.38rem; border-bottom: 0.42rem solid rgba(12, 16, 20, 0.98); border-left-width: 0.38rem; }
+  .menu-open .site-nav { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); transition-delay: 0s; visibility: visible; }
   .site-nav a { padding: 0.75rem 0.7rem; border-bottom: 1px solid var(--border); }
   .site-nav a:last-child { border-bottom: 0; }
-  .header-actions { margin-left: auto; }
   .header-cta { min-height: 2.5rem; padding-inline: 0.75rem; }
   .header-cta span:first-child { max-width: none; overflow: visible; white-space: nowrap; }
-  .menu-toggle { display: flex; }
+  .menu-toggle { display: grid; }
   .hero { min-height: clamp(36rem, 100svh, 56rem); padding: 8rem 1.1rem 6.2rem; }
   .hero-art { width: 108vw; opacity: 0.9; }
   .hero-bird { width: 64%; height: 64%; opacity: 0.15; }
@@ -1250,4 +1256,172 @@ body[data-page="member"] .member-gate { padding-block: clamp(2.75rem, 5vw, 5rem)
   .flow-main--entry,
   .flow-main--login,
   .flow-main--application { padding-top: 1.75rem; padding-bottom: 2rem; }
+}
+
+/* Peace scroll system: quiet, narrow, and consistent across every surface. */
+:root {
+  --scrollbar-track: #080c10;
+  --scrollbar-thumb: rgba(185, 202, 211, 0.42);
+  --scrollbar-thumb-hover: rgba(231, 240, 244, 0.72);
+}
+
+html {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(185, 202, 211, 0.5) var(--scrollbar-track);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+.member-tabs, .case-tabs {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(185, 202, 211, 0.5) transparent;
+}
+
+.member-tabs::-webkit-scrollbar, .case-tabs::-webkit-scrollbar {
+  display: block;
+  height: 0.45rem;
+}
+
+.media-feed, .media-column, .media-grid {
+  width: 100%;
+  min-width: 0;
+}
+
+.media-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  grid-auto-flow: row;
+  align-items: stretch;
+}
+
+.media-card, .media-skeleton {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.media-card-visual, .media-card-copy {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.media-card-visual {
+  flex: 0 0 auto;
+  min-height: clamp(11rem, 20vw, 14rem);
+}
+
+.media-card-copy {
+  flex: 1 1 auto;
+  overflow: visible;
+}
+
+.media-card-author {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.media-card-author-name, .media-card-author-handle {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.media-card-provider-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+.media-card-caption,
+.media-card-source,
+.media-card-visual > *,
+.media-card-media-button,
+.media-source-fallback,
+.media-source-fallback-copy,
+.media-source-fallback-title {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.media-source-fallback-copy,
+.media-source-fallback-title {
+  width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.button,
+.text-button,
+.text-link,
+.header-cta,
+.flow-header-link,
+.flow-header-cta,
+.media-refresh {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.button > span:not(.button-icon):not(.button-spinner) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.button-icon {
+  flex: 0 0 auto;
+}
+
+/* Grid and flex children must be allowed to shrink before their labels wrap. */
+.flow-header,
+.flow-header > *,
+.flow-header .brand,
+.flow-header-link,
+.flow-main,
+.flow-hero,
+.flow-copy,
+.flow-intro,
+.login-layout,
+.application-shell,
+.application-card,
+.application-stage,
+.flow-actions,
+.stage-actions,
+.wizard,
+.wizard-panel,
+.entry-invite-panel,
+.entry-help-panel {
+  min-width: 0;
 }

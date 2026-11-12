@@ -174,7 +174,10 @@ graphite canvas, restrained slate surfaces, feather-white text, and cold blue
 accents. CSS-only radial, grid, and line textures echo flight geometry without
 introducing a second background asset. The pages also keep visible focus states,
 semantic headings, skip links, keyboard-accessible mobile navigation, member
-tabs, and a `prefers-reduced-motion` path. The reveal behavior uses
+tabs, and a `prefers-reduced-motion` path. On compact home layouts, the main
+header centers a labeled three-line menu control; its navigation panel opens
+below the control with a centered pointer and keeps the same keyboard/inert
+state contract. The reveal behavior uses
 `IntersectionObserver` without an external motion dependency, continuous scroll
 listener, ticker, or auto-scrolling content.
 
