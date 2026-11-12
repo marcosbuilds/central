@@ -115,7 +115,8 @@
       return Boolean(item && item.embed_url && item.provider !== "Medal");
     }
 
-    function mediaSourceFallback(item, className) {
+    function mediaSourceFallback(item, className, options) {
+      options = options || {};
       var wrapper = makeNode("div", className || "media-source-fallback");
       var thumbnailUrl = mediaThumbnailUrl(item);
       if (thumbnailUrl) {
@@ -129,11 +130,12 @@
       }
       var copy = makeNode("div", "media-source-fallback-copy");
       var label = makeNode("span", "media-source-fallback-provider", item && item.provider ? item.provider : "Mídia");
-      var title = makeNode("strong", "media-source-fallback-title", mediaDisplayText(item));
       var link = makeNode("a", "media-source-fallback-link", mediaSourceLabel(item));
       configureExternalLink(link, item && (item.fallback_url || item.source_url || item.url));
       copy.appendChild(label);
-      copy.appendChild(title);
+      if (options.showTitle !== false) {
+        copy.appendChild(makeNode("strong", "media-source-fallback-title", mediaDisplayText(item)));
+      }
       copy.appendChild(link);
       wrapper.appendChild(copy);
       return wrapper;
@@ -164,7 +166,7 @@
         if (poster) node.poster = poster;
         node.dataset.provider = item.provider || "";
         node.addEventListener("error", function () {
-          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback"));
+          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback", { showTitle: className === "media-lightbox-media" }));
         }, { once: true });
         return node;
       }
@@ -176,7 +178,7 @@
         node.src = item.url || item.thumbnail_url || "";
         node.dataset.provider = item.provider || "";
         node.addEventListener("error", function () {
-          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback"));
+          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback", { showTitle: className === "media-lightbox-media" }));
         }, { once: true });
         return node;
       }
@@ -236,11 +238,17 @@
         imageButton.addEventListener("click", function () { openMediaViewer(item); });
         visual.appendChild(imageButton);
       } else {
-        visual.appendChild(mediaSourceFallback(item, "media-card-source-preview"));
+        // The card copy already contains the message text and provider title.
+        // Keep the visual fallback to a compact provider/origin action so a
+        // long Medal title cannot collide with the badge or repeat below.
+        visual.appendChild(mediaSourceFallback(item, "media-card-source-preview", { showTitle: false }));
       }
-      var badge = makeNode("span", "media-card-badge", item.type === "video" ? (item.provider || "Clip") : "Momento");
-      badge.setAttribute("aria-hidden", "true");
-      visual.appendChild(badge);
+      var hasPlayableVisual = mediaKind(item) === "direct" || (mediaKind(item) === "embed" && canEmbedMedia(item));
+      if (hasPlayableVisual) {
+        var badge = makeNode("span", "media-card-badge", item.type === "video" ? (item.provider || "Clip") : "Momento");
+        badge.setAttribute("aria-hidden", "true");
+        visual.appendChild(badge);
+      }
       article.appendChild(visual);
 
       var copy = makeNode("div", "media-card-copy");
@@ -265,7 +273,7 @@
         if (item.author.username && item.author.username !== item.author.display_name) authorRow.appendChild(makeNode("span", "media-card-author-handle", "@" + item.author.username));
         copy.appendChild(authorRow);
       }
-      if ((item.fallback_url || item.source_url || item.url) && item.provider && item.provider !== "Discord") {
+      if (mediaKind(item) !== "link" && (item.fallback_url || item.source_url || item.url) && item.provider && item.provider !== "Discord") {
         var source = makeNode("a", "media-card-source", mediaSourceLabel(item));
         configureExternalLink(source, item.fallback_url || item.source_url || item.url);
         copy.appendChild(source);

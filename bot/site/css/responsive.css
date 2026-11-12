@@ -1,6 +1,8 @@
 /* Compact first viewports: keep short flows centered and let long states grow. */
+.flow-page--focused { min-height: auto; }
 .flow-page .flow-main--entry,
 .flow-page .flow-main--login { display: grid; align-content: center; }
+.flow-page--focused > main { flex: 0 0 auto; }
 .flow-page .flow-main--entry > .flow-hero,
 .flow-page .flow-main--login > .login-layout { width: 100%; }
 .flow-main--entry { padding-top: clamp(2rem, 4vw, 3.5rem); padding-bottom: clamp(2.25rem, 4vw, 3.5rem); }

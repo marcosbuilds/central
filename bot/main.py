@@ -3228,7 +3228,10 @@ class PeaceBot(commands.Bot):
         raw_peace_id = payload.get("peace_id")
         peace_id = self.public_peace_id(raw_peace_id)
         challenge_token = self.public_member_challenge_token(request)
-        if peace_id is None and not str(raw_peace_id or "").strip() and challenge_token is not None:
+        raw_peace_id_is_blank = raw_peace_id is None or (
+            isinstance(raw_peace_id, str) and not raw_peace_id.strip()
+        )
+        if peace_id is None and raw_peace_id_is_blank and challenge_token is not None:
             previous = self.database.central_login_challenge_for_token(
                 challenge_token=challenge_token,
                 client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
@@ -3240,17 +3243,24 @@ class PeaceBot(commands.Bot):
         guild = self.entry_guild()
         if guild is None or not self.is_ready() or self.is_closed():
             return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
-        member = await self.public_auth_member(peace_id)
-        if member is None:
-            return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
-        if not self.database.central_login_request_allowed(
-            discord_user_id=member.id,
-            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
-            max_user_requests=3,
-            max_client_requests=60,
-        ):
-            return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
-        issued, challenge_token = await self.issue_public_auth_code(member, peace_id)
+        try:
+            member = await self.public_auth_member(peace_id)
+            if member is None:
+                return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
+            if not self.database.central_login_request_allowed(
+                discord_user_id=member.id,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                max_user_requests=3,
+                max_client_requests=60,
+            ):
+                return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
+            issued, challenge_token = await self.issue_public_auth_code(member, peace_id)
+        except (sqlite3.Error, discord.DiscordException, asyncio.TimeoutError, OSError):
+            log.warning("Fonte de autenticação pública indisponível ao solicitar código", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
         if issued is None:
             return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
         if not issued:
@@ -3290,39 +3300,60 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "AUTH_CHALLENGE_MISSING", "message": "Solicite um novo código para continuar."}, status=400)
         if not re.fullmatch(r"\d{6}", code):
             return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "Digite o código de 6 números recebido no Discord."}, status=400)
-        challenge = self.database.central_login_challenge_for_token(
-            challenge_token=challenge_token,
-            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
-        )
-        if challenge is None:
-            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
-        peace_id = int(challenge["peace_id"])
-        member = await self.public_auth_member(peace_id)
+        try:
+            challenge = self.database.central_login_challenge_for_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+            if challenge is None:
+                return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
+            peace_id = int(challenge["peace_id"])
+            member = await self.public_auth_member(peace_id)
+        except (sqlite3.Error, discord.DiscordException, asyncio.TimeoutError, OSError, ValueError, TypeError):
+            log.warning("Fonte de autenticação pública indisponível ao validar código", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
         if member is None or not self.session_belongs_to_member(challenge, member):
             return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
-        consumed = self.database.consume_public_login_challenge(
-            challenge_token=challenge_token,
-            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
-            code=code,
-        )
+        try:
+            consumed = self.database.consume_public_login_challenge(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                code=code,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao consumir código web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
         if consumed is None:
             return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
         ttl_seconds = self.bounded_auth_session_ttl(persistent=keep_connected)
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-        token = self.database.create_central_login_session(
-            discord_user_id=member.id,
-            peace_id=peace_id,
-            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
-            project_id=None,
-            scope="peace:member",
-            expires_at=expires_at.isoformat(),
-        )
-        row = self.database.validate_central_login_session(
-            token=token,
-            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
-        )
+        try:
+            token = self.database.create_central_login_session(
+                discord_user_id=member.id,
+                peace_id=peace_id,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                project_id=None,
+                scope="peace:member",
+                expires_at=expires_at.isoformat(),
+            )
+            row = self.database.validate_central_login_session(
+                token=token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao criar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
         if row is None:
-            return web.json_response({"ok": False, "code": "AUTH_SESSION_UNAVAILABLE", "message": "Não foi possível concluir o acesso agora."}, status=503)
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_UNAVAILABLE", "message": "A sessão não pôde ser criada agora. Tente novamente em instantes."}, status=503)
         response = web.json_response({
             "ok": True,
             "message": "Acesso confirmado.",
@@ -4522,11 +4553,28 @@ class PeaceBot(commands.Bot):
         channel_kind: str,
         seed: int,
     ) -> list[dict[str, object]]:
-        ordered = sorted(
+        sorted_items = sorted(
             items,
             key=lambda item: int(item.get("created_at_unix", 0) or 0),
             reverse=True,
         )
+        ordered: list[dict[str, object]] = []
+        seen_content: set[str] = set()
+        for item in sorted_items:
+            provider = str(item.get("provider", "Web") or "Web").strip().casefold()
+            source_url = PeaceBot.public_media_link_url(item.get("source_url"))
+            identity = ""
+            if source_url:
+                details = PeaceBot.public_media_link_details(source_url)
+                identity = str(details.get("canonical_id", "") or "").strip().casefold()
+                provider = str(details.get("provider", provider) or provider).strip().casefold()
+            if not identity:
+                identity = str(item.get("canonical_id", "") or item.get("url", "") or item.get("id", "")).strip().casefold()
+            content_key = f"{provider}:{identity}"
+            if not identity or content_key in seen_content:
+                continue
+            seen_content.add(content_key)
+            ordered.append(item)
         if not ordered:
             return []
         selected: list[dict[str, object]] = []
@@ -4918,7 +4966,12 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def public_peace_id(value: object) -> int | None:
-        text = str(value or "").strip()
+        # Do not use ``value or ""`` here: the Founder identity is the valid
+        # numeric value 0, and JSON clients may send it as a number instead of
+        # the string emitted by the public form.
+        if value is None or isinstance(value, bool):
+            return None
+        text = str(value).strip()
         if not re.fullmatch(r"[0-9]{1,19}", text):
             return None
         # ID 0 is the valid Founder identity in the Peace database. The
@@ -4949,8 +5002,14 @@ class PeaceBot(commands.Bot):
             # perform an authoritative fetch at all.
             try:
                 member = await fetch_member(member_id)
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
+            except discord.NotFound:
                 member = None
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
+                # A missing member is a normal denial. Permission, gateway,
+                # timeout, and provider failures are not: collapsing those
+                # into ``None`` makes the public route tell a valid member
+                # that their ID is wrong while Discord is unavailable.
+                raise
         else:
             get_member = getattr(guild, "get_member", None)
             member = get_member(member_id) if callable(get_member) else None

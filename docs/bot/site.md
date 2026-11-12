@@ -36,8 +36,9 @@ name is the server-visible nickname/name; the endpoint does not expose a Peace
 ID or raw message content. Discord does not expose public click counts for
 messages, so the site does not invent them. A browser-local random seed gives
 visitors different deterministic selections without identifying or tracking
-them. Duplicate links inside one message are collapsed by provider/media
-identity while the message context remains attached to the surviving item.
+them. Duplicate links inside one message and repeated reposts across the
+channel are collapsed by provider/media identity while the newest message
+context remains attached to the surviving item.
 Media failures preserve the last successful list and keep an external origin
 link visible; a provider page is never presented as an iframe video when the
 provider blocks embedding.
@@ -312,8 +313,9 @@ show the sanitized message text when available, otherwise a provider preview
 title, followed by the display name/avatar, complete local date, and provider
 origin. A resolved Medal clip and a direct Discord attachment use native video
 controls; an expired Medal link keeps its preview thumbnail/origin card instead
-of showing a blank iframe. The lightbox repeats that metadata and restores
-focus to its launcher.
+of showing a blank iframe. A source-only card keeps the provider action in its
+visual and avoids repeating the same title/link below. The lightbox repeats that
+metadata and restores focus to its launcher.
 
 When the individual invite is being generated, the browser keeps the Peace page
 in place and shows an accessible loading state. The Discord window is reserved

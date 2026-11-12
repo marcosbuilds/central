@@ -21,11 +21,31 @@
     var requestButton = requestForm && requestForm.querySelector("button[type=submit]");
     var verifyButton = verifyForm && verifyForm.querySelector("button[type=submit]");
     var result = verifyForm && verifyForm.querySelector("[data-login-result]");
+    var retryButton = status && status.querySelector("[data-login-retry]");
     var idInput = requestForm && requestForm.querySelector('[name="peace-id"]');
     var keepConnected = requestForm && requestForm.querySelector('[name="keep-connected"]');
     var codeInput = verifyForm && verifyForm.querySelector('[name="access-code"]');
     var resendTimer = null;
     var resendAvailableAt = 0;
+    var lastRequestWasResend = false;
+    var lastPeaceId = "";
+
+    function setRetryVisible(isVisible) {
+      if (retryButton) retryButton.hidden = !isVisible;
+    }
+
+    function canRetry(error) {
+      if (!error) return true;
+      return [
+        "DISCORD_NOT_READY",
+        "AUTH_UNAVAILABLE",
+        "AUTH_SESSION_UNAVAILABLE",
+        "DM_UNAVAILABLE",
+        "TIMEOUT",
+        "BROWSER_NETWORK",
+        "RATE_LIMITED"
+      ].indexOf(error.code) !== -1 || !error.code;
+    }
 
     function parseLoginResponse(response) {
       return response.text().then(function (raw) {
@@ -88,6 +108,9 @@
         }
       }
       if (isResend && Date.now() < resendAvailableAt) return;
+      lastRequestWasResend = isResend;
+      if (!isResend && idInput) lastPeaceId = idInput.value.trim();
+      setRetryVisible(false);
       if (result) result.textContent = "";
       var activeButton = isResend ? resendButton : requestButton;
       if (isResend && activeButton) {
@@ -104,13 +127,16 @@
       }, 60000)
         .then(parseLoginResponse)
         .then(function () {
+          setRetryVisible(false);
           setStatusMessage(status, "Código enviado", "Enviamos um código de 6 números para sua DM no Discord.", "success");
           showCodeStep();
           if (idInput) idInput.value = "";
           startResendCooldown(30);
         })
         .catch(function (error) {
+          if (!isResend && idInput && !idInput.value.trim()) idInput.value = lastPeaceId;
           setStatusMessage(status, "Não foi possível continuar", error.message || "Tente novamente.", "warning");
+          setRetryVisible(canRetry(error));
         })
         .finally(function () {
           if (isResend && activeButton) {
@@ -127,6 +153,10 @@
       requestAccessCode(false);
     });
     if (resendButton) resendButton.addEventListener("click", function () { requestAccessCode(true); });
+    if (retryButton) retryButton.addEventListener("click", function () {
+      if (lastRequestWasResend && Date.now() < resendAvailableAt) return;
+      requestAccessCode(lastRequestWasResend);
+    });
 
     if (codeInput) {
       codeInput.addEventListener("input", syncCodeCells);

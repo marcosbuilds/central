@@ -123,8 +123,13 @@
       if (!workspace || loading) return;
 
       loading = true;
-      workspace.hidden = false;
-      if (!silent) {
+      // Keep the authenticated workspace out of the document while the
+      // cookie is being checked. A loading shell is useful after a valid
+      // session is already established, but it must not look like a public
+      // preview when the browser has no verified member session.
+      if (hasAuthenticatedWorkspace) workspace.hidden = false;
+      else workspace.hidden = true;
+      if (!silent && hasAuthenticatedWorkspace) {
         if (workspaceSkeleton) workspaceSkeleton.hidden = false;
         if (workspaceContent) workspaceContent.hidden = true;
       }
@@ -168,6 +173,11 @@
             return;
           }
           if (!token && error && (error.status === 401 || error.status === 403)) {
+            if (workspace) workspace.hidden = true;
+            if (gate) gate.hidden = false;
+            return;
+          }
+          if (!hasAuthenticatedWorkspace) {
             if (workspace) workspace.hidden = true;
             if (gate) gate.hidden = false;
             return;

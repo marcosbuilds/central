@@ -555,6 +555,41 @@ def test_public_media_feed_deduplicates_equivalent_links_inside_one_message(tmp_
     assert items[0]["canonical_id"] == "abc123"
 
 
+def test_public_media_selection_deduplicates_the_same_clip_across_messages():
+    items = [
+        {
+            "id": "new-message:link:0",
+            "provider": "Medal",
+            "canonical_id": "same-clip",
+            "source_url": "https://medal.tv/games/gta-v/clips/same-clip?invite=new",
+            "created_at_unix": 20,
+            "engagement": 2,
+        },
+        {
+            "id": "old-message:link:0",
+            "provider": "Medal",
+            "canonical_id": "same-clip",
+            "source_url": "https://medal.tv/games/gta-v/clips/same-clip?invite=old",
+            "created_at_unix": 10,
+            "engagement": 9,
+        },
+        {
+            "id": "other-message:link:0",
+            "provider": "Medal",
+            "canonical_id": "other-clip",
+            "source_url": "https://medal.tv/games/gta-v/clips/other-clip",
+            "created_at_unix": 5,
+            "engagement": 1,
+        },
+    ]
+
+    selected = PeaceBot.select_public_media(items, "clips", seed=7)
+
+    assert [item["id"] for item in selected].count("new-message:link:0") == 1
+    assert "old-message:link:0" not in [item["id"] for item in selected]
+    assert "other-message:link:0" in [item["id"] for item in selected]
+
+
 def test_public_api_rejects_untrusted_origins_without_reflection(tmp_path):
     status, headers, _ = run_public_api(
         tmp_path,
@@ -1200,16 +1235,46 @@ def test_public_member_auth_accepts_founder_zero_id(tmp_path):
     bot.is_ready = lambda: True
     bot.is_closed = lambda: False
 
+    for raw_peace_id in (0, "0"):
+        status, payload = run_configured_api(
+            bot,
+            "/api/member/auth/request",
+            method="POST",
+            payload={"peace_id": raw_peace_id},
+        )
+
+        assert status == 200
+        assert payload["ok"] is True
+        assert "member_name" not in payload
+
+
+def test_public_member_auth_reports_discord_timeout_as_unavailable(tmp_path):
+    member_id = 12345678901234567
+    bot = make_bot(tmp_path)
+    bot.database.ensure_runtime_member(
+        discord_user_id=member_id,
+        username="founder",
+        nickname="F ⎰ Founder 0",
+        role_ids=[100],
+        role_names=["Peace"],
+        founder_id=member_id,
+    )
+    bot.guild = SimpleNamespace(
+        get_member=lambda user_id: None,
+        fetch_member=AsyncMock(side_effect=asyncio.TimeoutError()),
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+
     status, payload = run_configured_api(
         bot,
         "/api/member/auth/request",
         method="POST",
-        payload={"peace_id": "0"},
+        payload={"peace_id": 0},
     )
 
-    assert status == 200
-    assert payload["ok"] is True
-    assert "member_name" not in payload
+    assert status == 503
+    assert payload["code"] == "AUTH_UNAVAILABLE"
 
 
 def test_public_member_session_uses_bounded_cookie_and_overview_is_role_scoped(tmp_path):
@@ -1467,10 +1532,10 @@ def test_public_site_files_are_complete():
     assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
-    assert 'href="/styles.css?v=20261112-24"' in opening_html
-    assert 'src="/script.js?v=20261112-24"' in opening_html
+    assert 'href="/styles.css?v=20261112-27"' in opening_html
+    assert 'src="/script.js?v=20261112-27"' in opening_html
     assert '<style>' not in opening_html
-    assert 'src="/candidatura/abrindo-discord.js?v=20261112-24"' in opening_html
+    assert 'src="/candidatura/abrindo-discord.js?v=20261112-27"' in opening_html
     assert 'entry-loading-card' in stylesheet
     assert 'data-entry-confirm' not in candidature_html
     assert 'Progresso restaurado neste navegador' not in script

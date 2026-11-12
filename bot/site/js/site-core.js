@@ -204,10 +204,11 @@
       INVALID_PEACE_ID: "O ID Peace deve conter somente números.",
       AUTH_DENIED: "Não foi possível validar esse ID Peace. Confira os números e tente novamente.",
       AUTH_THROTTLED: "Aguarde alguns minutos antes de solicitar outro código.",
+      AUTH_UNAVAILABLE: "O Discord ou a fonte de membros está temporariamente indisponível. Tente novamente em instantes.",
       DM_UNAVAILABLE: "Não consegui enviar a mensagem privada. Abra suas DMs no Discord e tente novamente.",
       INVALID_CODE: "O código não confere ou já expirou. Confira a DM e tente novamente.",
       AUTH_SESSION_INVALID: "Sua sessão expirou. Entre novamente.",
-      AUTH_SESSION_UNAVAILABLE: "Não foi possível concluir o acesso agora. Tente novamente.",
+      AUTH_SESSION_UNAVAILABLE: "A sessão não pôde ser criada agora. Tente novamente em instantes.",
       MEMBER_NOT_FOUND: "Não encontrei essa conta no servidor. Revise o username e tente novamente.",
       MEMBER_AMBIGUOUS: "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
       INVALID_DISCORD_PROFILE: "Informe um link de perfil válido do Discord.",
@@ -218,7 +219,7 @@
     if (knownMessages[code]) return knownMessages[code];
     if (status === 404) return "O serviço de entrada está sendo atualizado. Tente novamente em instantes.";
     if (status === 429) return "Aguarde alguns segundos e tente novamente.";
-    if (status >= 500) return "O Peace Tools está terminando uma atualização. Tente novamente em instantes.";
+    if (status >= 500) return "O serviço está temporariamente indisponível. Tente novamente em instantes.";
     return fallback || "Não foi possível continuar agora. Tente novamente.";
   }
 
