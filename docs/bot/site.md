@@ -12,15 +12,37 @@ time for the editorial sections and does not expose member data or operational
 logs. Avisos and parceiros are separate public interfaces rather than sections
 embedded in the home.
 
-The home also has a bounded community-media feed. The bot reads only image and
-video attachments from the configured public media and clips channels, keeps a
-short in-memory cache, and exposes a small selection through `/api/media`.
-Moments mix recent and older records; clips prefer real Discord reaction counts
-and recency while keeping some age variety. Discord does not expose public click
-counts for messages, so the site does not invent them. A browser-local random
-seed gives visitors different deterministic selections without identifying or
-tracking them. Media URLs are accepted only from Discord's HTTPS CDN hosts,
-and the feed contains no private channel history or bot logs.
+The home also has a bounded community-media feed. The bot reads up to 200
+messages from the configured public media and clips channels, keeps a short
+in-memory cache, and exposes at most 12 selected items per category through
+`/api/media`. A message can contribute a Discord CDN attachment or a direct
+HTTPS link from the explicit provider allowlist: Medal, Streamable, YouTube,
+Twitch Clips, TikTok, Gyazo, Imgur, and Outplayed. A canonical TikTok video
+URL uses TikTok's official player URL; TikTok short links remain source-only
+cards until an ID can be identified, so the site never tries to decode an HTML
+page as a video file. The player format follows [TikTok's Embed Player
+contract](https://developers.tiktok.com/docs/en/embed-player).
+
+Each item reports an explicit render kind (`embed`, `direct`, or `link`), the
+source URL, a bounded message caption with links and mentions removed, provider
+preview text already supplied by Discord, the message author's Discord display
+name/avatar when present, the message date, and reaction count. The display
+name is the server-visible nickname/name; the endpoint does not expose a Peace
+ID or raw message content. Discord does not expose public click counts for
+messages, so the site does not invent them. A browser-local random seed gives
+visitors different deterministic selections without identifying or tracking
+them. Duplicate links inside one message are collapsed by provider/media
+identity while the message context remains attached to the surviving item.
+Media failures preserve the last successful list and keep an external origin
+link visible; a missing embed is never presented as a playable video file.
+
+The clips channel is intentionally handled as a link-first feed: a message may
+contain only a Medal/TikTok URL and no caption at all. In that case an empty
+caption is valid; the site uses the bounded provider title/author as secondary
+context, then shows the Discord message author and date. A direct Discord video
+attachment follows the same contract without requiring a text caption. A clip
+reposted in a different message remains a separate publication so its author,
+date, and message context are not lost.
 
 The `/entrar/` and `/candidatura/` routes are the public entry and candidature
 UI. The first candidature action asks ACLClouds for an individual Discord
@@ -213,14 +235,19 @@ OCR, screenshots, and assistive technology remain outside the control of a
 static site.
 
 The home media region uses skeleton cards during its first request, a truthful
-empty state when either configured channel has no eligible attachments, and a
-quiet refresh status. It refreshes while the tab is visible according to the
-backend cache hint; it does not autoplay media or create a continuous ticker.
+empty state when either configured channel has no eligible items, and a quiet
+refresh status. It refreshes while the tab is visible according to the backend
+cache hint; it does not autoplay media or create a continuous ticker. Cards
+show the sanitized message text when available, otherwise a provider preview
+title, followed by the display name/avatar, complete local date, and provider
+origin. The lightbox repeats that metadata and restores focus to its launcher.
 
 When the individual invite is being generated, the browser keeps the Peace page
-in place and shows an accessible loading state. A new tab is opened only after
-the API confirms a valid Discord invite; if the browser blocks the popup, the
-same invite is exposed as a manual link and the Peace tab remains available.
+in place and shows an accessible loading state. The Discord window is reserved
+during the user's click and reused by a stable window name, then navigated only
+after the API confirms a valid invite. If the browser blocks the popup, the
+same invite is exposed as a real manual link; it keeps the same session token
+and does not create a second invite. The Peace tab remains available.
 
 The entry surfaces keep one next action in view. `/acessar/` contains only the
 Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps

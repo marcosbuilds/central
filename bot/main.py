@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import discord
 from aiohttp import web
@@ -53,6 +53,7 @@ PUBLIC_API_ORIGINS = frozenset(
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
 ENTRY_INVITE_MAX_USES = 2
+ENTRY_INVITE_PROPAGATION_GRACE_SECONDS = 30
 ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 TICKET_IDS = {
     "peace_support_poke_ticket",
@@ -84,15 +85,35 @@ MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
-PUBLIC_MEDIA_HISTORY_LIMIT = 80
-PUBLIC_MEDIA_SELECTION_LIMIT = 6
-PUBLIC_MEDIA_ALLOWED_HOSTS = frozenset(
+PUBLIC_MEDIA_HISTORY_LIMIT = 200
+PUBLIC_MEDIA_SELECTION_LIMIT = 12
+PUBLIC_MEDIA_CDN_HOSTS = frozenset(
     {
         "cdn.discordapp.com",
         "media.discordapp.net",
         "images-ext-1.discordapp.net",
     }
 )
+PUBLIC_MEDIA_LINK_HOSTS = frozenset(
+    {
+        "medal.tv",
+        "streamable.com",
+        "youtube.com",
+        "youtu.be",
+        "youtube-nocookie.com",
+        "twitch.tv",
+        "clips.twitch.tv",
+        "gyazo.com",
+        "imgur.com",
+        "i.imgur.com",
+        "outplayed.tv",
+        "tiktok.com",
+        "vt.tiktok.com",
+        "vm.tiktok.com",
+    }
+)
+PUBLIC_MEDIA_LINK_PATTERN = re.compile(r"https://[^\s<>\[\]()]+", re.IGNORECASE)
+PUBLIC_MEDIA_TIKTOK_ID_PATTERN = re.compile(r"/(?:video|photo)/(\d+)(?:[/?#]|$)", re.IGNORECASE)
 PUBLIC_MEDIA_IMAGE_EXTENSIONS = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
 PUBLIC_MEDIA_VIDEO_EXTENSIONS = {".m4v", ".mov", ".mp4", ".webm"}
 CAPTCHA_FONT = {
@@ -468,6 +489,7 @@ class EntryInviteSession:
     status: str = "waiting_invite"
     last_repair_at: float = 0.0
     last_invite_check_at: float = 0.0
+    join_observed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -2432,16 +2454,20 @@ class PeaceBot(commands.Bot):
         """
         verification_channel = self.entry_verification_channel(guild)
         invite_sources = [verification_channel, guild]
+        inspected = False
         for source in invite_sources:
-            list_invites = getattr(source, "invites", None)
-            if not callable(list_invites):
-                continue
-            try:
-                invites = await list_invites()
-            except (discord.Forbidden, discord.HTTPException, AttributeError):
-                continue
-            return list(invites or ()), True
-        return [], False
+            for method_name in ("invites", "fetch_invites"):
+                list_invites = getattr(source, method_name, None)
+                if not callable(list_invites):
+                    continue
+                try:
+                    invites = await list_invites()
+                except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
+                    continue
+                inspected = True
+                if invites:
+                    return list(invites), True
+        return [], inspected
 
     async def entry_invite_for_code(
         self,
@@ -2472,7 +2498,9 @@ class PeaceBot(commands.Bot):
             if session.status == "waiting_invite":
                 now = time.monotonic()
                 created_at = session.created_at
-                if created_at is not None and (datetime.now(timezone.utc) - created_at).total_seconds() < 5:
+                if session.join_observed_at is not None:
+                    return
+                if created_at is not None and (datetime.now(timezone.utc) - created_at).total_seconds() < ENTRY_INVITE_PROPAGATION_GRACE_SECONDS:
                     return
                 if now - session.last_invite_check_at >= 5:
                     session.last_invite_check_at = now
@@ -2519,12 +2547,18 @@ class PeaceBot(commands.Bot):
             ]
             if not sessions:
                 return
+            observed_at = datetime.now(timezone.utc)
+            for session in sessions:
+                session.join_observed_at = observed_at
 
-            # A max_uses=1 invite can disappear as soon as Discord consumes it.
-            # The public flow creates max_uses=2 and deletes the invite after the
-            # first observed use, preserving effective one-use behavior while
-            # keeping the usage counter observable during on_member_join.
-            for attempt in range(3):
+            # Discord can publish on_member_join before the invite usage counter
+            # is visible to the next REST request. Keep the session in the
+            # waiting state while the counter settles instead of making the
+            # browser generate a replacement invite too early.
+            retry_delays = (0, 1, 2, 3, 4, 5, 6, 8, 10, 12)
+            for attempt, delay in enumerate(retry_delays):
+                if delay:
+                    await asyncio.sleep(delay)
                 invites, inspected = await self.entry_invite_list(member.guild)
                 if not inspected:
                     log.info("Não consegui consultar os convites do canal de verificação para acompanhar a entrada pública")
@@ -2553,8 +2587,24 @@ class PeaceBot(commands.Bot):
                             log.warning("Não consegui remover o convite individual após associar a entrada pública")
                     log.info("Entrada pública associada pelo convite individual")
                     return
-                if attempt < 2:
-                    await asyncio.sleep(1)
+            log.info("A entrada pública ocorreu, mas o uso do convite ainda não apareceu após as tentativas de consulta")
+            joined_at = getattr(member, "joined_at", None)
+            if isinstance(joined_at, datetime) and joined_at.tzinfo is None:
+                joined_at = joined_at.replace(tzinfo=timezone.utc)
+            if isinstance(joined_at, datetime):
+                recent_sessions = [
+                    session
+                    for session in sessions
+                    if session.created_at is not None
+                    and abs((joined_at - session.created_at).total_seconds()) <= 120
+                ]
+                if len(recent_sessions) == 1:
+                    session = recent_sessions[0]
+                    session.discord_user_id = member.id
+                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.status = "verification_pending"
+                    await self.refresh_entry_session(session)
+                    log.info("Entrada pública associada pelo único horário de entrada compatível")
 
     async def entry_session_payload(self, session: EntryInviteSession) -> dict[str, object]:
         await self.refresh_entry_session(session)
@@ -2946,12 +2996,144 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def public_media_url(value: object) -> str | None:
-        """Keep the public feed limited to Discord-hosted HTTPS media."""
+        """Accept only Discord CDN media for files attached to public messages."""
         candidate = str(value or "").strip()
         parsed = urlsplit(candidate)
-        if parsed.scheme != "https" or parsed.hostname not in PUBLIC_MEDIA_ALLOWED_HOSTS:
+        if parsed.scheme != "https" or parsed.hostname not in PUBLIC_MEDIA_CDN_HOSTS:
             return None
         return candidate[:2000]
+
+    @staticmethod
+    def public_media_link_url(value: object) -> str | None:
+        """Accept a small, explicit set of public clip/image hosts from text."""
+        candidate = str(value or "").strip().rstrip(".,;:!?)]}")
+        parsed = urlsplit(candidate)
+        hostname = (parsed.hostname or "").casefold().removeprefix("www.")
+        if parsed.scheme != "https" or hostname not in PUBLIC_MEDIA_LINK_HOSTS:
+            return None
+        return candidate[:2000]
+
+    @classmethod
+    def public_media_links(cls, value: object) -> list[str]:
+        return [
+            link
+            for raw in PUBLIC_MEDIA_LINK_PATTERN.findall(str(value or ""))
+            if (link := cls.public_media_link_url(raw)) is not None
+        ]
+
+    @staticmethod
+    def public_media_provider(url: str) -> str:
+        hostname = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
+        return {
+            "medal.tv": "Medal",
+            "streamable.com": "Streamable",
+            "youtube.com": "YouTube",
+            "youtu.be": "YouTube",
+            "youtube-nocookie.com": "YouTube",
+            "twitch.tv": "Twitch",
+            "clips.twitch.tv": "Twitch",
+            "gyazo.com": "Gyazo",
+            "imgur.com": "Imgur",
+            "i.imgur.com": "Imgur",
+            "outplayed.tv": "Outplayed",
+            "tiktok.com": "TikTok",
+            "vt.tiktok.com": "TikTok",
+            "vm.tiktok.com": "TikTok",
+        }.get(hostname, "Web")
+
+    @classmethod
+    def public_media_link_details(cls, url: str) -> dict[str, str]:
+        """Return a safe embed target without fetching arbitrary remote HTML."""
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").casefold().removeprefix("www.")
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        provider = cls.public_media_provider(url)
+        result = {
+            "provider": provider,
+            "type": "video",
+            "kind": "link",
+            "canonical_id": "",
+            "embed_url": "",
+            "media_url": "",
+        }
+
+        if hostname == "medal.tv":
+            try:
+                clips_index = segments.index("clips")
+                result["canonical_id"] = segments[clips_index + 1]
+            except (ValueError, IndexError):
+                result["canonical_id"] = "/".join(segments).casefold()
+            result["kind"] = "embed"
+            result["embed_url"] = f"https://medal.tv/{'/'.join(segments)}"
+            return result
+        if hostname == "outplayed.tv":
+            result["kind"] = "embed"
+            result["canonical_id"] = "/".join(segments).casefold()
+            result["embed_url"] = url
+            return result
+        if hostname == "streamable.com" and segments:
+            result["kind"] = "embed"
+            result["canonical_id"] = segments[-1].casefold()
+            result["embed_url"] = f"https://streamable.com/e/{segments[-1]}"
+            return result
+        if hostname in {"youtube.com", "youtube-nocookie.com", "youtu.be"}:
+            video_id = ""
+            if hostname == "youtu.be" and segments:
+                video_id = segments[0]
+            elif len(segments) >= 2 and segments[0] in {"shorts", "embed", "live"}:
+                video_id = segments[1]
+            else:
+                video_id = parse_qs(parsed.query).get("v", [""])[0]
+            if video_id:
+                result["kind"] = "embed"
+                result["canonical_id"] = video_id
+                result["embed_url"] = f"https://www.youtube-nocookie.com/embed/{video_id}"
+            return result
+        if hostname == "clips.twitch.tv" and segments:
+            slug = segments[-1]
+            result["kind"] = "embed"
+            result["canonical_id"] = slug.casefold()
+            result["embed_url"] = f"https://clips.twitch.tv/embed?clip={slug}&parent=peacegg.com.br&parent=www.peacegg.com.br"
+            return result
+        if hostname == "twitch.tv":
+            try:
+                clip_index = segments.index("clip")
+                slug = segments[clip_index + 1]
+            except (ValueError, IndexError):
+                slug = ""
+            if slug:
+                result["kind"] = "embed"
+                result["canonical_id"] = slug.casefold()
+                result["embed_url"] = f"https://clips.twitch.tv/embed?clip={slug}&parent=peacegg.com.br&parent=www.peacegg.com.br"
+            return result
+        if hostname in {"tiktok.com", "vt.tiktok.com", "vm.tiktok.com"}:
+            match = PUBLIC_MEDIA_TIKTOK_ID_PATTERN.search(parsed.path) if hostname == "tiktok.com" else None
+            if match:
+                result["kind"] = "embed"
+                result["canonical_id"] = match.group(1)
+                result["embed_url"] = (
+                    f"https://www.tiktok.com/player/v1/{match.group(1)}"
+                    "?controls=1&description=1&music_info=1"
+                )
+            return result
+        if hostname == "gyazo.com" and segments:
+            result["kind"] = "direct"
+            result["canonical_id"] = segments[-1].casefold()
+            result["type"] = "image"
+            result["media_url"] = f"https://i.gyazo.com/{segments[-1]}.png"
+            return result
+        if hostname == "i.imgur.com":
+            result["kind"] = "direct"
+            result["canonical_id"] = Path(parsed.path).stem.casefold()
+            result["type"] = "image" if Path(parsed.path).suffix.casefold() in PUBLIC_MEDIA_IMAGE_EXTENSIONS else "video"
+            result["media_url"] = url
+            return result
+        if hostname == "imgur.com" and segments:
+            result["kind"] = "embed"
+            result["canonical_id"] = segments[-1].casefold()
+            result["embed_url"] = url
+            return result
+        return result
 
     @staticmethod
     def public_media_type(attachment: object, url: str) -> str | None:
@@ -2967,8 +3149,59 @@ class PeaceBot(commands.Bot):
     def public_media_caption(message: object) -> str:
         caption = str(getattr(message, "content", "") or "")
         caption = re.sub(r"<@!?\d+>|<@&\d+>|@everyone|@here", "", caption, flags=re.IGNORECASE)
+        caption = PUBLIC_MEDIA_LINK_PATTERN.sub("", caption)
         caption = re.sub(r"\s+", " ", caption).strip()
-        return caption[:180]
+        return caption[:240]
+
+    @classmethod
+    def public_media_author(cls, message: object) -> dict[str, str] | None:
+        author = getattr(message, "author", None)
+        if author is None:
+            return None
+        display_name = str(
+            getattr(author, "display_name", None)
+            or getattr(author, "global_name", None)
+            or getattr(author, "name", "Membro")
+        ).strip()[:80]
+        username = str(getattr(author, "name", "") or "").strip()[:80]
+        display_avatar = getattr(getattr(author, "display_avatar", None), "url", None)
+        avatar = display_avatar or getattr(getattr(author, "avatar", None), "url", None)
+        avatar_url = cls.public_media_url(avatar) or ""
+        return {"display_name": display_name or "Membro", "username": username, "avatar_url": avatar_url}
+
+    @classmethod
+    def public_media_thumbnail(cls, message: object) -> str:
+        for embed in getattr(message, "embeds", ()) or ():
+            for part_name in ("thumbnail", "image", "video"):
+                part = getattr(embed, part_name, None)
+                candidate = cls.public_media_url(getattr(part, "url", "")) if part is not None else None
+                if candidate:
+                    return candidate
+        return ""
+
+    @staticmethod
+    def public_media_embed_metadata(message: object) -> dict[str, str]:
+        """Keep only bounded provider preview text already supplied by Discord."""
+        for embed in getattr(message, "embeds", ()) or ():
+            title = str(getattr(embed, "title", "") or "").strip()[:160]
+            description = str(getattr(embed, "description", "") or "").strip()[:240]
+            provider = getattr(embed, "provider", None)
+            provider_name = str(getattr(provider, "name", "") or "").strip()[:80]
+            provider_author = getattr(embed, "author", None)
+            provider_author_name = str(getattr(provider_author, "name", "") or "").strip()[:80]
+            if title or description or provider_name or provider_author_name:
+                return {
+                    "provider_title": title,
+                    "provider_description": description,
+                    "provider_name": provider_name,
+                    "provider_author": provider_author_name,
+                }
+        return {
+            "provider_title": "",
+            "provider_description": "",
+            "provider_name": "",
+            "provider_author": "",
+        }
 
     @classmethod
     def public_media_items_from_message(
@@ -2993,7 +3226,12 @@ class PeaceBot(commands.Bot):
         if not jump_url.startswith("https://discord.com/"):
             jump_url = ""
         caption = cls.public_media_caption(message)
+        author = cls.public_media_author(message)
+        thumbnail_url = cls.public_media_thumbnail(message)
+        embed_metadata = cls.public_media_embed_metadata(message)
+        raw_content = str(getattr(message, "content", "") or "")
         items: list[dict[str, object]] = []
+        seen_keys: set[str] = set()
         for index, attachment in enumerate(getattr(message, "attachments", ()) or ()):
             url = cls.public_media_url(getattr(attachment, "url", ""))
             media_type = cls.public_media_type(attachment, url or "") if url else None
@@ -3005,13 +3243,57 @@ class PeaceBot(commands.Bot):
                 size = 0
             if size > 50 * 1024 * 1024:
                 continue
+            seen_keys.add(f"discord:{url.casefold()}")
             items.append(
                 {
                     "id": f"{message_id}:{index}" if message_id else f"{channel_kind}:{index}:{url}",
                     "type": media_type,
+                    "kind": "direct",
+                    "canonical_id": url,
                     "url": url,
+                    "source_url": url,
+                    "embed_url": "",
+                    "fallback_url": url,
+                    "provider": "Discord",
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
                     "discord_url": jump_url,
                     "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+        for link_index, link in enumerate(cls.public_media_links(raw_content)):
+            details = cls.public_media_link_details(link)
+            canonical_id = details.get("canonical_id", "") or urlsplit(link).path.rstrip("/").casefold()
+            dedupe_key = f"{details.get('provider', 'Web').casefold()}:{canonical_id}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            media_url = details.get("media_url", "") or link
+            items.append(
+                {
+                    "id": f"{message_id}:link:{link_index}" if message_id else f"{channel_kind}:link:{link_index}:{link}",
+                    "type": details.get("type", "video"),
+                    "kind": details.get("kind", "link"),
+                    "canonical_id": canonical_id,
+                    "url": media_url,
+                    "source_url": link,
+                    "embed_url": details.get("embed_url", ""),
+                    "fallback_url": link,
+                    "provider": details.get("provider", "Web"),
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
                     "created_at": created_at.isoformat(),
                     "created_at_unix": int(created_at.timestamp()),
                     "engagement": reactions,

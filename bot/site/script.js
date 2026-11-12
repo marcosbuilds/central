@@ -98,11 +98,17 @@
     var updated = document.querySelector("[data-media-updated]");
     var status = document.querySelector("[data-media-status]");
     var refreshButton = document.querySelector("[data-media-refresh]");
+    var lightbox = document.querySelector("[data-media-lightbox]");
+    var lightboxContent = lightbox && lightbox.querySelector("[data-media-lightbox-content]");
+    var lightboxTitle = lightbox && lightbox.querySelector("[data-media-lightbox-title]");
+    var lightboxMeta = lightbox && lightbox.querySelector("[data-media-lightbox-meta]");
+    var lightboxClose = lightbox && lightbox.querySelector("[data-media-lightbox-close]");
     var mediaTimer = null;
     var mediaLoading = false;
     var hasRendered = false;
     var lastLoadAt = 0;
     var seed = readMediaSeed();
+    var lightboxPreviousFocus = null;
 
     function readMediaSeed() {
       try {
@@ -128,7 +134,7 @@
     function mediaDate(value) {
       var parsed = new Date(value);
       if (Number.isNaN(parsed.getTime())) return "Agora";
-      return parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(/\.$/, "");
+      return parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(/\./g, "");
     }
 
     function makeNode(tagName, className, text) {
@@ -145,31 +151,138 @@
       link.rel = "noopener noreferrer";
     }
 
+    function mediaKind(item) {
+      if (item && item.kind === "embed") return "embed";
+      if (item && item.kind === "direct") return "direct";
+      if (item && item.kind === "link") return "link";
+      if (item && item.embed_url) return "embed";
+      var candidate = String(item && item.url || item && item.source_url || "");
+      try {
+        var parsed = new URL(candidate, window.location.href);
+        if (parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net" || /\.(?:avif|gif|jpe?g|m4v|mov|mp4|png|webm|webp)$/i.test(parsed.pathname)) return "direct";
+      } catch (error) { /* the source-only fallback remains safe */ }
+      return "link";
+    }
+
+    function mediaDisplayText(item) {
+      if (item && item.caption) return item.caption;
+      if (item && item.provider_title) return item.provider_title;
+      if (item && item.provider_author) return item.provider_author;
+      return item && item.type === "video" ? "Um clip compartilhado na comunidade." : "Um momento compartilhado na comunidade.";
+    }
+
+    function mediaSourceLabel(item) {
+      return "Abrir origem" + (item && item.provider ? " · " + item.provider : "") + " ↗";
+    }
+
+    function mediaSourceFallback(item, className) {
+      var wrapper = makeNode("div", className || "media-source-fallback");
+      var label = makeNode("span", "media-source-fallback-provider", item && item.provider ? item.provider : "Mídia");
+      var link = makeNode("a", "media-source-fallback-link", mediaSourceLabel(item));
+      configureExternalLink(link, item && (item.fallback_url || item.source_url || item.url));
+      wrapper.appendChild(label);
+      wrapper.appendChild(link);
+      return wrapper;
+    }
+
+    function mediaPlayer(item, className) {
+      var node;
+      var kind = mediaKind(item);
+      if (kind === "embed" && item.embed_url) {
+        node = makeNode("iframe", className || "media-card-embed");
+        node.src = item.embed_url;
+        node.loading = "lazy";
+        node.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+        node.referrerPolicy = "strict-origin-when-cross-origin";
+        node.allowFullscreen = true;
+        node.title = mediaDisplayText(item);
+        node.dataset.provider = item.provider || "";
+        return node;
+      }
+      if (kind === "direct" && item.type === "video") {
+        node = makeNode("video", className || "media-card-video");
+        node.controls = true;
+        node.preload = "metadata";
+        node.playsInline = true;
+        node.setAttribute("aria-label", "Reproduzir clip da Peace");
+        node.src = item.url || "";
+        node.dataset.provider = item.provider || "";
+        node.addEventListener("error", function () {
+          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback"));
+        }, { once: true });
+        return node;
+      }
+      if (kind === "direct" && item.type === "image") {
+        node = makeNode("img", className || "media-card-image");
+        node.loading = "lazy";
+        node.decoding = "async";
+        node.alt = mediaDisplayText(item);
+        node.src = item.url || item.thumbnail_url || "";
+        node.dataset.provider = item.provider || "";
+        node.addEventListener("error", function () {
+          node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback"));
+        }, { once: true });
+        return node;
+      }
+      return mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback");
+    }
+
+    function openMediaViewer(item) {
+      if (!lightbox || !lightboxContent) return;
+      lightboxPreviousFocus = document.activeElement;
+      lightboxContent.replaceChildren();
+      if (lightboxTitle) lightboxTitle.textContent = mediaDisplayText(item);
+      if (lightboxMeta) {
+        lightboxMeta.replaceChildren();
+        var metaText = mediaDate(item.created_at) + (item.engagement > 0 ? " · " + item.engagement + " reações" : "");
+        lightboxMeta.appendChild(makeNode("span", "media-lightbox-date", metaText));
+        if (item.author) lightboxMeta.appendChild(makeNode("span", "media-lightbox-author", item.author.display_name || item.author.username || "Membro"));
+        if (item.provider_title && item.caption) lightboxMeta.appendChild(makeNode("span", "media-lightbox-provider-title", item.provider_title));
+      }
+      lightboxContent.dataset.provider = item.provider || "";
+      lightboxContent.appendChild(mediaPlayer(item, "media-lightbox-media"));
+      if (typeof lightbox.showModal === "function") lightbox.showModal();
+      else lightbox.hidden = false;
+      if (lightboxClose) lightboxClose.focus();
+    }
+
+    function closeMediaViewer() {
+      if (!lightbox) return;
+      if (typeof lightbox.close === "function" && lightbox.open) lightbox.close();
+      else lightbox.hidden = true;
+      if (lightboxPreviousFocus && typeof lightboxPreviousFocus.focus === "function") lightboxPreviousFocus.focus();
+      lightboxPreviousFocus = null;
+    }
+
+    function addExpandButton(visual, item) {
+      var expand = makeNode("button", "media-card-expand", "Ampliar");
+      expand.type = "button";
+      expand.addEventListener("click", function () { openMediaViewer(item); });
+      visual.appendChild(expand);
+    }
+
     function mediaCard(item) {
       var article = makeNode("article", "media-card");
       article.setAttribute("role", "listitem");
       var visual = makeNode("div", "media-card-visual");
-      var media = null;
-      if (item.type === "video") {
-        media = makeNode("video", "media-card-video");
-        media.controls = true;
-        media.preload = "metadata";
-        media.playsInline = true;
-        media.setAttribute("aria-label", "Reproduzir clip da Peace");
-        media.src = item.url || "";
+      visual.dataset.provider = item.provider || "";
+      if (mediaKind(item) === "embed" && item.embed_url) {
+        visual.appendChild(mediaPlayer(item, "media-card-embed"));
+        addExpandButton(visual, item);
+      } else if (mediaKind(item) === "direct" && item.type === "video") {
+        visual.appendChild(mediaPlayer(item, "media-card-video"));
+        addExpandButton(visual, item);
+      } else if (mediaKind(item) === "direct" && item.type === "image") {
+        var imageButton = makeNode("button", "media-card-media-button");
+        imageButton.type = "button";
+        imageButton.setAttribute("aria-label", "Ampliar imagem");
+        imageButton.appendChild(mediaPlayer(item, "media-card-image"));
+        imageButton.addEventListener("click", function () { openMediaViewer(item); });
+        visual.appendChild(imageButton);
       } else {
-        var imageLink = makeNode("a", "media-card-media-link");
-        configureExternalLink(imageLink, item.url);
-        media = makeNode("img", "media-card-image");
-        media.loading = "lazy";
-        media.decoding = "async";
-        media.alt = item.caption || "Momento compartilhado na comunidade Peace";
-        media.src = item.url || "";
-        imageLink.appendChild(media);
-        visual.appendChild(imageLink);
+        visual.appendChild(mediaSourceFallback(item, "media-card-source-preview"));
       }
-      if (item.type === "video") visual.appendChild(media);
-      var badge = makeNode("span", "media-card-badge", item.type === "video" ? "Clip" : "Momento");
+      var badge = makeNode("span", "media-card-badge", item.type === "video" ? (item.provider || "Clip") : "Momento");
       badge.setAttribute("aria-hidden", "true");
       visual.appendChild(badge);
       article.appendChild(visual);
@@ -178,14 +291,42 @@
       var engagement = Number(item.engagement || 0);
       var metaText = mediaDate(item.created_at) + (engagement > 0 ? " · " + engagement + " reações" : "");
       copy.appendChild(makeNode("p", "media-card-meta", metaText));
-      copy.appendChild(makeNode("p", "media-card-caption", item.caption || (item.type === "video" ? "Um clip compartilhado na comunidade." : "Um momento compartilhado na comunidade.")));
-      if (item.discord_url) {
-        var source = makeNode("a", "media-card-source", "Ver no Discord ↗");
-        configureExternalLink(source, item.discord_url);
+      copy.appendChild(makeNode("p", "media-card-caption", mediaDisplayText(item)));
+      if (item.caption && item.provider_title && item.provider_title !== item.caption) copy.appendChild(makeNode("p", "media-card-provider-title", item.provider_title));
+      if (item.author) {
+        var authorRow = makeNode("div", "media-card-author");
+        var avatar = makeNode("span", "media-card-author-avatar");
+        if (item.author.avatar_url) {
+          var avatarImage = makeNode("img", "media-card-author-image");
+          avatarImage.src = item.author.avatar_url;
+          avatarImage.alt = "";
+          avatar.appendChild(avatarImage);
+        } else {
+          avatar.textContent = String(item.author.display_name || "M").charAt(0).toUpperCase();
+        }
+        authorRow.appendChild(avatar);
+        authorRow.appendChild(makeNode("span", "media-card-author-name", item.author.display_name || item.author.username || "Membro"));
+        if (item.author.username && item.author.username !== item.author.display_name) authorRow.appendChild(makeNode("span", "media-card-author-handle", "@" + item.author.username));
+        copy.appendChild(authorRow);
+      }
+      if ((item.fallback_url || item.source_url || item.url) && item.provider && item.provider !== "Discord") {
+        var source = makeNode("a", "media-card-source", mediaSourceLabel(item));
+        configureExternalLink(source, item.fallback_url || item.source_url || item.url);
         copy.appendChild(source);
       }
       article.appendChild(copy);
       return article;
+    }
+
+    if (lightbox) {
+      if (lightboxClose) lightboxClose.addEventListener("click", closeMediaViewer);
+      lightbox.addEventListener("click", function (event) {
+        if (event.target === lightbox) closeMediaViewer();
+      });
+      lightbox.addEventListener("cancel", function (event) {
+        event.preventDefault();
+        closeMediaViewer();
+      });
     }
 
     function renderList(kind, items) {
@@ -242,10 +383,12 @@
           scheduleMediaRefresh(payload.refresh_after);
         })
         .catch(function () {
-          renderList("moments", []);
-          renderList("clips", []);
-          if (updated) updated.textContent = "A comunidade continua no Discord.";
-          if (status) status.textContent = "Os momentos voltam a aparecer quando houver novos registros.";
+          if (!hasRendered) {
+            renderList("moments", []);
+            renderList("clips", []);
+            if (updated) updated.textContent = "Não consegui carregar os registros agora.";
+          } else if (updated) updated.textContent = "Não consegui atualizar agora · mostrando a última leitura.";
+          if (status) status.textContent = hasRendered ? "A última leitura continua disponível." : "Tente atualizar novamente em instantes.";
           lastLoadAt = Date.now();
           hasRendered = true;
           scheduleMediaRefresh(300);
@@ -473,11 +616,13 @@
     var repairResult = document.querySelector("[data-entry-repair-result]");
     var existingToggle = document.querySelector("[data-entry-existing-toggle]");
     var existingPanel = document.querySelector("[data-entry-existing-panel]");
+    var existingClose = existingPanel && existingPanel.querySelector("[data-entry-existing-close]");
     var existingForm = document.querySelector("[data-entry-existing]");
     var existingSubmit = document.querySelector("[data-entry-existing-submit]");
     var existingResult = document.querySelector("[data-entry-existing-result]");
     var manualEntryNote = document.querySelector("[data-entry-manual-note]");
     var memberResult = document.querySelector("[data-entry-member-result]");
+    var stageContext = document.querySelector("[data-entry-stage-context]");
     var storageKey = "peace.candidature.v2";
     var entryStorageKey = "peace.entry.v1";
     var entryMetaStorageKey = "peace.entry.meta.v1";
@@ -492,6 +637,8 @@
     var entryRecoveryPromise = null;
     var inviteOpened = false;
     var manualEntryIdentity = null;
+    var existingPreviousFocus = null;
+    var entryInviteWindowName = "peace-discord-invite";
 
     function readDraft() {
       try {
@@ -583,10 +730,28 @@
       try { window.localStorage.removeItem(entryMetaStorageKey); } catch (error) { /* optional */ }
     }
 
-    function openEntryInvite(url, token) {
+    function reserveEntryInviteWindow() {
+      try {
+        return window.open("about:blank", entryInviteWindowName, "popup,width=520,height=760");
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function openEntryInvite(url, token, reservedPopup) {
       if (!url) return null;
-      var popup = window.open(url, "_blank", "noopener,noreferrer");
-      if (popup) markInviteOpened(token);
+      var popup = reservedPopup || null;
+      try {
+        if (!popup || popup.closed) popup = window.open(url, entryInviteWindowName);
+        else popup.location.replace(url);
+        if (popup) {
+          try { popup.opener = null; } catch (error) { /* browser-controlled */ }
+          try { popup.focus(); } catch (error) { /* browser-controlled */ }
+          markInviteOpened(token);
+        }
+      } catch (error) {
+        popup = null;
+      }
       return popup;
     }
 
@@ -603,25 +768,38 @@
       var hasInvite = Boolean(url);
       var showPanel = hasInvite || Boolean(keepPanel);
       if (invitePanel) invitePanel.hidden = !showPanel;
-      if (inviteOpenLink) {
-        inviteOpenLink.hidden = !hasInvite;
+
+      // The Discord action is one control in every state. The invite-ready
+      // state changes its label and URL instead of rendering a second button.
+      if (connectButton) {
+        connectButton.hidden = false;
         if (hasInvite) {
-          inviteOpenLink.href = url;
-          inviteOpenLink.dataset.sessionToken = token || "";
+          connectButton.dataset.inviteUrl = url;
+          connectButton.dataset.sessionToken = token || "";
+          setButtonLabel(connectButton, "Abrir convite do Discord");
         } else {
-          inviteOpenLink.removeAttribute("href");
-          delete inviteOpenLink.dataset.sessionToken;
+          delete connectButton.dataset.inviteUrl;
+          delete connectButton.dataset.sessionToken;
+          setButtonLabel(connectButton, "Conectar no Discord");
         }
+      }
+      if (inviteOpenLink && inviteOpenLink !== connectButton) {
+        inviteOpenLink.hidden = true;
+        inviteOpenLink.removeAttribute("href");
       }
       if (inviteLink) {
         inviteLink.textContent = hasInvite ? inviteLabel(url) : "";
         inviteLink.hidden = !hasInvite;
+        if (hasInvite) {
+          inviteLink.href = url;
+          inviteLink.dataset.sessionToken = token || "";
+          inviteLink.target = entryInviteWindowName;
+        } else {
+          inviteLink.removeAttribute("href");
+          delete inviteLink.dataset.sessionToken;
+        }
       }
       if (inviteUrlText) inviteUrlText.textContent = hasInvite ? inviteLabel(url) : "";
-      if (connectButton) {
-        connectButton.hidden = hasInvite || Boolean(keepPanel);
-        if (!hasInvite) delete connectButton.dataset.inviteUrl;
-      }
     }
 
     function setVerificationState(state, title, message) {
@@ -634,7 +812,7 @@
       if (!inviteWaiting) return;
       inviteWaiting.hidden = false;
       inviteWaiting.dataset.state = state || "pending";
-      if (inviteWaitingTitle) inviteWaitingTitle.textContent = title || "Aguardando o Discord";
+       if (inviteWaitingTitle) inviteWaitingTitle.textContent = title || "Aguardando sua entrada";
       if (inviteWaitingMessage) inviteWaitingMessage.textContent = message || "Aguarde a confirmação da sua entrada.";
     }
 
@@ -659,6 +837,7 @@
 
     function applyExistingMember(payload) {
       if (!payload) return;
+      closeExistingPanel(false);
       setEntryUser(payload.discord_user);
       if (payload.status === "peace_member") {
         var peaceMessage = payload.message || "Você já é membro da Peace. Não é necessário pedir setagem.";
@@ -760,10 +939,6 @@
       inviteOpened = readEntryMeta(payload.session_token);
       setEntryUser(payload.discord_user);
 
-      if (connectButton && payload.invite_url) {
-        setButtonLabel(connectButton, "Abrir convite novamente");
-        connectButton.dataset.inviteUrl = payload.invite_url;
-      }
       setInviteLinks(payload.invite_url, payload.session_token);
 
       if (
@@ -781,6 +956,8 @@
         stopEntryPolling();
         if (inviteWaiting) inviteWaiting.hidden = true;
         setVerificationState("success", "Verificação concluída", "Tudo certo. Continuando para a entrevista.");
+        if (connectResult) connectResult.textContent = "Entrada e verificação confirmadas.";
+        if (sessionNote) sessionNote.textContent = "Entrada confirmada. A entrevista está liberada.";
         if (refreshResult) refreshResult.textContent = "Verificação concluída. A entrevista está liberada.";
         setStage(3, false);
         return;
@@ -789,6 +966,7 @@
       if (payload.status === "verification_pending") {
         setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada na Peace. Agora acompanhe a verificação nesta página.");
         setVerificationState("pending", "Verificação pendente", "Você já está na Peace. Abra o canal #verify, clique em Iniciar verificação e responda ao CAPTCHA.");
+        if (connectResult) connectResult.textContent = "Entrada confirmada. O próximo passo está nesta página.";
         if (sessionNote) sessionNote.textContent = "Entrada identificada. Acompanhe a verificação nesta página.";
         setStage(2, false);
         startEntryPolling();
@@ -798,6 +976,7 @@
       if (payload.status === "role_missing") {
         setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada. Estamos aguardando o cargo de verificação.");
         setVerificationState("warning", "Cargo de entrada ausente", "Não encontrei Not Verified nesta conta. Abra Estou com problemas para tentar corrigir.");
+        if (connectResult) connectResult.textContent = "Entrada confirmada. O cargo de verificação precisa de atenção.";
         if (helpPanel) helpPanel.hidden = false;
         if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
         setStage(2, false);
@@ -806,9 +985,9 @@
       }
 
       setStage(stageForEntryStatus(payload.status), false);
-      setInviteWaiting("pending", "Aguardando o Discord", inviteOpened
-        ? "O convite foi aberto. Assim que você aceitar, o bot identifica sua entrada automaticamente."
-        : "Abra o convite no painel acima. Assim que você aceitar, o bot identifica sua entrada automaticamente.");
+      setInviteWaiting("pending", "Aguardando sua entrada", inviteOpened
+        ? "O convite foi aberto. Assim que você aceitar, a Peace confirma sua entrada aqui."
+        : "Abra o convite pelo botão acima. Assim que você aceitar, a Peace confirma sua entrada aqui.");
       if (sessionNote && payload.expires_in) sessionNote.textContent = "Convite ativo por aproximadamente " + Math.ceil(payload.expires_in / 60) + " minutos. Ele abre em uma nova guia.";
       startEntryPolling();
     }
@@ -933,7 +1112,11 @@
     }
 
     function setStage(stage, isPreview) {
+      var previousStage = currentStage;
       currentStage = Math.min(4, Math.max(1, Number(stage) || 1));
+      if (stageContext) {
+        stageContext.textContent = ["Entrada", "Verificação", "Entrevista", "Revisão"][currentStage - 1] || "Entrada";
+      }
       stages.forEach(function (item) {
         var active = Number(item.dataset.entryStage) === currentStage;
         item.hidden = !active;
@@ -949,6 +1132,11 @@
         if (active) button.setAttribute("aria-current", "step");
         else button.removeAttribute("aria-current");
       });
+      if (!restoring && previousStage !== currentStage) {
+        var activeStage = stages.find(function (item) { return Number(item.dataset.entryStage) === currentStage; });
+        var activeHeading = activeStage && activeStage.querySelector("h1, h2");
+        if (activeHeading && typeof activeHeading.focus === "function") activeHeading.focus({ preventScroll: true });
+      }
       if (!restoring) saveDraft();
     }
 
@@ -962,37 +1150,79 @@
     if (connectButton) {
       connectButton.addEventListener("click", function () {
         if (connectButton.dataset.inviteUrl) {
-          var existingPopup = openEntryInvite(connectButton.dataset.inviteUrl, entrySession && entrySession.session_token);
+          var existingPopup = openEntryInvite(connectButton.dataset.inviteUrl, connectButton.dataset.sessionToken || (entrySession && entrySession.session_token));
           if (connectResult) connectResult.textContent = existingPopup
-            ? "Convite aberto em uma nova guia. Entre na Peace por ele e volte para acompanhar."
-            : "Permita novas guias no navegador ou abra o convite pelo link abaixo.";
+            ? "Convite aberto. Entre na Peace por ele e volte para acompanhar."
+            : "Permita novas guias no navegador para abrir o convite.";
+          setInviteWaiting("pending", "Aguardando sua entrada", "Entre no servidor pelo convite e volte quando terminar.");
           startEntryPolling();
           return;
         }
-        if (connectResult) connectResult.textContent = "Gerando seu convite individual…";
+        var reservedPopup = reserveEntryInviteWindow();
+        if (connectResult) connectResult.textContent = "Preparando seu convite…";
         setButtonBusy(connectButton, true, "Gerando convite…");
-          startEntrySession().then(maybeRecoverEntrySession).then(function (payload) {
-          var popup = openEntryInvite(payload.invite_url, payload.session_token);
+        startEntrySession().then(maybeRecoverEntrySession).then(function (payload) {
+          var popup = openEntryInvite(payload.invite_url, payload.session_token, reservedPopup);
           setButtonBusy(connectButton, false);
-          setButtonLabel(connectButton, "Abrir convite novamente");
-          if (connectResult) connectResult.textContent = popup ? "Convite aberto em uma nova guia. Entre na Peace por ele e volte para acompanhar." : "Convite pronto. Abra o Discord no painel abaixo e volte para acompanhar.";
+          if (connectResult) connectResult.textContent = popup ? "Convite aberto. Entre na Peace por ele e volte para acompanhar." : "Convite pronto. Abra o Discord pelo botão acima.";
           startEntryPolling();
         }).catch(function (error) {
+          if (reservedPopup && !reservedPopup.closed) {
+            try { reservedPopup.close(); } catch (closeError) { /* browser-controlled */ }
+          }
           setButtonBusy(connectButton, false);
-          setButtonLabel(connectButton, "Tentar gerar convite");
+          setInviteLinks("", "", false);
+          setButtonLabel(connectButton, "Tentar novamente");
           if (connectResult) connectResult.textContent = error.message || "Não foi possível gerar o convite agora.";
         });
       });
     }
 
+    function closeExistingPanel(restoreFocus) {
+      if (!existingPanel || existingPanel.hidden) return;
+      existingPanel.hidden = true;
+      document.body.classList.remove("dialog-open");
+      document.querySelectorAll(".flow-header, .flow-main, .flow-footer").forEach(function (background) { background.inert = false; });
+      if (existingToggle) existingToggle.setAttribute("aria-expanded", "false");
+      if (restoreFocus && existingPreviousFocus && typeof existingPreviousFocus.focus === "function") existingPreviousFocus.focus();
+      existingPreviousFocus = null;
+    }
+
     if (existingToggle && existingPanel) {
       existingToggle.addEventListener("click", function () {
-        var open = existingPanel.hidden;
-        existingPanel.hidden = !open;
-        existingToggle.setAttribute("aria-expanded", String(open));
-        if (open) {
+        existingPreviousFocus = document.activeElement;
+        existingPanel.hidden = false;
+        document.body.classList.add("dialog-open");
+        document.querySelectorAll(".flow-header, .flow-main, .flow-footer").forEach(function (background) { background.inert = true; });
+        existingToggle.setAttribute("aria-expanded", "true");
+        if (existingClose) existingClose.focus();
+        else {
           var usernameField = existingPanel.querySelector('[name="discord_username"]');
           if (usernameField) usernameField.focus();
+        }
+      });
+      if (existingClose) existingClose.addEventListener("click", function () { closeExistingPanel(true); });
+      existingPanel.addEventListener("click", function (event) {
+        if (event.target === existingPanel) closeExistingPanel(true);
+      });
+      document.addEventListener("keydown", function (event) {
+        if (!existingPanel || existingPanel.hidden) return;
+        if (event.key === "Escape") {
+          closeExistingPanel(true);
+          return;
+        }
+        if (event.key !== "Tab") return;
+        var focusable = Array.prototype.slice.call(existingPanel.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])"))
+          .filter(function (node) { return node.offsetParent !== null; });
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
         }
       });
     }
@@ -1006,10 +1236,19 @@
       identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
     });
 
-    if (inviteOpenLink) inviteOpenLink.addEventListener("click", function () {
-      markInviteOpened(inviteOpenLink.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
-      setInviteWaiting("pending", "Aguardando o Discord", "O convite foi aberto. Assim que você aceitar, o bot identifica sua entrada automaticamente.");
-      if (connectResult) connectResult.textContent = "Discord aberto em uma nova guia. Aguardando a confirmação automática da sua entrada.";
+    if (inviteLink) inviteLink.addEventListener("click", function (event) {
+      var url = inviteLink.getAttribute("href");
+      var popup = openEntryInvite(url, inviteLink.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
+      if (!popup) {
+        markInviteOpened(inviteLink.dataset.sessionToken || (entrySession && entrySession.session_token) || readEntryToken());
+        setInviteWaiting("pending", "Aguardando sua entrada", "Se o navegador bloqueou a janela, use este link novamente para abrir o mesmo convite.");
+        if (connectResult) connectResult.textContent = "A janela foi bloqueada. Use o link do convite novamente para abrir a mesma sessão.";
+        startEntryPolling();
+        return;
+      }
+      event.preventDefault();
+      setInviteWaiting("pending", "Aguardando sua entrada", "O convite foi aberto. Assim que você aceitar, a Peace confirma sua entrada aqui.");
+      if (connectResult) connectResult.textContent = "Convite aberto em uma única janela. Volte para acompanhar a confirmação.";
       startEntryPolling();
     });
 
@@ -1033,6 +1272,12 @@
           var firstField = helpPanel.querySelector("input");
           if (firstField) firstField.focus();
         }
+      });
+      var helpClose = helpPanel.querySelector("[data-entry-help-close]");
+      if (helpClose) helpClose.addEventListener("click", function () {
+        helpPanel.hidden = true;
+        helpToggle.setAttribute("aria-expanded", "false");
+        helpToggle.focus();
       });
     }
 

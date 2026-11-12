@@ -7,63 +7,44 @@
     <meta name="description" content="Comece o fluxo para fazer parte da Peace.">
     <title>Entrar para a Peace — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-15">
+    <link rel="stylesheet" href="/styles.css?v=20261111-17">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-15"></script>
+    <script defer src="/script.js?v=20261111-17"></script>
   </head>
   <body data-page="entry">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
-    <div class="site-shell flow-page">
+    <div class="site-shell flow-page flow-page--focused">
       <header class="flow-header flow-header--minimal" aria-label="Entrada da Peace">
         <a class="brand" href="/" aria-label="Peace — voltar ao início">
           <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
           <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
         </a>
-        <a class="button button--outline flow-header-login" href="/acessar/" aria-label="Já sou membro">
-          <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
-          <span>Já sou membro</span>
-          <span class="button-icon" aria-hidden="true">↗</span>
-        </a>
+        <a class="flow-header-link" href="/acessar/">Já sou membro <span aria-hidden="true">↗</span></a>
       </header>
 
       <main id="conteudo" class="flow-main flow-main--entry">
         <section class="flow-hero flow-hero--entry" aria-labelledby="entry-page-title">
           <div class="flow-copy" data-reveal>
-            <p class="eyebrow">Entrar para a Peace</p>
-            <h1 id="entry-page-title">Escolha seu <em>caminho.</em></h1>
+            <p class="eyebrow">Entrada pública</p>
+            <h1 id="entry-page-title">Entre na <em>Peace.</em></h1>
+            <p class="flow-lede">Comece pelo Discord. O convite, a verificação e a candidatura acontecem em sequência, com um próximo passo visível por vez.</p>
             <div class="flow-actions">
               <a class="button button--light button--large" href="/candidatura/">
                 <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
-                <span>Começar minha entrada</span>
+                <span>Começar entrada</span>
                 <span class="button-icon" aria-hidden="true">→</span>
               </a>
-              <a class="button button--outline button--large flow-login-action" href="/acessar/">
-                <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
-                <span>Já sou membro</span>
-                <span class="button-icon" aria-hidden="true">→</span>
-              </a>
+              <a class="flow-secondary-action" href="/acessar/">Já sou membro <span aria-hidden="true">↗</span></a>
             </div>
+            <p class="flow-footnote"><span class="status-mark" aria-hidden="true"></span><span>Você não precisa criar senha. O acesso de membro usa um código enviado pelo Discord.</span></p>
           </div>
-
-          <aside class="flow-visual flow-visual--entry" data-reveal aria-label="Resumo do caminho de entrada">
-            <p class="eyebrow">O caminho da Peace</p>
-            <h2>Quatro etapas.<br><em>Um próximo passo por vez.</em></h2>
-            <ol class="flow-sequence">
-              <li class="is-current"><span>01</span><div><strong>Conectar Discord</strong><small>O início gera seu convite individual.</small></div></li>
-              <li><span>02</span><div><strong>Verificar presença</strong><small>Confirme sua entrada.</small></div></li>
-              <li><span>03</span><div><strong>Responder entrevista</strong><small>Conte o necessário.</small></div></li>
-              <li><span>04</span><div><strong>Aguardar revisão</strong><small>A equipe decide.</small></div></li>
-            </ol>
-          </aside>
+          <div class="entry-route" data-reveal aria-label="Resumo da entrada">
+            <span>Discord</span><i aria-hidden="true">→</i><span>Verificação</span><i aria-hidden="true">→</i><span>Candidatura</span>
+          </div>
         </section>
-
       </main>
 
-      <footer class="site-footer flow-footer">
-        <a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
-        <p>Entrada pública</p>
-        <a class="footer-link" href="/acessar/">Já sou membro <span aria-hidden="true">↗</span></a>
-      </footer>
+      <footer class="site-footer flow-footer flow-footer--minimal"><a class="footer-link" href="/">Voltar ao site <span aria-hidden="true">↗</span></a></footer>
     </div>
   </body>
 </html>

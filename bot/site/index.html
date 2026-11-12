@@ -7,9 +7,9 @@
     <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça a entrada e os espaços públicos da comunidade.">
     <title>Peace — comunidade, presença e participação</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261111-15">
+   <link rel="stylesheet" href="/styles.css?v=20261111-17">
     <script>document.documentElement.classList.add("js");</script>
-    <script defer src="/script.js?v=20261111-15"></script>
+  <script defer src="/script.js?v=20261111-17"></script>
   </head>
   <body data-page="home">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -64,15 +64,12 @@
             <h1 id="hero-title">O seu espaço.<br><em>Nosso jeito.</em></h1>
             <p class="hero-lede">Uma comunidade feita de presença, conversa e respeito. Sem precisar ser mais complicado que isso.</p>
             <div class="hero-actions">
-              <a class="button button--outline button--large" href="#sobre">
-                <span>Conhecer a Peace</span>
-                <span class="button-icon" aria-hidden="true">↓</span>
-              </a>
               <a class="button button--light button--large" href="/entrar/">
                 <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
                 <span>Entrar para Peace</span>
                 <span class="button-icon" aria-hidden="true">↗</span>
               </a>
+              <a class="hero-secondary-action" href="#sobre">Conhecer a Peace <span class="button-icon" aria-hidden="true">↓</span></a>
             </div>
           </div>
 
@@ -130,6 +127,10 @@
             </section>
           </div>
           <p class="media-feed-status" data-media-status aria-live="polite"></p>
+          <dialog class="media-lightbox" data-media-lightbox aria-labelledby="media-lightbox-title">
+            <div class="media-lightbox-head"><div><h2 id="media-lightbox-title" data-media-lightbox-title>Mídia da Peace</h2><p class="media-lightbox-meta" data-media-lightbox-meta></p></div><button class="dialog-close" type="button" data-media-lightbox-close aria-label="Fechar mídia">×</button></div>
+            <div class="media-lightbox-content" data-media-lightbox-content></div>
+          </dialog>
         </section>
 
         <section class="section entry" id="entrada" aria-labelledby="entry-title">

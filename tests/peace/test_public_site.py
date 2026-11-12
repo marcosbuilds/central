@@ -141,10 +141,158 @@ def test_public_media_feed_reads_discord_attachments_and_keeps_external_urls_out
     assert status == 200
     assert payload["ok"] is True
     assert payload["moments"]
-    assert len(payload["moments"]) <= 6
+    assert len(payload["moments"]) <= 12
     assert all(item["url"].startswith("https://cdn.discordapp.com/") for item in payload["moments"])
     assert any(item["engagement"] > 0 for item in payload["moments"])
     assert payload["clips"] == []
+
+
+def test_public_media_feed_extracts_clip_links_message_text_and_public_author(tmp_path):
+    message = SimpleNamespace(
+        id=909,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content="A curva ficou limpa https://medal.tv/games/gta-v/clips/no9WMOwfZ4Q-LXEC4?invite=public",
+        jump_url="https://discord.com/channels/1/2/909",
+        reactions=[SimpleNamespace(count=4)],
+        attachments=[],
+        author=SimpleNamespace(
+            display_name="Marcos Peace",
+            name="marcos",
+            display_avatar=SimpleNamespace(url="https://cdn.discordapp.com/avatars/1/avatar.png"),
+        ),
+        embeds=[
+            SimpleNamespace(
+                title="GTA V Trimmed Clip",
+                description="Preview from the clip provider",
+                provider=SimpleNamespace(name="Medal"),
+                author=SimpleNamespace(name="clip-author"),
+            )
+        ],
+    )
+
+    items = PeaceBot.public_media_items_from_message(message, "clips")
+
+    assert len(items) == 1
+    clip = items[0]
+    assert clip["provider"] == "Medal"
+    assert clip["type"] == "video"
+    assert clip["kind"] == "embed"
+    assert clip["canonical_id"] == "no9WMOwfZ4Q-LXEC4"
+    assert clip["embed_url"] == "https://medal.tv/games/gta-v/clips/no9WMOwfZ4Q-LXEC4"
+    assert clip["caption"] == "A curva ficou limpa"
+    assert clip["message_text"] == "A curva ficou limpa"
+    assert clip["provider_title"] == "GTA V Trimmed Clip"
+    assert clip["provider_description"] == "Preview from the clip provider"
+    assert clip["author"]["display_name"] == "Marcos Peace"
+    assert clip["author"]["avatar_url"].startswith("https://cdn.discordapp.com/")
+
+
+def test_public_media_feed_keeps_link_only_messages_and_direct_video_attachments(tmp_path):
+    link_only = SimpleNamespace(
+        id=912,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content="https://medal.tv/games/gta-v/clips/clip-only?invite=public",
+        jump_url="https://discord.com/channels/1/2/912",
+        reactions=[],
+        attachments=[],
+        author=SimpleNamespace(
+            display_name="Example Nick",
+            name="example-user",
+            display_avatar=SimpleNamespace(url="https://cdn.discordapp.com/avatars/2/avatar.png"),
+        ),
+        embeds=[
+            SimpleNamespace(
+                title="Untitled - Clipped GTA V with Medal.tv",
+                description="",
+                provider=SimpleNamespace(name="Medal"),
+                author=SimpleNamespace(name="clip-author"),
+            )
+        ],
+    )
+    direct_video = SimpleNamespace(
+        id=913,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content="",
+        jump_url="https://discord.com/channels/1/2/913",
+        reactions=[],
+        attachments=[
+            SimpleNamespace(
+                url="https://cdn.discordapp.com/attachments/1/2/clip.mov",
+                content_type="video/quicktime",
+                size=1024,
+            )
+        ],
+        author=None,
+        embeds=[],
+    )
+
+    link_items = PeaceBot.public_media_items_from_message(link_only, "clips")
+    direct_items = PeaceBot.public_media_items_from_message(direct_video, "clips")
+
+    assert len(link_items) == 1
+    assert link_items[0]["caption"] == ""
+    assert link_items[0]["message_text"] == ""
+    assert link_items[0]["provider_title"] == "Untitled - Clipped GTA V with Medal.tv"
+    assert link_items[0]["provider_author"] == "clip-author"
+    assert link_items[0]["author"]["display_name"] == "Example Nick"
+    assert len(direct_items) == 1
+    assert direct_items[0]["kind"] == "direct"
+    assert direct_items[0]["type"] == "video"
+    assert direct_items[0]["url"].endswith("clip.mov")
+
+
+def test_public_media_feed_supports_tiktok_players_and_short_link_fallbacks(tmp_path):
+    message = SimpleNamespace(
+        id=910,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content=(
+            "Olha esse corte https://www.tiktok.com/@peace/video/7692212006451006740 "
+            "https://vt.tiktok.com/ZSgQSLA9e/"
+        ),
+        jump_url="https://discord.com/channels/1/2/910",
+        reactions=[],
+        attachments=[],
+        author=None,
+        embeds=[],
+    )
+
+    items = PeaceBot.public_media_items_from_message(message, "clips")
+
+    assert len(items) == 2
+    full = items[0]
+    short = items[1]
+    assert full["provider"] == "TikTok"
+    assert full["kind"] == "embed"
+    assert full["canonical_id"] == "7692212006451006740"
+    assert full["embed_url"] == (
+        "https://www.tiktok.com/player/v1/7692212006451006740"
+        "?controls=1&description=1&music_info=1"
+    )
+    assert short["provider"] == "TikTok"
+    assert short["kind"] == "link"
+    assert short["embed_url"] == ""
+    assert short["fallback_url"] == "https://vt.tiktok.com/ZSgQSLA9e/"
+
+
+def test_public_media_feed_deduplicates_equivalent_links_inside_one_message(tmp_path):
+    message = SimpleNamespace(
+        id=911,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content=(
+            "Mesmo clip https://medal.tv/games/gta-v/clips/abc123?invite=one "
+            "e https://medal.tv/games/gta-v/clips/abc123?invite=two"
+        ),
+        jump_url="https://discord.com/channels/1/2/911",
+        reactions=[],
+        attachments=[],
+        author=None,
+        embeds=[],
+    )
+
+    items = PeaceBot.public_media_items_from_message(message, "clips")
+
+    assert len(items) == 1
+    assert items[0]["canonical_id"] == "abc123"
 
 
 def test_public_api_rejects_untrusted_origins_without_reflection(tmp_path):
@@ -268,6 +416,29 @@ def test_public_entry_binds_join_from_the_verification_channel_invite_list(tmp_p
     invite.delete.assert_awaited_once_with(reason="Convite individual do fluxo público de entrada já utilizado")
 
 
+def test_public_entry_invite_lookup_falls_back_to_fetch_when_list_is_empty(tmp_path):
+    invite = SimpleNamespace(code="entry-code", url="https://discord.gg/entry-code", uses=0)
+    channel = SimpleNamespace(
+        name="verify",
+        create_invite=AsyncMock(),
+        invites=AsyncMock(return_value=[]),
+        fetch_invites=AsyncMock(return_value=[invite]),
+    )
+    guild = SimpleNamespace(
+        text_channels=[channel],
+        get_channel=lambda channel_id: channel if channel_id == 500 else None,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = guild
+
+    found, inspected = asyncio.run(bot.entry_invite_for_code(guild, "entry-code"))
+
+    assert found is invite
+    assert inspected is True
+    channel.invites.assert_awaited_once_with()
+    channel.fetch_invites.assert_awaited_once_with()
+
+
 def test_public_entry_reports_an_invite_that_disappeared(tmp_path):
     from bot.main import EntryInviteSession
 
@@ -287,7 +458,7 @@ def test_public_entry_reports_an_invite_that_disappeared(tmp_path):
         invite_code="entry-code",
         invite_url="https://discord.gg/entry-code",
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
-        created_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+        created_at=datetime.now(timezone.utc) - timedelta(seconds=45),
     )
 
     status, payload = run_configured_api(
@@ -505,14 +676,15 @@ def test_public_site_files_are_complete():
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
     login_html = (site_root / "acessar" / "index.html").read_text(encoding="utf-8")
-    assert "Começar minha entrada" in entry_html
+    assert "Começar entrada" in entry_html
+    assert "flow-secondary-action" in entry_html
     assert "peace-icon" in entry_html
     assert "Conectar no Discord" in candidature_html
     assert "discord-icon" in candidature_html
     assert "data-entry-connect" in candidature_html
     assert "#verify" in candidature_html
     assert "entry-help-panel" in candidature_html
-    assert "return-icon" in candidature_html
+    assert "application-context" in candidature_html
     assert 'class="login-layout login-layout--focused"' in login_html
     assert "flow-boundary" not in login_html
     assert "auth-note" not in login_html
@@ -546,7 +718,7 @@ def test_public_site_files_are_complete():
     assert 'data-entry-invite-panel' in candidature_html
     assert 'data-entry-invite-open' in candidature_html
     assert candidature_html.count('data-entry-invite-open') == 1
-    assert '<span class="entry-invite-url" data-entry-invite-link' in candidature_html
+    assert '<a class="entry-invite-url" data-entry-invite-link' in candidature_html
     assert 'data-entry-invite-link target="_blank"' not in candidature_html
     assert 'data-entry-invite-waiting' in candidature_html
     assert 'invite_unavailable' in script
@@ -555,7 +727,8 @@ def test_public_site_files_are_complete():
     assert 'Já sou membro' in login_html or 'Já sou membro' in entry_html
     assert 'href="/discord/"' not in candidature_html
     assert 'window.open("/candidatura/abrindo-discord.html"' not in script
-    assert 'window.open(url, "_blank", "noopener,noreferrer")' in script
+    assert 'entryInviteWindowName = "peace-discord-invite"' in script
+    assert "reserveEntryInviteWindow" in script
     assert "endpoint unavailable" not in script
     assert (site_root / "candidatura" / "abrindo-discord.html").is_file()
     assert 'data-entry-confirm' not in candidature_html
@@ -565,7 +738,7 @@ def test_public_site_files_are_complete():
     assert 'button.disabled = stageNumber > currentStage' in script
     assert '--container-background' in stylesheet
     assert '.application-card' in stylesheet and '.login-card' in stylesheet
-    assert 'body[data-page="candidatura"] .flow-header { display: none; }' in stylesheet
+    assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
 
