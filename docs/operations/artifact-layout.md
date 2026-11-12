@@ -14,7 +14,7 @@ artifacts/
 ├── netlify/deploy/YYYY-MM-DD/deploys/<commit>/
 ├── netlify/archive/YYYY-MM-DD/legacy-layout/<legacy-package>/
 ├── desktop/{delivery,installers,preview,publish}/YYYY-MM-DD/
-├── qa/{screenshots,test-results}/YYYY-MM-DD/
+├── qa/{reports,screenshots,test-results}/YYYY-MM-DD/
 └── (bytecode quarantine lives under data/runtime/quarantine/)
 ```
 
