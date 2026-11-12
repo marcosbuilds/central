@@ -14,7 +14,7 @@ import struct
 import time
 import zlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
@@ -2751,6 +2751,16 @@ class PeaceBot(commands.Bot):
         self.verification_challenges[member_id] = (answer, time.monotonic() + 180)
         return choices
 
+    def bind_flow_role_id(self, setting_name: str, role_id: int) -> None:
+        """Bind a discovered flow role without mutating frozen configuration."""
+        value = int(role_id)
+        if is_dataclass(self.settings):
+            self.settings = replace(self.settings, **{setting_name: value})
+            return
+        # Test doubles and local integrations may provide a mutable settings
+        # namespace instead of the production Settings dataclass.
+        setattr(self.settings, setting_name, value)
+
     async def ensure_flow_roles(self) -> None:
         """Create the status and onboarding labels used by the member flow."""
         if self.guild is None:
@@ -2805,6 +2815,8 @@ class PeaceBot(commands.Bot):
                     mentionable=False,
                     reason="Criar cargo do fluxo de entrada da Peace",
                 )
+            if role is None:
+                log.error("Não foi possível resolver ou criar o cargo %s", name)
                 continue
             if (
                 role.name != name
@@ -2818,9 +2830,9 @@ class PeaceBot(commands.Bot):
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
             if name == "Investigator" and getattr(self.settings, "investigator_role_id", None) is None:
-                self.settings.investigator_role_id = int(role.id)
+                self.bind_flow_role_id("investigator_role_id", role.id)
             elif name == "Lead Investigator" and getattr(self.settings, "lead_investigator_role_id", None) is None:
-                self.settings.lead_investigator_role_id = int(role.id)
+                self.bind_flow_role_id("lead_investigator_role_id", role.id)
 
     def entry_guild(self) -> discord.Guild | None:
         return self.guild or self.get_guild(self.settings.guild_id)
