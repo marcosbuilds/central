@@ -175,20 +175,51 @@
       return "Abrir origem" + (item && item.provider ? " · " + item.provider : "") + " ↗";
     }
 
+    function mediaThumbnailUrl(item) {
+      var candidate = String(item && item.thumbnail_url || "");
+      if (!candidate) return "";
+      try {
+        var parsed = new URL(candidate, window.location.href);
+        if (parsed.protocol !== "https:") return "";
+        if (!["cdn.discordapp.com", "media.discordapp.net", "images-ext-1.discordapp.net", "cdn.medal.tv"].includes(parsed.hostname)) return "";
+        return parsed.href;
+      } catch (error) {
+        return "";
+      }
+    }
+
+    function canEmbedMedia(item) {
+      return Boolean(item && item.embed_url && item.provider !== "Medal");
+    }
+
     function mediaSourceFallback(item, className) {
       var wrapper = makeNode("div", className || "media-source-fallback");
+      var thumbnailUrl = mediaThumbnailUrl(item);
+      if (thumbnailUrl) {
+        var thumbnail = makeNode("img", "media-source-fallback-image");
+        thumbnail.src = thumbnailUrl;
+        thumbnail.alt = "";
+        thumbnail.loading = "lazy";
+        thumbnail.decoding = "async";
+        thumbnail.addEventListener("error", function () { thumbnail.remove(); }, { once: true });
+        wrapper.appendChild(thumbnail);
+      }
+      var copy = makeNode("div", "media-source-fallback-copy");
       var label = makeNode("span", "media-source-fallback-provider", item && item.provider ? item.provider : "Mídia");
+      var title = makeNode("strong", "media-source-fallback-title", mediaDisplayText(item));
       var link = makeNode("a", "media-source-fallback-link", mediaSourceLabel(item));
       configureExternalLink(link, item && (item.fallback_url || item.source_url || item.url));
-      wrapper.appendChild(label);
-      wrapper.appendChild(link);
+      copy.appendChild(label);
+      copy.appendChild(title);
+      copy.appendChild(link);
+      wrapper.appendChild(copy);
       return wrapper;
     }
 
     function mediaPlayer(item, className) {
       var node;
       var kind = mediaKind(item);
-      if (kind === "embed" && item.embed_url) {
+      if (kind === "embed" && canEmbedMedia(item)) {
         node = makeNode("iframe", className || "media-card-embed");
         node.src = item.embed_url;
         node.loading = "lazy";
@@ -206,6 +237,8 @@
         node.playsInline = true;
         node.setAttribute("aria-label", "Reproduzir clip da Peace");
         node.src = item.url || "";
+        var poster = mediaThumbnailUrl(item);
+        if (poster) node.poster = poster;
         node.dataset.provider = item.provider || "";
         node.addEventListener("error", function () {
           node.replaceWith(mediaSourceFallback(item, className === "media-lightbox-media" ? "media-lightbox-fallback" : "media-source-fallback"));
@@ -266,7 +299,7 @@
       article.setAttribute("role", "listitem");
       var visual = makeNode("div", "media-card-visual");
       visual.dataset.provider = item.provider || "";
-      if (mediaKind(item) === "embed" && item.embed_url) {
+      if (mediaKind(item) === "embed" && canEmbedMedia(item)) {
         visual.appendChild(mediaPlayer(item, "media-card-embed"));
         addExpandButton(visual, item);
       } else if (mediaKind(item) === "direct" && item.type === "video") {

@@ -1,7 +1,6 @@
 # Public Peace site
 
-Status: tracked implementation; the current redesign is local-only until an
-explicit Netlify publication. Netlify serves the public static front, while
+Status: tracked implementation; Netlify serves the public static front, while
 ACLClouds remains the runtime for the Discord bot and the backend HTTP process.
 
 The public Peace home is a static single-page experience. It keeps the first
@@ -15,13 +14,19 @@ embedded in the home.
 The home also has a bounded community-media feed. The bot reads up to 200
 messages from the configured public media and clips channels, keeps a short
 in-memory cache, and exposes at most 12 selected items per category through
-`/api/media`. A message can contribute a Discord CDN attachment or a direct
-HTTPS link from the explicit provider allowlist: Medal, Streamable, YouTube,
-Twitch Clips, TikTok, Gyazo, Imgur, and Outplayed. A canonical TikTok video
-URL uses TikTok's official player URL; TikTok short links remain source-only
-cards until an ID can be identified, so the site never tries to decode an HTML
-page as a video file. The player format follows [TikTok's Embed Player
-contract](https://developers.tiktok.com/docs/en/embed-player).
+`/api/media`. A message can contribute a Discord CDN attachment, a direct
+HTTPS link from its text, or an allowlisted link/video already exposed by a
+Discord provider embed. The explicit provider allowlist includes Medal,
+Streamable, YouTube, Twitch Clips, TikTok, Gyazo, Imgur, and Outplayed. Medal
+links are resolved only through the public Medal page for that clip, and only
+a matching signed `cdn.medal.tv` MP4 is promoted to a playable video; the resolver
+reads the bounded HTML response in chunks so provider media emitted after the first
+network chunk is still discovered. Expired
+or unresolved clips remain source cards with their bounded preview context. A canonical
+TikTok video URL uses TikTok's official player URL; TikTok short links remain
+source-only cards until an ID can be identified, so the site never tries to
+decode an HTML page as a video file. The player format follows [TikTok's Embed
+Player contract](https://developers.tiktok.com/docs/en/embed-player).
 
 Each item reports an explicit render kind (`embed`, `direct`, or `link`), the
 source URL, a bounded message caption with links and mentions removed, provider
@@ -34,7 +39,8 @@ visitors different deterministic selections without identifying or tracking
 them. Duplicate links inside one message are collapsed by provider/media
 identity while the message context remains attached to the surviving item.
 Media failures preserve the last successful list and keep an external origin
-link visible; a missing embed is never presented as a playable video file.
+link visible; a provider page is never presented as an iframe video when the
+provider blocks embedding.
 
 The clips channel is intentionally handled as a link-first feed: a message may
 contain only a Medal/TikTok URL and no caption at all. In that case an empty
@@ -240,7 +246,10 @@ refresh status. It refreshes while the tab is visible according to the backend
 cache hint; it does not autoplay media or create a continuous ticker. Cards
 show the sanitized message text when available, otherwise a provider preview
 title, followed by the display name/avatar, complete local date, and provider
-origin. The lightbox repeats that metadata and restores focus to its launcher.
+origin. A resolved Medal clip and a direct Discord attachment use native video
+controls; an expired Medal link keeps its preview thumbnail/origin card instead
+of showing a blank iframe. The lightbox repeats that metadata and restores
+focus to its launcher.
 
 When the individual invite is being generated, the browser keeps the Peace page
 in place and shows an accessible loading state. The Discord window is reserved

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import html
 import logging
 import json
 import re
@@ -15,10 +17,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import discord
-from aiohttp import web
+from aiohttp import ClientError, ClientSession, ClientTimeout, web
 from discord import app_commands
 from discord.ext import commands
 
@@ -87,6 +89,10 @@ MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
 PUBLIC_MEDIA_HISTORY_LIMIT = 200
 PUBLIC_MEDIA_SELECTION_LIMIT = 12
+PUBLIC_MEDIA_MEDAL_RESOLUTION_LIMIT = 36
+PUBLIC_MEDIA_MEDAL_REQUEST_TIMEOUT_SECONDS = 6
+PUBLIC_MEDIA_MEDAL_MAX_REDIRECTS = 3
+PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES = 1_000_000
 PUBLIC_MEDIA_CDN_HOSTS = frozenset(
     {
         "cdn.discordapp.com",
@@ -94,6 +100,7 @@ PUBLIC_MEDIA_CDN_HOSTS = frozenset(
         "images-ext-1.discordapp.net",
     }
 )
+PUBLIC_MEDIA_PROVIDER_CDN_HOSTS = frozenset({"cdn.medal.tv"})
 PUBLIC_MEDIA_LINK_HOSTS = frozenset(
     {
         "medal.tv",
@@ -116,6 +123,14 @@ PUBLIC_MEDIA_LINK_PATTERN = re.compile(r"https://[^\s<>\[\]()]+", re.IGNORECASE)
 PUBLIC_MEDIA_TIKTOK_ID_PATTERN = re.compile(r"/(?:video|photo)/(\d+)(?:[/?#]|$)", re.IGNORECASE)
 PUBLIC_MEDIA_IMAGE_EXTENSIONS = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
 PUBLIC_MEDIA_VIDEO_EXTENSIONS = {".m4v", ".mov", ".mp4", ".webm"}
+PUBLIC_MEDIA_MEDAL_VIDEO_PATTERN = re.compile(
+    r"https://cdn\.medal\.tv/mediac/(?:[^/\"'\s<>]+/)?[^\"'\s<>]+\.mp4\?auth=[^\"'\s<>]+",
+    re.IGNORECASE,
+)
+PUBLIC_MEDIA_MEDAL_THUMBNAIL_PATTERN = re.compile(
+    r"https://cdn\.medal\.tv/ugcc/content-thumbnail/[^\"'\s<>]+\.(?:avif|gif|jpe?g|png|webp)(?:\?[^\"'\s<>]+)?",
+    re.IGNORECASE,
+)
 CAPTCHA_FONT = {
     "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
     "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
@@ -3004,6 +3019,21 @@ class PeaceBot(commands.Bot):
         return candidate[:2000]
 
     @staticmethod
+    def public_media_provider_cdn_url(value: object) -> str | None:
+        """Accept only provider CDN media already exposed by a Discord embed."""
+        candidate = str(value or "").strip()
+        parsed = urlsplit(candidate)
+        hostname = (parsed.hostname or "").casefold()
+        suffix = Path(parsed.path).suffix.casefold()
+        if parsed.scheme != "https" or hostname not in PUBLIC_MEDIA_PROVIDER_CDN_HOSTS:
+            return None
+        if not parsed.path.startswith(("/mediac/", "/ugcc/")):
+            return None
+        if suffix not in PUBLIC_MEDIA_IMAGE_EXTENSIONS | PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+            return None
+        return candidate[:4000]
+
+    @staticmethod
     def public_media_link_url(value: object) -> str | None:
         """Accept a small, explicit set of public clip/image hosts from text."""
         candidate = str(value or "").strip().rstrip(".,;:!?)]}")
@@ -3063,8 +3093,9 @@ class PeaceBot(commands.Bot):
                 result["canonical_id"] = segments[clips_index + 1]
             except (ValueError, IndexError):
                 result["canonical_id"] = "/".join(segments).casefold()
-            result["kind"] = "embed"
-            result["embed_url"] = f"https://medal.tv/{'/'.join(segments)}"
+            # Medal's public page is not a stable iframe player. The runtime
+            # resolves active clips to their signed CDN MP4; expired clips stay
+            # source-only instead of rendering a blank or blocked iframe.
             return result
         if hostname == "outplayed.tv":
             result["kind"] = "embed"
@@ -3172,12 +3203,91 @@ class PeaceBot(commands.Bot):
     @classmethod
     def public_media_thumbnail(cls, message: object) -> str:
         for embed in getattr(message, "embeds", ()) or ():
-            for part_name in ("thumbnail", "image", "video"):
+            for part_name in ("thumbnail", "image"):
                 part = getattr(embed, part_name, None)
-                candidate = cls.public_media_url(getattr(part, "url", "")) if part is not None else None
+                candidate = None
+                if part is not None:
+                    raw_url = getattr(part, "url", "")
+                    candidate = cls.public_media_url(raw_url) or cls.public_media_provider_cdn_url(raw_url)
                 if candidate:
                     return candidate
         return ""
+
+    @classmethod
+    def public_media_embed_video(cls, message: object) -> str:
+        """Read a provider video URL only when Discord already supplied one."""
+        videos = cls.public_media_embed_videos(message)
+        return videos[0] if videos else ""
+
+    @classmethod
+    def public_media_embed_videos(cls, message: object) -> list[str]:
+        """Read provider video URLs only when Discord already supplied them."""
+        videos: list[str] = []
+        for embed in getattr(message, "embeds", ()) or ():
+            part = getattr(embed, "video", None)
+            if part is None:
+                continue
+            for attribute in ("url", "proxy_url"):
+                candidate = cls.public_media_provider_cdn_url(getattr(part, attribute, ""))
+                if candidate and Path(urlsplit(candidate).path).suffix.casefold() in PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+                    if candidate not in videos:
+                        videos.append(candidate)
+                    break
+        return videos
+
+    @classmethod
+    def public_media_message_links(cls, message: object) -> list[str]:
+        """Collect allowlisted links from message text and Discord previews."""
+        values = [str(getattr(message, "content", "") or "")]
+        for embed in getattr(message, "embeds", ()) or ():
+            for attribute in ("url", "title", "description"):
+                values.append(str(getattr(embed, attribute, "") or ""))
+
+        links: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            for link in cls.public_media_links(value):
+                key = link.casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append(link)
+        return links
+
+    @staticmethod
+    def public_media_medal_url_matches_id(url: str, canonical_id: str) -> bool:
+        if not canonical_id:
+            return True
+        if canonical_id.casefold() in url.casefold():
+            return True
+        auth = parse_qs(urlsplit(url).query).get("auth", [""])[0]
+        encoded_data = re.search(r"(?:^|~)data=([^~]+)", auth)
+        if encoded_data is None:
+            return False
+        try:
+            encoded = encoded_data.group(1)
+            decoded = base64.b64decode(encoded + "=" * (-len(encoded) % 4), validate=False).decode("utf-8", "ignore")
+        except (ValueError, TypeError):
+            return False
+        return canonical_id.casefold() in decoded.casefold()
+
+    @classmethod
+    def public_media_medal_assets_from_html(cls, source: object, canonical_id: str) -> dict[str, str]:
+        """Extract only signed Medal media for the clip being resolved."""
+        markup = html.unescape(str(source or "")).replace("\\u0026", "&").replace("\\/", "/")
+        videos = [
+            candidate
+            for candidate in PUBLIC_MEDIA_MEDAL_VIDEO_PATTERN.findall(markup)
+            if cls.public_media_medal_url_matches_id(candidate, canonical_id)
+        ]
+        thumbnails = [
+            candidate
+            for candidate in PUBLIC_MEDIA_MEDAL_THUMBNAIL_PATTERN.findall(markup)
+            if cls.public_media_medal_url_matches_id(candidate, canonical_id)
+        ]
+        video_url = next((cls.public_media_provider_cdn_url(candidate) for candidate in videos), "")
+        thumbnail_url = next((cls.public_media_provider_cdn_url(candidate) for candidate in thumbnails), "")
+        return {"media_url": video_url, "thumbnail_url": thumbnail_url}
 
     @staticmethod
     def public_media_embed_metadata(message: object) -> dict[str, str]:
@@ -3228,10 +3338,14 @@ class PeaceBot(commands.Bot):
         caption = cls.public_media_caption(message)
         author = cls.public_media_author(message)
         thumbnail_url = cls.public_media_thumbnail(message)
+        embed_video_urls = cls.public_media_embed_videos(message)
         embed_metadata = cls.public_media_embed_metadata(message)
         raw_content = str(getattr(message, "content", "") or "")
+        message_links = cls.public_media_message_links(message)
+        medal_links = [link for link in message_links if cls.public_media_provider(link) == "Medal"]
         items: list[dict[str, object]] = []
         seen_keys: set[str] = set()
+        used_embed_video_urls: set[str] = set()
         for index, attachment in enumerate(getattr(message, "attachments", ()) or ()):
             url = cls.public_media_url(getattr(attachment, "url", ""))
             media_type = cls.public_media_type(attachment, url or "") if url else None
@@ -3268,7 +3382,7 @@ class PeaceBot(commands.Bot):
                     "channel": channel_kind,
                 }
             )
-        for link_index, link in enumerate(cls.public_media_links(raw_content)):
+        for link_index, link in enumerate(message_links):
             details = cls.public_media_link_details(link)
             canonical_id = details.get("canonical_id", "") or urlsplit(link).path.rstrip("/").casefold()
             dedupe_key = f"{details.get('provider', 'Web').casefold()}:{canonical_id}"
@@ -3276,11 +3390,33 @@ class PeaceBot(commands.Bot):
                 continue
             seen_keys.add(dedupe_key)
             media_url = details.get("media_url", "") or link
+            media_kind = details.get("kind", "link")
+            if details.get("provider") == "Medal" and embed_video_urls:
+                matching_embed_video = next(
+                    (
+                        candidate
+                        for candidate in embed_video_urls
+                        if candidate not in used_embed_video_urls
+                        and cls.public_media_medal_url_matches_id(candidate, canonical_id)
+                    ),
+                    "",
+                )
+                # A single provider preview can safely represent the single
+                # page link in a message. Never reuse it across multiple clips.
+                if not matching_embed_video and len(medal_links) == 1:
+                    matching_embed_video = next(
+                        (candidate for candidate in embed_video_urls if candidate not in used_embed_video_urls),
+                        "",
+                    )
+                if matching_embed_video:
+                    used_embed_video_urls.add(matching_embed_video)
+                    media_url = matching_embed_video
+                    media_kind = "direct"
             items.append(
                 {
                     "id": f"{message_id}:link:{link_index}" if message_id else f"{channel_kind}:link:{link_index}:{link}",
                     "type": details.get("type", "video"),
-                    "kind": details.get("kind", "link"),
+                    "kind": media_kind,
                     "canonical_id": canonical_id,
                     "url": media_url,
                     "source_url": link,
@@ -3300,6 +3436,153 @@ class PeaceBot(commands.Bot):
                     "channel": channel_kind,
                 }
             )
+
+        for embed_index, embed_video_url in enumerate(embed_video_urls):
+            if embed_video_url in used_embed_video_urls:
+                continue
+            dedupe_key = f"medal-cdn:{embed_video_url.casefold()}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            source_url = medal_links[0] if len(medal_links) == 1 else embed_video_url
+            items.append(
+                {
+                    "id": f"{message_id}:embed:{embed_index}" if message_id else f"{channel_kind}:embed:{embed_index}:{embed_video_url}",
+                    "type": "video",
+                    "kind": "direct",
+                    "canonical_id": embed_video_url,
+                    "url": embed_video_url,
+                    "source_url": source_url,
+                    "embed_url": "",
+                    "fallback_url": source_url,
+                    "provider": "Medal",
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+        return items
+
+    @classmethod
+    async def public_media_resolve_medal_item(
+        cls,
+        item: dict[str, object],
+        session: ClientSession,
+    ) -> dict[str, object]:
+        if item.get("provider") != "Medal" or item.get("kind") != "link":
+            return item
+        source_url = cls.public_media_link_url(item.get("source_url")) or ""
+        canonical_id = str(item.get("canonical_id") or "").strip()
+        if not source_url or cls.public_media_provider(source_url) != "Medal" or not canonical_id:
+            return item
+        current_url = source_url
+        try:
+            for _ in range(PUBLIC_MEDIA_MEDAL_MAX_REDIRECTS + 1):
+                async with session.get(current_url, allow_redirects=False) as response:
+                    if 300 <= response.status < 400:
+                        location = str(response.headers.get("Location", "") or "").strip()
+                        redirected_url = cls.public_media_link_url(urljoin(current_url, location)) if location else None
+                        if not redirected_url or cls.public_media_provider(redirected_url) != "Medal":
+                            return item
+                        current_url = redirected_url
+                        continue
+                    if response.status != 200:
+                        return item
+                    content_type = str(response.headers.get("Content-Type", "")).casefold()
+                    if content_type and "html" not in content_type:
+                        return item
+                    content_length = response.headers.get("Content-Length")
+                    try:
+                        if content_length and int(content_length) > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            return item
+                    except (TypeError, ValueError):
+                        pass
+                    content = getattr(response, "content", None)
+                    if content is not None and callable(getattr(content, "read", None)):
+                        chunks: list[bytes] = []
+                        total_bytes = 0
+                        while total_bytes <= PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            chunk = await content.read(
+                                min(64 * 1024, PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES + 1 - total_bytes)
+                            )
+                            if not chunk:
+                                break
+                            if not isinstance(chunk, bytes):
+                                chunk = bytes(chunk)
+                            chunks.append(chunk)
+                            total_bytes += len(chunk)
+                            if total_bytes > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                                return item
+                        raw_markup = b"".join(chunks)
+                        markup = raw_markup.decode("utf-8", "ignore")
+                    else:
+                        markup = await response.text(errors="ignore")
+                        if len(markup) > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            return item
+                    break
+            else:
+                return item
+        except (ClientError, asyncio.TimeoutError, UnicodeError):
+            return item
+
+        assets = cls.public_media_medal_assets_from_html(markup, canonical_id)
+        media_url = assets.get("media_url", "")
+        if assets.get("thumbnail_url") and not item.get("thumbnail_url"):
+            item = dict(item)
+            item["thumbnail_url"] = assets["thumbnail_url"]
+        if not media_url:
+            return item
+        resolved = dict(item)
+        resolved.update(
+            {
+                "kind": "direct",
+                "url": media_url,
+                "media_url": media_url,
+                "embed_url": "",
+                "fallback_url": source_url,
+            }
+        )
+        if assets.get("thumbnail_url") and not resolved.get("thumbnail_url"):
+            resolved["thumbnail_url"] = assets["thumbnail_url"]
+        return resolved
+
+    @classmethod
+    async def public_media_resolve_medal_items(cls, items: list[dict[str, object]]) -> list[dict[str, object]]:
+        indexes = [
+            index
+            for index, item in enumerate(items)
+            if item.get("provider") == "Medal" and item.get("kind") == "link"
+        ][:PUBLIC_MEDIA_MEDAL_RESOLUTION_LIMIT]
+        if not indexes:
+            return items
+
+        semaphore = asyncio.Semaphore(8)
+        timeout = ClientTimeout(total=PUBLIC_MEDIA_MEDAL_REQUEST_TIMEOUT_SECONDS)
+        async with ClientSession(
+            timeout=timeout,
+            headers={"User-Agent": "Peace public media resolver/1.0"},
+        ) as session:
+            async def resolve(index: int) -> tuple[int, dict[str, object]]:
+                async with semaphore:
+                    try:
+                        return index, await cls.public_media_resolve_medal_item(items[index], session)
+                    except Exception:
+                        log.debug("Falha ao resolver mídia Medal no índice %s", index, exc_info=True)
+                        return index, items[index]
+
+            results = await asyncio.gather(*(resolve(index) for index in indexes), return_exceptions=True)
+            for result in results:
+                if isinstance(result, tuple) and len(result) == 2:
+                    index, resolved = result
+                    items[index] = resolved
         return items
 
     async def collect_public_media(self, channel_kind: str) -> list[dict[str, object]]:
@@ -3334,6 +3617,7 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
             log.info("Não consegui ler a mídia pública do canal %s", channel_kind)
             return []
+        await self.public_media_resolve_medal_items(items)
         return items[:PUBLIC_MEDIA_HISTORY_LIMIT]
 
     async def public_media_items(self, channel_kind: str) -> list[dict[str, object]]:

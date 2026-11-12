@@ -176,9 +176,9 @@ def test_public_media_feed_extracts_clip_links_message_text_and_public_author(tm
     clip = items[0]
     assert clip["provider"] == "Medal"
     assert clip["type"] == "video"
-    assert clip["kind"] == "embed"
+    assert clip["kind"] == "link"
     assert clip["canonical_id"] == "no9WMOwfZ4Q-LXEC4"
-    assert clip["embed_url"] == "https://medal.tv/games/gta-v/clips/no9WMOwfZ4Q-LXEC4"
+    assert clip["embed_url"] == ""
     assert clip["caption"] == "A curva ficou limpa"
     assert clip["message_text"] == "A curva ficou limpa"
     assert clip["provider_title"] == "GTA V Trimmed Clip"
@@ -239,6 +239,215 @@ def test_public_media_feed_keeps_link_only_messages_and_direct_video_attachments
     assert direct_items[0]["kind"] == "direct"
     assert direct_items[0]["type"] == "video"
     assert direct_items[0]["url"].endswith("clip.mov")
+
+
+def test_public_media_feed_resolves_signed_medal_media_for_the_matching_clip():
+    canonical_id = "kyMSdFd6TYMR2WrkJ"
+    video_url = (
+        "https://cdn.medal.tv/mediac/kyMSdFd6TYMR2WrkJ.mp4?auth=synthetic"
+    )
+    thumbnail_url = (
+        "https://cdn.medal.tv/ugcc/content-thumbnail/kyMSdFd6TYMR2WrkJ.jpg?auth=synthetic"
+    )
+
+    assets = PeaceBot.public_media_medal_assets_from_html(
+        f'<video src="{video_url}"></video><meta content="{thumbnail_url}">',
+        canonical_id,
+    )
+
+    assert assets["media_url"] == video_url
+    assert assets["thumbnail_url"] == thumbnail_url
+
+
+def test_public_media_feed_promotes_active_medal_item_to_direct_video():
+    video_url = (
+        "https://cdn.medal.tv/mediac/active-clip.mp4?auth=synthetic"
+    )
+    thumbnail_url = (
+        "https://cdn.medal.tv/ugcc/content-thumbnail/active-clip.jpg?auth=synthetic"
+    )
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def text(self, *, errors="ignore"):
+            del errors
+            return f'<video src="{video_url}"></video><meta content="{thumbnail_url}">'
+
+    class FakeSession:
+        def get(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    item = {
+        "provider": "Medal",
+        "type": "video",
+        "kind": "link",
+        "canonical_id": "active-clip",
+        "url": "https://medal.tv/games/gta-v/clips/active-clip",
+        "source_url": "https://medal.tv/games/gta-v/clips/active-clip",
+        "thumbnail_url": "",
+    }
+
+    resolved = asyncio.run(PeaceBot.public_media_resolve_medal_item(item, FakeSession()))
+
+    assert resolved["kind"] == "direct"
+    assert resolved["type"] == "video"
+    assert resolved["url"] == video_url
+    assert resolved["media_url"] == video_url
+    assert resolved["thumbnail_url"] == thumbnail_url
+
+
+def test_public_media_feed_reads_all_chunks_of_medal_html_before_extracting_media():
+    video_url = "https://cdn.medal.tv/mediac/chunked-clip.mp4?auth=synthetic"
+    thumbnail_url = "https://cdn.medal.tv/ugcc/content-thumbnail/chunked-clip.jpg?auth=synthetic"
+    markup = f'<html><head><meta content="{thumbnail_url}"></head><body><video src="{video_url}"></video></body></html>'.encode()
+
+    class ChunkedContent:
+        def __init__(self, chunks):
+            self.chunks = list(chunks)
+
+        async def read(self, _size=-1):
+            return self.chunks.pop(0) if self.chunks else b""
+
+    class ChunkedResponse:
+        status = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+
+        def __init__(self):
+            split = len(markup) // 2
+            self.content = ChunkedContent((markup[:split], markup[split:]))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class ChunkedSession:
+        def get(self, *_args, **_kwargs):
+            return ChunkedResponse()
+
+    item = {
+        "provider": "Medal",
+        "type": "video",
+        "kind": "link",
+        "canonical_id": "chunked-clip",
+        "source_url": "https://medal.tv/games/gta-v/clips/chunked-clip",
+        "url": "https://medal.tv/games/gta-v/clips/chunked-clip",
+        "thumbnail_url": "",
+    }
+
+    resolved = asyncio.run(PeaceBot.public_media_resolve_medal_item(item, ChunkedSession()))
+
+    assert resolved["kind"] == "direct"
+    assert resolved["url"] == video_url
+    assert resolved["thumbnail_url"] == thumbnail_url
+
+
+def test_public_media_feed_accepts_provider_video_already_supplied_by_discord():
+    video_url = "https://cdn.medal.tv/mediac/clip.mp4?auth=public"
+    message = SimpleNamespace(
+        id=914,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content="https://medal.tv/games/gta-v/clips/embed-ready",
+        jump_url="https://discord.com/channels/1/2/914",
+        reactions=[],
+        attachments=[],
+        author=None,
+        embeds=[
+            SimpleNamespace(
+                title="Medal clip",
+                description="",
+                provider=SimpleNamespace(name="Medal"),
+                author=None,
+                thumbnail=None,
+                image=None,
+                video=SimpleNamespace(url=video_url, proxy_url=""),
+            )
+        ],
+    )
+
+    items = PeaceBot.public_media_items_from_message(message, "clips")
+
+    assert len(items) == 1
+    assert items[0]["kind"] == "direct"
+    assert items[0]["url"] == video_url
+
+
+def test_public_media_feed_extracts_medal_link_from_embed_without_message_text():
+    video_url = "https://cdn.medal.tv/mediac/embed-only.mp4?auth=synthetic"
+    message = SimpleNamespace(
+        id=915,
+        created_at=datetime(2026, 11, 11, tzinfo=timezone.utc),
+        content="",
+        jump_url="https://discord.com/channels/1/2/915",
+        reactions=[],
+        attachments=[],
+        author=None,
+        embeds=[
+            SimpleNamespace(
+                url="https://medal.tv/games/gta-v/clips/embed-only",
+                title="Embed-only Medal clip",
+                description="",
+                provider=SimpleNamespace(name="Medal"),
+                author=None,
+                thumbnail=None,
+                image=None,
+                video=SimpleNamespace(url=video_url, proxy_url=""),
+            )
+        ],
+    )
+
+    items = PeaceBot.public_media_items_from_message(message, "clips")
+
+    assert len(items) == 1
+    assert items[0]["provider"] == "Medal"
+    assert items[0]["kind"] == "direct"
+    assert items[0]["url"] == video_url
+    assert items[0]["source_url"] == "https://medal.tv/games/gta-v/clips/embed-only"
+
+
+def test_public_media_medal_resolver_rejects_external_redirects():
+    class RedirectResponse:
+        status = 302
+        headers = {"Location": "https://example.invalid/redirected"}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class RedirectSession:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return RedirectResponse()
+
+    item = {
+        "provider": "Medal",
+        "type": "video",
+        "kind": "link",
+        "canonical_id": "redirected-clip",
+        "source_url": "https://medal.tv/games/gta-v/clips/redirected-clip",
+        "url": "https://medal.tv/games/gta-v/clips/redirected-clip",
+    }
+    session = RedirectSession()
+
+    resolved = asyncio.run(PeaceBot.public_media_resolve_medal_item(item, session))
+
+    assert resolved == item
+    assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
 
 
 def test_public_media_feed_supports_tiktok_players_and_short_link_fallbacks(tmp_path):

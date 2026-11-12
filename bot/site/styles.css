@@ -71,8 +71,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   outline-offset: 4px;
 }
 
-.site-shell { min-height: 100vh; min-height: 100dvh; overflow-x: clip; }
-.site-shell > main, .site-shell > footer { position: relative; z-index: 1; }
+.site-shell { display: flex; min-height: 100vh; min-height: 100dvh; flex-direction: column; overflow-x: clip; }
+.site-shell > main { position: relative; z-index: 1; flex: 1 0 auto; }
+.site-shell > footer { position: relative; z-index: 1; flex: 0 0 auto; }
 
 .skip-link {
   position: fixed;
@@ -1169,8 +1170,11 @@ body[data-page="partners"] .public-hero-mark { min-height: 9rem; }
 .media-card-video, .media-card-embed, .media-card-image { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
 .media-card-embed { background: #050607; }
 .media-card-visual[data-provider="TikTok"] { aspect-ratio: 9 / 12; }
-.media-source-fallback, .media-card-source-preview { display: grid; min-height: 100%; place-content: center; gap: 0.55rem; padding: 1.4rem; background: radial-gradient(circle at 50% 30%, rgba(185, 202, 211, 0.15), transparent 62%), #091015; text-align: center; }
+.media-source-fallback, .media-card-source-preview { display: flex; min-height: 100%; flex-direction: column; justify-content: center; gap: 0.75rem; padding: 1.1rem; background: radial-gradient(circle at 50% 30%, rgba(185, 202, 211, 0.15), transparent 62%), #091015; text-align: center; }
+.media-source-fallback-image { width: 100%; max-height: 9rem; object-fit: cover; opacity: 0.82; }
+.media-source-fallback-copy { display: grid; gap: 0.45rem; place-items: center; }
 .media-source-fallback-provider { color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.media-source-fallback-title { max-width: 28rem; color: var(--text); font-size: 0.82rem; font-weight: 600; line-height: 1.35; }
 .media-source-fallback-link { color: var(--accent); font-size: 0.76rem; font-weight: 700; }
 .media-source-fallback-link:hover, .media-source-fallback-link:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 0.16em; }
 .media-card-media-button { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
@@ -1214,4 +1218,36 @@ body[data-page="partners"] .public-hero-mark { min-height: 9rem; }
   .media-grid { grid-template-columns: 1fr; }
   .media-card-visual { min-height: 14rem; }
   .media-lightbox { width: calc(100vw - 1rem); padding: 0.6rem; }
+}
+
+/* Compact first viewports: keep short flows centered and let long states grow. */
+.flow-page .flow-main--entry,
+.flow-page .flow-main--login { display: grid; align-content: center; }
+.flow-page .flow-main--entry > .flow-hero,
+.flow-page .flow-main--login > .login-layout { width: 100%; }
+.flow-main--entry { padding-top: clamp(2rem, 4vw, 3.5rem); padding-bottom: clamp(2.25rem, 4vw, 3.5rem); }
+.flow-main--login { padding-top: clamp(2.25rem, 5vw, 4rem); padding-bottom: clamp(2.25rem, 4vw, 3.5rem); }
+.flow-main--application { padding-bottom: clamp(2.25rem, 4vw, 3.5rem); }
+.entry-route { margin-top: clamp(2.25rem, 5vw, 3.75rem); }
+body[data-page="home"] .hero { padding-top: calc(var(--header-height) + 1.25rem); padding-bottom: 3.75rem; }
+body[data-page="home"] .scroll-cue { bottom: 1.5rem; }
+body[data-page="member"] .member-intro { padding-top: clamp(4rem, 8vh, 6.5rem); padding-bottom: clamp(2.75rem, 5vh, 4rem); }
+body[data-page="member"] .member-gate { padding-block: clamp(2.75rem, 5vw, 5rem); }
+
+@media (max-width: 840px) {
+  .flow-page .flow-main--entry,
+  .flow-page .flow-main--login { align-content: start; }
+  .flow-main--entry { padding-top: clamp(2rem, 6vw, 3.5rem); padding-bottom: clamp(2rem, 5vw, 3rem); }
+  .flow-main--login { padding-top: clamp(2.25rem, 6vw, 3.75rem); padding-bottom: clamp(2rem, 5vw, 3rem); }
+  .entry-route { margin-top: clamp(2rem, 6vw, 3.5rem); }
+  body[data-page="member"] .member-intro { padding: 4rem 1.1rem 3rem; }
+  body[data-page="member"] .member-gate { padding-block: 3.25rem; }
+}
+
+@media (max-height: 680px) {
+  body[data-page="home"] .hero { padding-top: calc(var(--header-height) + 0.75rem); padding-bottom: 3rem; }
+  body[data-page="home"] .scroll-cue { bottom: 1rem; }
+  .flow-main--entry,
+  .flow-main--login,
+  .flow-main--application { padding-top: 1.75rem; padding-bottom: 2rem; }
 }
