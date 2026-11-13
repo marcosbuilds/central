@@ -105,7 +105,7 @@ def test_verification_panel_has_banner_steps_and_explanation_card():
     assert all(field.inline for field in banner.fields)
     assert banner.image.url == "attachment://verification.png"
     assert explanation.title == "Como funciona"
-    assert "cargo **Visitor**" in explanation.description
+    assert "cargo **Visitante**" in explanation.description
     assert {field.name for field in explanation.fields} == {"O que faz", "Por que existe"}
 
 
@@ -405,7 +405,7 @@ def test_correct_captcha_grants_visitor_and_removes_not_verified(tmp_path):
 
     member.add_roles.assert_awaited_once_with(visitor, reason="CAPTCHA de verificação concluído")
     member.remove_roles.assert_awaited_once_with(not_verified, reason="CAPTCHA de verificação concluído")
-    assert "liberei o cargo Visitor" in interaction.edit_original_response.await_args.kwargs["content"]
+    assert "liberei o cargo Visitante" in interaction.edit_original_response.await_args.kwargs["content"]
 
 
 def test_reconcile_never_grants_visitor_without_captcha(tmp_path):

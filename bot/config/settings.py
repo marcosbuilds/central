@@ -141,10 +141,8 @@ class Settings:
     guild_id: int
     peace_role_id: int
     novato_role_id: int
-    set_channel_id: int
     welcome_channel_id: int | None
     rules_channel_id: int | None
-    verification_category_id: int | None
     verification_channel_id: int | None
     log_channel_id: int | None
     ticket_panel_channel_id: int | None
@@ -209,10 +207,8 @@ class Settings:
             guild_id=_int_env("DISCORD_GUILD_ID"),
             peace_role_id=_int_env("DISCORD_PEACE_ROLE_ID"),
             novato_role_id=_int_env("DISCORD_NOVATO_ROLE_ID"),
-            set_channel_id=_int_env("DISCORD_SET_CHANNEL_ID"),
             welcome_channel_id=_optional_int_env("DISCORD_WELCOME_CHANNEL_ID"),
             rules_channel_id=_optional_int_env("DISCORD_RULES_CHANNEL_ID"),
-            verification_category_id=_optional_int_env("DISCORD_VERIFICATION_CATEGORY_ID"),
             verification_channel_id=_optional_int_env("DISCORD_VERIFICATION_CHANNEL_ID"),
             log_channel_id=_optional_int_env("DISCORD_LOG_CHANNEL_ID"),
             ticket_panel_channel_id=_optional_int_env("DISCORD_TICKET_PANEL_CHANNEL_ID"),

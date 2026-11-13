@@ -43,23 +43,24 @@ DEVELOPMENT_CATEGORY_ID = 1506409116686614608
 CALLS_CATEGORY_ID = 1459444321425035386
 AFK_CHANNEL_ID = 1466629495405543515
 AUTOMOD_CHANNEL_ID = 1555060813046226964
-VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
+# The verification channel is intentionally kept at the server root. The old
+# verification category is a retired structure and is never recreated.
 VERIFICATION_CHANNEL_NAME = "verify"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
-INTERN_ROLE_NAME = "Intern"
+INTERN_ROLE_NAME = "Estagiário"
 
 CATEGORY_NAMES = {
     "reception": "[🎫] RECEPTION",
     "staff": "[🛡️] STAFF",
-    "development": "[💻] DEVELOPERS",
     "records": "[ℹ️] RECORDS",
     "social": "[🔔] SOCIAL LOUNGE",
     "support": "[☎️] SUPPORT",
     "calls": "[🎙️] CALLS",
     "private_calls": "[🎙️] PRIVATE CALLS",
-    "verification": VERIFICATION_CATEGORY_NAME,
     "closed_tickets": "[🎟️] CLOSED TICKETS",
 }
+
+LEGACY_DEVELOPMENT_CATEGORY_NAMES = frozenset({"[💻] developers"})
 
 CHANNEL_IDS = {
     "staff_only": 1491899123547242656,
@@ -95,62 +96,108 @@ ROLE_IDS = {
 ROLE_NAMES = {
     "peace": "Peace",
     "staff": "Staff",
-    "manager": "Management",
-    "general_manager": "Manager ⎰ Deputy Delegate",
-    "visitor": "Visitor",
-    "elite": "Elite ⎰ Special Agent",
-    "novato": "Rookie ⎰ Agent",
-    "member": "Member ⎰ Recruit",
-    "technical": "Dev",
+    "manager": "Gerência",
+    "general_manager": "Delegado",
+    "visitor": "Visitante",
+    "elite": "Agente Especial",
+    "novato": "Aluno",
+    "member": "Agente",
+    "technical": "Developer",
     "a_is": "AIs",
     "not_verified": NOT_VERIFIED_ROLE_NAME,
-    "intern": INTERN_ROLE_NAME,
-    "investigator": "Investigator",
-    "lead_investigator": "Lead Investigator",
+    "intern": "Estagiário",
+    "investigator": "Investigador",
+    "lead_investigator": "Investigador Chefe",
 }
 
 ROLE_RENAMES = {
-    "Staff Peace": "Staff",
-    "Novato Peace": "Rookie ⎰ Agent",
-    "Novato ⎰ Agente": "Rookie ⎰ Agent",
-    "Membro Peace": "Member ⎰ Recruit",
-    "Membro ⎰ Recruta": "Member ⎰ Recruit",
-    "Elite Peace": "Elite ⎰ Special Agent",
-    "Elite ⎰ Ag. Especial": "Elite ⎰ Special Agent",
-    "Gerência": "Management",
-    "Gerencia": "Management",
-    "Gerente geral": "Manager ⎰ Deputy Delegate",
-    "Gerente Geral": "Manager ⎰ Deputy Delegate",
-    "Gerente ⎰ Delegado adjunto": "Manager ⎰ Deputy Delegate",
-    "Gerente": "Management",
-    "Elite": "Elite ⎰ Special Agent",
-    "Membro": "Member ⎰ Recruit",
-    "Novato": "Rookie ⎰ Agent",
-    "Estagiário": "Intern",
-    "Estagiario": "Intern",
-    "Visitante": "Visitor",
+    "Management": "Gerência",
+    "Gerencia": "Gerência",
+    "Manager ⎰ Deputy Delegate": "Delegado",
+    "Gerente geral": "Delegado",
+    "Gerente Geral": "Delegado",
+    "Gerente ⎰ Delegado adjunto": "Delegado",
+    "Gerente ⎰ Delegado Adjunto": "Delegado",
+    "Gerente / Delegado adjunto": "Delegado",
+    "Gerente / Delegado Adjunto": "Delegado",
+    "Gerente/delegado adjunto": "Delegado",
+    "Gerente/Delegado Adjunto": "Delegado",
+    "Gerente": "Gerência",
+    "Visitor": "Visitante",
+    "Booster": "Apoiador",
+    "Elite ⎰ Special Agent": "Agente Especial",
+    "Elite": "Agente Especial",
+    "Elite Peace": "Agente Especial",
+    "Elite ⎰ Ag. Especial": "Agente Especial",
+    "Elite ⎰ Agente Especial": "Agente Especial",
+    "Member ⎰ Recruit": "Agente",
+    "Membro Peace": "Agente",
+    "Membro ⎰ Recruta": "Agente",
+    "Membro": "Agente",
+    "Recruta": "Agente",
+    "Rookie ⎰ Agent": "Aluno",
+    "Novato Peace": "Aluno",
+    "Novato ⎰ Agente": "Aluno",
+    "Novato": "Aluno",
+    "Aluno Peace": "Aluno",
+    "Intern": "Estagiário",
+    "Estagiario": "Estagiário",
+    "Não Verificado": NOT_VERIFIED_ROLE_NAME,
+    "Não verificado": NOT_VERIFIED_ROLE_NAME,
+    "Nao verificado": NOT_VERIFIED_ROLE_NAME,
+    "Investigator": "Investigador",
+    "Lead Investigator": "Investigador Chefe",
+    "Chief Investigator": "Investigador Chefe",
+    "Investigador Líder": "Investigador Chefe",
+    "Investigador-chefe": "Investigador Chefe",
+    "Investigador chefe": "Investigador Chefe",
 }
 
 ROLE_COLOURS = {
     "Peace": 0x2B2D42,
     "Staff": 0x9B59B6,
+    "Gerência": 0xE67E22,
     "Management": 0xE67E22,
+    "Delegado": 0xF1C40F,
     "Manager ⎰ Deputy Delegate": 0xF1C40F,
+    "Visitante": 0x95A5A6,
     "Visitor": 0x95A5A6,
+    "Agente Especial": 0xE74C3C,
     "Elite ⎰ Special Agent": 0xE74C3C,
+    "Elite ⎰ Agente Especial": 0xE74C3C,
+    "Aluno": 0x2ECC71,
     "Rookie ⎰ Agent": 0x2ECC71,
+    "Novato ⎰ Agente": 0x2ECC71,
+    "Agente": 0x3498DB,
     "Member ⎰ Recruit": 0x3498DB,
+    "Membro ⎰ Recruta": 0x3498DB,
+    "Developer": 0x5865F2,
     "Dev": 0x5865F2,
+    "Estagiário": 0x1ABC9C,
     "Intern": 0x1ABC9C,
     "AIs": 0x8E44AD,
     "Not Verified": 0x7F8C8D,
+    "Não Verificado": 0x7F8C8D,
+    "Investigador": 0x3498DB,
     "Investigator": 0x3498DB,
+    "Investigador Chefe": 0x9B59B6,
+    "Investigador Líder": 0x9B59B6,
     "Lead Investigator": 0x9B59B6,
+    "Diretor Geral": 0xC27C0E,
     "General Director": 0xC27C0E,
-    "Superintendent": 0x8E44AD,
+    "Apoiador": 0x95A5A6,
+    "Booster": 0x95A5A6,
 }
 
 OBSOLETE_ROLE_NAMES = (
+    "Frontend",
+    "Backend",
+    "Frontend Peace",
+    "Backend Peace",
+    "Documentation",
+    "Documentation Peace",
+    "Documentação",
+    "Documentação Peace",
     "Gerente de elites",
     "Gerente de recrutadores",
     "Gerente de vendas",
@@ -159,6 +206,8 @@ OBSOLETE_ROLE_NAMES = (
     "IA & Bots",
     "AI & Bots",
     "IA & Bots Peace",
+    "Superintendente",
+    "Superintendent",
 )
 
 DEPRECATED_ROLE_IDS = (
@@ -203,6 +252,7 @@ async def set_role_access(
     speak: bool | None = None,
     move_members: bool | None = None,
     manage_messages: bool | None = None,
+    deny_threads: bool = False,
 ) -> None:
     if role is None:
         return
@@ -219,6 +269,14 @@ async def set_role_access(
         values["move_members"] = move_members and view
     if manage_messages is not None:
         values["manage_messages"] = manage_messages and view
+    if deny_threads:
+        values.update(
+            {
+                "send_messages_in_threads": False,
+                "create_public_threads": False,
+                "create_private_threads": False,
+            }
+        )
     await channel.set_permissions(role, overwrite=perms(**values), reason="Reorganização Peace")
 
 
@@ -230,6 +288,7 @@ async def set_default_access(
     send: bool = False,
     connect: bool | None = None,
     speak: bool | None = None,
+    deny_threads: bool = False,
 ) -> None:
     values: dict[str, bool] = {
         "view_channel": view,
@@ -240,6 +299,14 @@ async def set_default_access(
         values["connect"] = connect and view
     if speak is not None:
         values["speak"] = speak and view
+    if deny_threads:
+        values.update(
+            {
+                "send_messages_in_threads": False,
+                "create_public_threads": False,
+                "create_private_threads": False,
+            }
+        )
     await channel.set_permissions(guild.default_role, overwrite=perms(**values), reason="Reorganização Peace")
 
 
@@ -274,11 +341,18 @@ async def configure_text(
     allowed: list[discord.Role | None],
     public: bool = False,
     send: bool = True,
+    bot_only: bool = False,
 ) -> None:
     await clear_role_overwrites(channel, guild, allowed)
-    await set_default_access(channel, guild, view=public, send=send if public else False)
+    await set_default_access(
+        channel,
+        guild,
+        view=public,
+        send=send if public else False,
+        deny_threads=bot_only,
+    )
     for role in allowed:
-        await set_role_access(channel, role, view=True, send=send)
+        await set_role_access(channel, role, view=True, send=send, deny_threads=bot_only)
 
 
 async def configure_voice(
@@ -531,68 +605,31 @@ async def ensure_verification_surface(
     guild: discord.Guild,
     not_verified: discord.Role | None = None,
 ) -> tuple[discord.CategoryChannel | None, discord.TextChannel | None]:
-    category = discord.utils.find(
-        lambda item: item.name.casefold() == VERIFICATION_CATEGORY_NAME.casefold(),
-        guild.categories,
-    )
-    if category is None:
-        category = discord.utils.find(
-            lambda item: item.name.casefold() in {
-                "[🔐] verificação",
-                "[🔐] verificacao",
-            },
-            guild.categories,
-        )
-    if category is None:
-        category = await guild.create_category(
-            VERIFICATION_CATEGORY_NAME,
-            reason="Criar área única de verificação da Peace",
-        )
-    elif category.name != VERIFICATION_CATEGORY_NAME:
-        await category.edit(
-            name=VERIFICATION_CATEGORY_NAME,
-            reason="Padronizar categoria única de verificação da Peace",
-        )
-    await category.set_permissions(
-        guild.default_role,
-        overwrite=perms(view_channel=False, read_message_history=False, send_messages=False),
-        reason="Somente membros Not Verified visualizam a verificação",
-    )
+    # `verify` is intentionally a root channel at position zero. Do not move
+    # it into Reception or recreate the retired Verification category.
+    category = None
     channel = discord.utils.find(
-        lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold()
-        and item.category_id == category.id,
+        lambda item: isinstance(item, discord.TextChannel)
+        and item.name.casefold() in {VERIFICATION_CHANNEL_NAME, "verificar"},
         guild.text_channels,
     )
-    if channel is None:
-        channel = discord.utils.find(
-            lambda item: item.name.casefold() == VERIFICATION_CHANNEL_NAME.casefold(),
-            guild.text_channels,
-        )
-    if channel is None:
-        channel = discord.utils.find(
-            lambda item: item.name.casefold() == "verificar"
-            and item.category_id == category.id,
-            guild.text_channels,
-        )
-    if channel is None:
-        channel = discord.utils.find(
-            lambda item: item.name.casefold() == "verificar",
-            guild.text_channels,
-        )
     if channel is None:
         channel = await guild.create_text_channel(
             VERIFICATION_CHANNEL_NAME,
             category=category,
             topic="Eu uso este canal somente para verificar membros.",
-            reason="Criar canal único de verificação da Peace",
+            reason="Criar canal de verificação no topo da Peace",
         )
     else:
         await channel.edit(
             name=VERIFICATION_CHANNEL_NAME,
             category=category,
             topic="Eu uso este canal somente para verificar membros.",
-            reason="Padronizar canal único de verificação da Peace",
+            position=0,
+            reason="Manter o canal de verificação no topo sem categoria",
         )
+    if channel.category is None and channel.position != 0:
+        await channel.edit(position=0, reason="Manter o canal de verificação no topo sem categoria")
     await channel.set_permissions(
         guild.default_role,
         overwrite=perms(view_channel=False, read_message_history=False, send_messages=False),
@@ -601,11 +638,6 @@ async def ensure_verification_surface(
     allowed_subjects: set[discord.Role | discord.Member] = {guild.default_role}
     if not_verified is not None:
         access = perms(view_channel=True, read_message_history=True, send_messages=False)
-        await category.set_permissions(
-            not_verified,
-            overwrite=access,
-            reason="Not Verified precisa acessar a verificação",
-        )
         await channel.set_permissions(
             not_verified,
             overwrite=access,
@@ -613,14 +645,6 @@ async def ensure_verification_surface(
         )
         allowed_subjects.add(not_verified)
     if guild.me is not None:
-        await category.set_permissions(
-            guild.me,
-            view_channel=True,
-            read_message_history=True,
-            send_messages=True,
-            manage_messages=True,
-            reason="Peace Tools precisa manter a categoria de verificação",
-        )
         await channel.set_permissions(
             guild.me,
             view_channel=True,
@@ -630,14 +654,13 @@ async def ensure_verification_surface(
             reason="Peace Tools precisa manter o painel de verificação",
         )
         allowed_subjects.add(guild.me)
-    for target in (category, channel):
-        for subject in list(target.overwrites):
-            if subject not in allowed_subjects:
-                await target.set_permissions(
-                    subject,
-                    overwrite=None,
-                    reason="Remover acesso legado da área de verificação",
-                )
+    for subject in list(channel.overwrites):
+        if subject not in allowed_subjects:
+            await channel.set_permissions(
+                subject,
+                overwrite=None,
+                reason="Remover acesso legado do canal de verificação",
+            )
     return category, channel
 
 
@@ -725,6 +748,30 @@ async def remove_chat_elite(guild: discord.Guild) -> None:
         log.info("Canal chat-elite removido")
 
 
+async def remove_developers_area(guild: discord.Guild) -> None:
+    """Delete the obsolete Developers category and its child channels."""
+
+    category = guild.get_channel(DEVELOPMENT_CATEGORY_ID)
+    if not isinstance(category, discord.CategoryChannel):
+        category = discord.utils.find(
+            lambda item: isinstance(item, discord.CategoryChannel)
+            and item.name.casefold() in LEGACY_DEVELOPMENT_CATEGORY_NAMES,
+            guild.categories,
+        )
+    if isinstance(category, discord.CategoryChannel):
+        for channel in list(category.channels):
+            await channel.delete(reason="Remoção da área Developers solicitada pela Peace")
+        await category.delete(reason="Remoção da área Developers solicitada pela Peace")
+        return
+
+    # If the category was already removed manually, still clean up the two
+    # explicitly retired child channels without touching unrelated channels.
+    for channel_id in (CHANNEL_IDS["dev_chat"], CHANNEL_IDS["dev_call"]):
+        channel = guild.get_channel(channel_id)
+        if isinstance(channel, discord.GuildChannel):
+            await channel.delete(reason="Remoção de canal Developers solicitada pela Peace")
+
+
 def validate_preflight(guild: discord.Guild) -> None:
     """Fail before mutation when the bot cannot manage this migration safely."""
     if guild.me is None:
@@ -769,8 +816,11 @@ async def apply_structure(
     lead_investigator_role_id: int | None = None,
     private_call_category_id: int | None = None,
     remove_chat_elite_channel: bool = False,
+    remove_developers: bool = False,
 ) -> None:
     validate_preflight(guild)
+    if remove_developers:
+        await remove_developers_area(guild)
     await remove_deprecated_roles(guild)
     await rename_roles(guild)
 
@@ -788,7 +838,7 @@ async def apply_structure(
         guild,
         ROLE_NAMES["not_verified"],
         discord.Colour(ROLE_COLOURS["Not Verified"]),
-        aliases=("Não verificado", "Nao verificado"),
+        aliases=("Não Verificado", "Não verificado", "Nao verificado"),
     )
     intern = await ensure_visual_role(
         guild,
@@ -808,7 +858,12 @@ async def apply_structure(
         guild,
         ROLE_NAMES["lead_investigator"],
         discord.Colour(ROLE_COLOURS["Lead Investigator"]),
-        aliases=("Chief Investigator", "Investigador-chefe", "Investigador chefe"),
+        aliases=(
+            "Chief Investigator",
+            "Investigador Líder",
+            "Investigador-chefe",
+            "Investigador chefe",
+        ),
         role_id=lead_investigator_role_id,
         reason="Criar cargo de acesso Lead Investigator da Peace",
     )
@@ -826,57 +881,42 @@ async def apply_structure(
 
     await style_role(peace, ROLE_NAMES["peace"], ROLE_COLOURS["Peace"])
     await style_role(staff, ROLE_NAMES["staff"], ROLE_COLOURS["Staff"])
-    await style_role(manager, ROLE_NAMES["manager"], ROLE_COLOURS["Management"])
-    await style_role(visitor, ROLE_NAMES["visitor"], ROLE_COLOURS["Visitor"])
-    await style_role(technical, ROLE_NAMES["technical"], ROLE_COLOURS["Dev"])
+    await style_role(manager, ROLE_NAMES["manager"], ROLE_COLOURS["Gerência"])
+    await style_role(visitor, ROLE_NAMES["visitor"], ROLE_COLOURS["Visitante"])
+    await style_role(technical, ROLE_NAMES["technical"], ROLE_COLOURS["Developer"])
     await style_role(
         find_role(guild, ROLE_NAMES["general_manager"]),
         ROLE_NAMES["general_manager"],
-        ROLE_COLOURS["Manager ⎰ Deputy Delegate"],
+        ROLE_COLOURS["Delegado"],
     )
     await style_role(
         find_role(guild, ROLE_NAMES["elite"]),
         ROLE_NAMES["elite"],
-        ROLE_COLOURS["Elite ⎰ Special Agent"],
+        ROLE_COLOURS["Agente Especial"],
     )
     await style_role(
         find_role(guild, ROLE_NAMES["novato"]),
         ROLE_NAMES["novato"],
-        ROLE_COLOURS["Rookie ⎰ Agent"],
+        ROLE_COLOURS["Aluno"],
     )
     await style_role(
         find_role(guild, ROLE_NAMES["member"]),
         ROLE_NAMES["member"],
-        ROLE_COLOURS["Member ⎰ Recruit"],
+        ROLE_COLOURS["Agente"],
     )
 
     await ensure_visual_role(
         guild,
         "Developer",
-        discord.Colour(ROLE_COLOURS["Dev"]),
+        discord.Colour(ROLE_COLOURS["Developer"]),
         aliases=("Desenvolvedor Peace", "Developer Peace"),
     )
-    await ensure_visual_role(guild, "Frontend", discord.Colour(0x1ABC9C), aliases=("Frontend Peace",))
-    await ensure_visual_role(guild, "Backend", discord.Colour(0x2ECC71), aliases=("Backend Peace",))
     await ensure_visual_role(
         guild,
-        "Documentation",
-        discord.Colour(0xF1C40F),
-        aliases=("Documentação Peace", "Documentation Peace"),
+        "Diretor Geral",
+        discord.Colour(ROLE_COLOURS["Diretor Geral"]),
+        aliases=("General Director", "Diretor geral"),
     )
-    await ensure_visual_role(
-        guild,
-        "General Director",
-        discord.Colour(ROLE_COLOURS["General Director"]),
-        aliases=("Diretor geral", "Diretor Geral"),
-    )
-    await ensure_visual_role(
-        guild,
-        "Superintendent",
-        discord.Colour(ROLE_COLOURS["Superintendent"]),
-        aliases=("Superintendente",),
-    )
-
     try:
         members = [member async for member in guild.fetch_members(limit=None)]
     except (discord.Forbidden, discord.HTTPException):
@@ -915,8 +955,10 @@ async def apply_structure(
         if not isinstance(channel, discord.TextChannel):
             continue
         await channel.edit(name=desired_name, category=staff_category, reason="Organização da área interna de Staff")
+        # Both surfaces are bot-written. Staff may read and use component
+        # actions, but no human role may post messages in either channel.
         log_roles = [*staff_roles, technical] if key == "logs" else staff_roles
-        await configure_text(channel, guild, allowed=log_roles, send=key != "logs")
+        await configure_text(channel, guild, allowed=log_roles, send=False, bot_only=True)
         if guild.me is not None:
             await set_role_access(channel, guild.me.top_role, view=True, send=True, manage_messages=True)
 
@@ -940,12 +982,6 @@ async def apply_structure(
         "├📕・rules",
         None,
         "├📕・regras",
-    )
-    await rename_channel(
-        guild,
-        "╰📝・request-set",
-        None,
-        "╰📝・pedir-set",
     )
     await rename_channel(
         guild,
@@ -1011,22 +1047,6 @@ async def apply_structure(
             position=max(category_positions, default=closed_category.position) + 1,
             reason="TICKETS-FECHADOS deve permanecer como última categoria",
         )
-
-    development = guild.get_channel(DEVELOPMENT_CATEGORY_ID)
-    development_roles = [technical, staff, manager, founder]
-    if isinstance(development, discord.CategoryChannel):
-        await development.edit(name="[💻] DEVELOPERS", reason="Padronização da área técnica em inglês")
-        await configure_category(development, guild, development_roles)
-        dev_chat = guild.get_channel(CHANNEL_IDS["dev_chat"])
-        dev_call = guild.get_channel(CHANNEL_IDS["dev_call"])
-        if isinstance(dev_chat, discord.TextChannel):
-            await dev_chat.edit(name="╰💬・dev-chat", reason="Padronização do canal Developers")
-            await configure_text(dev_chat, guild, allowed=development_roles, send=True)
-        if isinstance(dev_call, discord.VoiceChannel):
-            await dev_call.edit(name="╭💻・programming", reason="Padronização da call Developers")
-            await configure_voice(dev_call, guild, allowed=development_roles, move_members=False)
-    if legacy_florenza is not None and isinstance(development, discord.CategoryChannel):
-        await development.set_permissions(legacy_florenza, overwrite=None, reason="Remoção do acesso dev legado")
 
     calls = guild.get_channel(CALLS_CATEGORY_ID)
     call_roles = [peace, technical, staff, manager, founder]
@@ -1193,7 +1213,14 @@ async def apply_structure(
     database.initialize()
 
 
-def run_once(*, apply: bool, clean: bool, clean_dev: bool, remove_chat_elite_channel: bool) -> None:
+def run_once(
+    *,
+    apply: bool,
+    clean: bool,
+    clean_dev: bool,
+    remove_chat_elite_channel: bool,
+    remove_developers: bool,
+) -> None:
     settings = Settings.from_env()
     intents = discord.Intents.default()
     intents.members = True
@@ -1221,6 +1248,7 @@ def run_once(*, apply: bool, clean: bool, clean_dev: bool, remove_chat_elite_cha
                 lead_investigator_role_id=settings.lead_investigator_role_id,
                 private_call_category_id=settings.private_call_category_id,
                 remove_chat_elite_channel=remove_chat_elite_channel,
+                remove_developers=remove_developers,
             )
         except Exception:
             log.exception("Migração interrompida antes da conclusão; revise o estado parcial")
@@ -1241,10 +1269,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Reorganiza a estrutura atual da Peace")
     parser.add_argument("--apply", action="store_true", help="aplica as alterações")
     parser.add_argument("--remove-chat-elite", action="store_true", help="remove o canal chat-elite")
+    parser.add_argument(
+        "--remove-developers",
+        action="store_true",
+        help="remove a categoria Developers e os canais dev-chat/programming",
+    )
     parser.add_argument("--clean", action="store_true", help="remove tickets e a categoria AÇÃO")
     parser.add_argument("--clean-dev-chat", action="store_true", help="limpa todo o histórico do chat-dev")
     args = parser.parse_args()
-    if (args.clean or args.clean_dev_chat or args.remove_chat_elite) and not args.apply:
+    if (args.clean or args.clean_dev_chat or args.remove_chat_elite or args.remove_developers) and not args.apply:
         parser.error("ações destrutivas exigem --apply")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     run_once(
@@ -1252,6 +1285,7 @@ def main() -> None:
         clean=args.clean,
         clean_dev=args.clean_dev_chat,
         remove_chat_elite_channel=args.remove_chat_elite,
+        remove_developers=args.remove_developers,
     )
 
 

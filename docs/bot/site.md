@@ -78,12 +78,12 @@ reports that bounded state and the browser automatically requests a replacement
 while remaining in a loading state. The bot binds the invite to the member join
 event, reports the linked
 Discord display name, and exposes the verification state from the member's
-`Not Verified`, `Visitor`, or `Peace` role. The interface advances to the
-interview only after `Visitor` or `Peace` is observed; it never treats the
+`Not Verified`, `Visitante`, or `Peace` role. The interface advances to the
+interview only after `Visitante` or `Peace` is observed; it never treats the
 public service-health check as proof of a member identity and it does not
 create a Discord OAuth session. If the visitor already belongs to the server,
 the candidature flow can identify the existing member by required username and
-optional Discord ID/profile URL, then route `Visitor` to the interview or
+optional Discord ID/profile URL, then route `Visitante` to the interview or
 route an existing `Peace` member to `/acessar/` without requesting a new
 setagem. `/acessar/` validates the numeric Peace ID, including the valid
 Founder ID `0`, against the runtime member record, requires the configured
@@ -332,7 +332,7 @@ a time. Future stage buttons are disabled until the backend-backed entry state
 advances the flow. The Discord invite opens in a new tab and remains reusable
 after a reload until its 30-minute expiry. Stage 02 explains the real `#verify`
 CAPTCHA flow, polls the bounded entry status, and moves automatically only when
-the bot observes `Visitor` or `Peace`. During the invite stage it shows one
+the bot observes `Visitante` or `Peace`. During the invite stage it shows one
 Discord-opening action plus a non-clickable invite label, waits for the bot's
 actual member binding, and never treats a browser click as proof of entry. Its
 troubleshooting panel accepts

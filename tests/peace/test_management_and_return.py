@@ -6,7 +6,7 @@ import discord
 import pytest
 
 from bot.core.identity import prefix_for_roles
-from bot.commands.nick import alias_from_member, build_name
+from bot.commands.nick import alias_from_member, build_name, peace_id_from_member
 from bot.config.settings import _validate_unique_role_ids
 from bot.main import (
     DeleteUserConfirmationView,
@@ -118,6 +118,41 @@ def test_access_roles_do_not_create_prefixes_but_visual_roles_do(tmp_path):
     ) == "F"
 
 
+def test_translated_visual_roles_keep_their_stable_peace_prefixes():
+    expected = {
+        "Delegado": "DEL",
+        "Developer": "D",
+        "Diretor Geral": "G",
+        "Agente Especial": "E",
+        "Agente": "M",
+        "Aluno": "R",
+        "Estagiário": "I",
+        "Streamer": "S",
+    }
+    for role_name, prefix in expected.items():
+        assert prefix_for_roles(
+            user_id=10,
+            role_names=("Peace", role_name),
+            founder_user_id=1,
+            default="N",
+        ) == prefix
+
+    for role_name in (
+        "Gerência",
+        "Visitante",
+        "Apoiador",
+        "Not Verified",
+        "Investigador",
+        "Investigador Chefe",
+    ):
+        assert prefix_for_roles(
+            user_id=10,
+            role_names=("Peace", role_name),
+            founder_user_id=1,
+            default="N",
+        ) == "N"
+
+
 def test_highest_live_visual_role_wins_over_prefix_precedence():
     assert prefix_for_roles(
         user_id=10,
@@ -203,6 +238,30 @@ def test_multi_letter_prefix_formatter_keeps_long_peace_id_intact():
     proposed = build_name("DEL", "a" * 40, 12345678)
     assert proposed.endswith(" 12345678")
     assert len(proposed) <= 32
+
+
+def test_prefix_repair_can_preserve_the_live_peace_id():
+    assert peace_id_from_member({"nick": "R ⎰ Peaceiro 42"}) == 42
+    assert peace_id_from_member({"nick": "Peaceiro 42"}) is None
+
+
+def test_nickname_backfill_role_maps_support_member_role_ids():
+    # The live Discord member payload contains role IDs, while prefix policy
+    # also needs names for visual-role matching. Keep both lookup forms alive.
+    roles = [
+        {"id": "10", "name": "Peace", "position": 4, "hoist": False},
+        {"id": "11", "name": "Streamer", "position": 22, "hoist": True},
+    ]
+    role_positions = {}
+    role_hoist = {}
+    for role in roles:
+        role_id = str(role["id"])
+        role_name = str(role["name"])
+        role_positions[role_id] = role_positions[role_name] = int(role["position"])
+        role_hoist[role_id] = role_hoist[role_name] = bool(role["hoist"])
+
+    assert role_positions["11"] == role_positions["Streamer"] == 22
+    assert role_hoist["11"] is role_hoist["Streamer"] is True
 
 
 def test_peace_nickname_repairs_manager_prefix_without_duplicating_alias(tmp_path):

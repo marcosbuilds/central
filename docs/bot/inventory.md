@@ -27,15 +27,22 @@ credentials are intentionally omitted.
 - closed tickets remain hidden from ordinary members;
 - structural changes are idempotent and require a recoverable snapshot;
 - visual roles do not participate in authorization;
-- Human members receive `Not Verified` on join; `Visitor` is granted only by
+- Human members receive `Not Verified` on join; `Visitante` is granted only by
   the verification CAPTCHA and is never granted on member join;
-- approved sets receive `Peace` and the visual `Intern` label, which has no
+- approved sets receive `Peace` and the visual `Estagiário` label, which has no
   permission authority;
 - role migration snapshots affected members before deleting obsolete roles;
+- the maintained technical roles are `Developer` and `Dev`; obsolete
+  `Frontend`, `Backend`, and `Documentation` roles are removed, as is the
+  obsolete `Superintendente` role;
+- `request-set` is not a Discord surface; applications start at the official
+  site candidature route;
+- `logs` and `scan-only` reject human message sending and are written by the
+  bot;
 - provider credentials remain in protected environment configuration.
 - `/start` is a DM-only operational menu with separate Founder deletion and
   Management announcement guards;
-- Request set exposes only the Player path;
+- Request set is site-owned; Discord does not recreate a public set panel;
 - Peace-ID loss records preserve a reservation reason and optional actor, and
   returning members are routed directly to `scan-only`;
 - the nickname prefix policy is centralized so access roles cannot acquire

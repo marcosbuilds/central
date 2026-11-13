@@ -23,6 +23,16 @@ Bot artwork may contain product-specific text or seasonal styling. Keep it in
 `assets/bot/` and load it through the bot entry point. Do not reuse it in public
 architecture diagrams.
 
+The transparent 128x128 `peace_civil.png`, `peace_verify.png`,
+`peace_pending.png`, `peace_set.png`, `peace_alert.png`, `peace_dove.png`,
+`peace_badge.png`, and `peace_helper.png` files are Peace application-emoji
+artwork generated through the ChatGPT browser on 2026-11-13 from a Peace icon
+sheet. They use RGBA PNG with transparent margins and remain below Discord's
+256 KB application-emoji limit. The matching application emojis are uploaded
+under the same names for use by Peace Tools. `peace_bot.png` is a local
+semantic alias of `peace_helper.png` for generic bot identity messages and is
+not a separate uploaded emoji.
+
 The current `assets/bot/set.png`, `assets/bot/verification.png`,
 `assets/bot/ops.png`, `assets/bot/support.png`, and `assets/bot/welcome.png` are
 reviewed, text-free 2:1 banner assets generated from consolidated visual briefs

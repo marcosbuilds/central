@@ -18,34 +18,25 @@ NON_VISUAL_ROLE_NAMES = frozenset(
         "gerência",
         "gerencia",
         "visitor",
+        "visitante",
         "not verified",
         "não verificado",
         "nao verificado",
         "booster",
+        "apoiador",
         "call montenegro",
     }
 )
 
 VISUAL_ROLE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("DEL", ("manager ⎰ deputy delegate", "gerente ⎰ delegado adjunto")),
-    (
-        "D",
-        (
-            "developer",
-            "desenvolvedor",
-            "documentation",
-            "documentação",
-            "documentacao",
-        ),
-    ),
-    ("F", ("frontend",)),
-    ("B", ("backend", "bot")),
+    ("DEL", ("manager ⎰ deputy delegate", "gerente ⎰ delegado adjunto", "delegado")),
+    ("D", ("developer", "desenvolvedor")),
+    ("B", ("bot",)),
     ("A", ("a is", "ais", "ai & bots", "ia & bots")),
     ("G", ("general director", "diretor geral")),
-    ("S", ("superintendent",)),
-    ("E", ("elite", "elite ⎰ special agent")),
-    ("M", ("member", "member ⎰ recruit")),
-    ("R", ("rookie", "rookie ⎰ agent", "recrutador")),
+    ("E", ("elite", "elite ⎰ special agent", "elite ⎰ agente especial", "agente especial")),
+    ("M", ("member", "member ⎰ recruit", "membro ⎰ recruta", "agente")),
+    ("R", ("rookie", "rookie ⎰ agent", "novato", "novato ⎰ agente", "aluno", "recrutador")),
     ("I", ("intern", "estagiário", "estagiario")),
     ("S", ("streamer",)),
 )

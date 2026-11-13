@@ -83,9 +83,9 @@ def test_new_flow_roles_bind_on_first_startup(tmp_path):
 
     assert [role.name for role in created] == [
         "Not Verified",
-        "Intern",
-        "Investigator",
-        "Lead Investigator",
+        "Estagiário",
+        "Investigador",
+        "Investigador Chefe",
     ]
     assert bot.settings.investigator_role_id == 502
     assert bot.settings.lead_investigator_role_id == 503

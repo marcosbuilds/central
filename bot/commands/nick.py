@@ -6,12 +6,22 @@ import sys
 if (__package__ or "").startswith("bot."):
     from ..integrations.discord_api import DiscordAPI, DiscordAPIError
     from ..config.settings import Settings
-    from ..core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
+    from ..core.identity import (
+        PEACE_NICKNAME_PATTERN,
+        alias_from_nickname,
+        build_peace_nickname,
+        prefix_for_roles,
+    )
     from ..persistence.database import PeaceDatabase
 else:
     from integrations.discord_api import DiscordAPI, DiscordAPIError
     from config.settings import Settings
-    from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
+    from core.identity import (
+        PEACE_NICKNAME_PATTERN,
+        alias_from_nickname,
+        build_peace_nickname,
+        prefix_for_roles,
+    )
     from persistence.database import PeaceDatabase
 
 
@@ -24,11 +34,23 @@ def build_name(prefix: str, alias: str, peace_id: int) -> str:
     return build_peace_nickname(prefix, alias, peace_id)
 
 
+def peace_id_from_member(member: dict) -> int | None:
+    """Return the live nickname ID when prefix-only repair is requested."""
+
+    match = PEACE_NICKNAME_PATTERN.match(str(member.get("nick") or "").strip())
+    return int(match.group("peace_id")) if match else None
+
+
 def run() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Atualiza IDs Peace nos apelidos sem alterar cargos.")
     parser.add_argument("--apply", action="store_true", help="aplica os apelidos permitidos no Discord")
+    parser.add_argument(
+        "--prefix-only",
+        action="store_true",
+        help="atualiza somente o prefixo e preserva o ID Peace já exibido",
+    )
     args = parser.parse_args()
 
     settings = Settings.from_env()
@@ -37,14 +59,17 @@ def run() -> None:
     database.initialize()
     roles = api.guild_roles(settings.guild_id)
     roles_by_id = {str(role["id"]): role for role in roles}
-    role_positions = {
-        str(role.get("name", role["id"])): int(role.get("position", 0))
-        for role in roles
-    }
-    role_hoist = {
-        str(role.get("name", role["id"])): bool(role.get("hoist", False))
-        for role in roles
-    }
+    # Keep both identifiers available. The nickname backfill receives member
+    # roles as IDs, while the shared prefix policy also accepts role names.
+    role_positions: dict[str, int] = {}
+    role_hoist: dict[str, bool] = {}
+    for role in roles:
+        role_id = str(role["id"])
+        role_name = str(role.get("name", role_id))
+        role_positions[role_id] = int(role.get("position", 0))
+        role_positions[role_name] = int(role.get("position", 0))
+        role_hoist[role_id] = bool(role.get("hoist", False))
+        role_hoist[role_name] = bool(role.get("hoist", False))
     guild = api.get(f"/guilds/{settings.guild_id}")
     owner_id = int(guild.get("owner_id", 0))
     bot_member = api.get(f"/guilds/{settings.guild_id}/members/{settings.bot_user_id}")
@@ -85,7 +110,9 @@ def run() -> None:
         )
         fallback = str(user.get("global_name") or user.get("username") or user_id)
         alias = alias_from_member(member, fallback)
-        proposed = build_name(prefix, alias, int(row["peace_id"]))
+        live_peace_id = peace_id_from_member(member) if args.prefix_only else None
+        peace_id = live_peace_id if live_peace_id is not None else int(row["peace_id"])
+        proposed = build_name(prefix, alias, peace_id)
         current = member.get("nick") or "(sem apelido)"
         print(f"{user_id} | {current} -> {proposed}", end="")
         if user_id == owner_id:

@@ -76,20 +76,24 @@ the old ID remains reserved, with no automatic duplicate card.
 Access/status roles do not generate prefixes. For the known visual-role
 allowlist, live Discord metadata must also show “display members of this role
 separately” (`hoist`); the stable code of the highest matching role wins.
-`Manager ⎰ Deputy Delegate` is visual-only in the live server (no global
+`Delegado` is visual-only in the live server (no global
 permissions, channel visibility, or authorization use) and receives `DEL`.
 Existing one-letter visual codes remain unchanged for compatibility. Runtime
 sync, snapshot import, return approval, and `peace-nick` share the same
 length-safe formatter/parser, which accepts one-to-four uppercase ASCII letters
-and preserves the complete Peace ID. `Peace`, `Staff`, `Management`, `Dev`,
-`Visitor`, and status roles remain outside the allowlist and never compete for
-that prefix. Founder remains the explicit `F` exception.
+and preserves the complete Peace ID. `Peace`, `Staff`, `Gerência`, `Visitante`,
+`Apoiador`, and status roles remain outside the allowlist and never compete for
+that prefix. `Developer` is the canonical technical role and `Dev` remains
+retained for compatibility; `Frontend`, `Backend`, and `Documentation` are
+obsolete. Founder
+remains the explicit `F` exception.
 
 ## Compatibility and verification
 
 The SQLite changes run through the existing `PeaceDatabase.initialize()`
 expand-only migration path. No role or channel is created by `/start`, and the
-existing Management role and logs-channel configuration are reused. Synthetic
-tests cover role separation, real confirmation, hierarchy-safe deletion,
-reason/actor persistence, direct return routing, prefix precedence, and
-Player-only set selection.
+existing Gerência role and logs-channel configuration are reused. The public
+set request starts at the official site; Discord no longer recreates
+`request-set`. Synthetic tests cover role separation, real confirmation,
+hierarchy-safe deletion, reason/actor persistence, direct return routing,
+prefix precedence, and site-owned set selection.

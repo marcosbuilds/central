@@ -9,7 +9,8 @@ First slice of the Real Peace bot in Python:
 - ticket category selection, private calls, DM notices, and action blocking after closing;
 - time tracking, farming logs, and absence requests;
 - continuous Iris support using the ticket's recent history;
-- preserves the original `custom_id` values `peace_pedir_set_open`, `peace_support_open_ticket`, and `clock_in_btn`.
+- keeps the support and operations panels stable while set applications remain
+  on the official Peace site.
 
 ## Run
 
@@ -34,10 +35,10 @@ backend payload.
 modify roles. The bot applies a role and nickname only after a candidate
 completes the set flow and the panel is open.
 
-Player applications are open by default. Set `SET_VAGAS_ABERTAS=false` to close
-them. The public Request set panel now opens only the Player path; Developer and
-Staff applications are not offered from that panel. Restart the bot after
-changing the vacancy setting.
+Player applications are presented through the official Peace site at
+`PEACE_SITE_URL/candidatura/`. The Discord `request-set` surface and its
+`painel_set` command are not recreated. Restart the bot after changing the
+vacancy setting.
 
 Founder and Management operational actions live behind the global `/start`
 command in the bot's direct messages. Founder sees the confirmed `Excluir
@@ -62,8 +63,8 @@ buttons keep the existing styles and stable component IDs. Availability is
 enforced by the configured application paths and select options, while each
 card explains what the panel does and why it exists. The set card also keeps
 its existing Peace rule, and the verification card explains the CAPTCHA flow.
-If `Not Verified` is manually reapplied to an existing `Visitor`, the bot
-removes `Visitor`, restores the verification panel, and requires the CAPTCHA
+If `Not Verified` is manually reapplied to an existing `Visitante`, the bot
+removes `Visitante`, restores the verification panel, and requires the CAPTCHA
 again.
 
 Operational action records are sent as embeds to the channel configured by
@@ -77,22 +78,26 @@ reviewer a compact success or failure embed after the action. Runtime
 diagnostics remain application logs and are not copied into the server channel.
 
 Human members enter with the visual `Not Verified` role. The bot exposes one
-verification channel, `verify`, only to that role; its persistent panel starts
-a short CAPTCHA image, and only a correct selection grants `Visitor` while
-removing `Not Verified`. A wrong or expired selection does not grant access and
-returns the member to the start button for another attempt. Bots and members
-with `Peace` never receive `Visitor` from this flow. A manually approved set
-grants `Peace` and the visual `Intern` role, with no global permissions on the
-latter.
+verification channel, `verify`, at the server root without a category. The
+channel is visible only to that role. Its persistent panel starts a short
+CAPTCHA image, and only a correct selection grants `Visitante` while removing
+`Not Verified`. A wrong
+or expired selection does not grant access and returns the member to the start
+button for another attempt. Bots and members with `Peace` never receive
+`Visitante` from this flow. A manually approved set grants `Peace` and the
+visual `Estagiário` role, with no global permissions on the latter.
 
-Peace nicknames use `F` for Founder. Access and status roles such as `Peace`,
-`Dev`, `Staff`, `Management`, `Visitor`, and `Not Verified` do not create a
-prefix. `Manager ⎰ Deputy Delegate` is a visual role and uses the stable code
-`DEL` when Discord's “display members of this role separately” (`hoist`) flag is
-enabled. The remaining known visual roles keep their established short codes
-(`Intern` → `I`, `Rookie ⎰ Agent` → `R`, `Streamer` → `S`). The highest live
-visual role by Discord position wins, and nickname codes use uppercase ASCII
-tokens so they remain readable and searchable on every Discord client.
+Peace nicknames use `F` for `Founder Peace`. Access and status roles such as
+`Peace`, `Staff`, `Gerência`, `Visitante`, `Apoiador`, and `Not Verified` do
+not create a prefix. `Delegado` is a visual role and uses the
+stable code `DEL` when Discord's “display members of this role separately”
+(`hoist`) flag is enabled. The remaining visual roles use the stable codes
+`Developer` → `D`, `Diretor Geral` → `G`, `Agente Especial` → `E`,
+`Agente` → `M`, `Aluno` → `R`, `Estagiário` → `I`, and
+`Streamer` → `S`. `Founder Peace`, `Streamer`, and `Medal` keep their public
+names. The highest live visual role by Discord position wins, and nickname
+codes use uppercase ASCII tokens so they remain readable and searchable on
+every Discord client.
 
 The same rule is used by runtime synchronization, snapshots, return approval,
 and `peace-nick`; their shared formatter accepts one-to-four-letter codes,
@@ -113,11 +118,10 @@ nickname, the database approval is rolled back and the request remains pending.
 
 The public member area does not create or edit Discord permissions. The
 explicit maintenance migration creates the zero-global-permission access roles
-`Investigator` and `Lead Investigator`, which gate the site-only investigative
-area, adds Dev visibility to `logs`, and leaves partner publishing to
-Management. No investigation category or channel is created in Discord; the
-migration remains operator-controlled and `/start` never creates roles or
-channels.
+`Investigador` and `Investigador Chefe`, which gate the site-only investigative
+area, and leaves partner publishing to `Gerência`. No investigation category or
+channel is created in Discord; the migration remains operator-controlled and
+`/start` never creates roles or channels.
 
 When `DISCORD_AFK_CHANNEL_ID` is configured, the bot keeps one idempotent voice
 connection in that channel while online and applies self-mute after startup,
@@ -126,21 +130,25 @@ production value belongs in the provider environment and is not part of the
 public repository.
 
 Members without an access role cannot see the server structure. After
-verification, `Visitor` can read `rules`, use `visitor-chat`, access `SUPPORT`,
-and see `AFK` without connecting. `spam-control` is private to the bot and is
-not a human-access channel.
+verification, `Visitante` can read `rules`, use `visitor-chat`, access
+`SUPPORT`, and see `AFK` without connecting. `spam-control`, `logs`, and
+`scan-only` are bot-only writing surfaces; human members may read the latter
+two only when their access role grants visibility.
 
-The visible Discord structure uses English names. The maintained categories
-are `RECEPTION`, `DEVELOPERS`, `RECORDS`, `SOCIAL LOUNGE`, `SUPPORT`, `CALLS`,
-`PRIVATE CALLS`, `STAFF`, `VERIFICATION`, and `CLOSED TICKETS`; visual role
-labels are also English and do not grant authorization.
+The visible Discord structure keeps the existing category names except for the
+removed `DEVELOPERS` and `VERIFICATION` categories. `verify` remains at the
+server root without a category. The `Developer` and `Dev` roles are retained;
+the obsolete `Frontend`, `Backend`, and `Documentation` roles are removed.
+`logs` and `scan-only` accept messages only from the bot. Visual role
+labels do not grant authorization. The obsolete `Superintendente` role and
+its English alias are removed and never recreated.
 
 The structural migration can create the verification surface, normalize role
 names, save an ignored local role-membership snapshot, clear visual-role
-permissions, and remove the requested legacy roles. Use
-`python -m bot.operations.maintenance --apply --remove-chat-elite` only after
-reviewing the dry run. The `--remove-chat-elite` flag is intentionally explicit
-because channel deletion is irreversible.
+permissions, and remove the requested legacy roles. Review the dry run before
+using `python -m bot.operations.maintenance --apply --remove-developers`.
+The `--remove-developers` flag is intentionally explicit because category and
+channel deletion is irreversible.
 
 Legacy set and reserved-ID outcome messages are handled separately so a log
 cleanup cannot apply the broader structural migration. Run
@@ -191,7 +199,8 @@ uses management, chat, and previous-ticket information as controlled context,
 but does not store raw conversations as memory or reveal internal content to the
 requester.
 
-`bot.commands.nick` recalculates the visual code and final ID portion of existing
-nicknames while preserving the in-game name. It automatically skips the server
-owner and members above the bot's hierarchy; roles are not removed or added by
-this migration.
+`bot.commands.nick --prefix-only` recalculates the visual code of existing
+Peace nicknames while preserving the in-game name and the live Peace ID. It
+automatically skips the server owner and members above the bot's hierarchy;
+roles are not removed or added by this migration. The default mode remains
+available for a reviewed ID repair.

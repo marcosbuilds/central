@@ -1,20 +1,23 @@
 from pathlib import Path
 
-from bot.operations.maintenance import CATEGORY_NAMES, ROLE_COLOURS, VERIFICATION_CHANNEL_NAME
+from bot.operations.maintenance import (
+    CATEGORY_NAMES,
+    OBSOLETE_ROLE_NAMES,
+    ROLE_COLOURS,
+    VERIFICATION_CHANNEL_NAME,
+)
 
 
-def test_verification_and_structural_names_are_english():
+def test_verification_and_structural_names_keep_the_public_contract():
     assert VERIFICATION_CHANNEL_NAME == "verify"
     assert CATEGORY_NAMES == {
         "reception": "[🎫] RECEPTION",
         "staff": "[🛡️] STAFF",
-        "development": "[💻] DEVELOPERS",
         "records": "[ℹ️] RECORDS",
         "social": "[🔔] SOCIAL LOUNGE",
         "support": "[☎️] SUPPORT",
         "calls": "[🎙️] CALLS",
         "private_calls": "[🎙️] PRIVATE CALLS",
-        "verification": "[🔐] VERIFICATION",
         "closed_tickets": "[🎟️] CLOSED TICKETS",
     }
 
@@ -23,20 +26,32 @@ def test_role_palette_covers_every_migrated_public_role():
     assert {
         "Peace",
         "Staff",
+        "Gerência",
         "Management",
+        "Delegado",
         "Manager ⎰ Deputy Delegate",
+        "Visitante",
         "Visitor",
+        "Agente Especial",
         "Elite ⎰ Special Agent",
+        "Aluno",
         "Rookie ⎰ Agent",
+        "Agente",
         "Member ⎰ Recruit",
+        "Developer",
         "Dev",
+        "Estagiário",
         "Intern",
         "AIs",
         "Not Verified",
+        "Não Verificado",
+        "Diretor Geral",
         "General Director",
-        "Superintendent",
+        "Investigador",
+        "Investigador Chefe",
     } <= ROLE_COLOURS.keys()
     assert all(0 < colour < 0x1000000 for colour in ROLE_COLOURS.values())
+    assert {"Superintendente", "Superintendent"} <= set(OBSOLETE_ROLE_NAMES)
 
 
 def test_records_channels_are_not_public_onboarding_surfaces():
@@ -52,6 +67,14 @@ def test_investigation_surface_is_site_owned():
     assert 'CATEGORY_NAMES["investigations"]' not in source
     assert "Criar área restrita de investigação da Peace" not in source
     assert "Criar canal restrito de investigação da Peace" not in source
+
+
+def test_developer_cleanup_is_explicitly_gated():
+    source = Path("bot/operations/maintenance.py").read_text(encoding="utf-8")
+    assert "--remove-developers" in source
+    assert "remove_developers_area" in source
+    assert 'CHANNEL_IDS["dev_chat"]' in source
+    assert 'CHANNEL_IDS["dev_call"]' in source
 
 
 def test_visitor_surface_is_explicit_and_spam_control_is_private():

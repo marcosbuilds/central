@@ -115,15 +115,17 @@ WELCOME_LEGACY_ASSET = "welcome-halloween.png"
 SET_PANEL_ASSET = "set.png"
 TICKET_PANEL_ASSET = "support.png"
 OPERATIONS_PANEL_ASSET = "ops.png"
-VERIFICATION_CATEGORY_NAME = "[🔐] VERIFICATION"
 VERIFICATION_CHANNEL_NAME = "verify"
 VERIFICATION_PANEL_MARKER = "verification:panel"
 VERIFICATION_ASSET = "verification.png"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
-INTERN_ROLE_NAME = "Intern"
+INTERN_ROLE_NAME = "Estagiário"
+VISITOR_ROLE_NAME = "Visitante"
+INVESTIGATOR_ROLE_NAME = "Investigador"
+LEAD_INVESTIGATOR_ROLE_NAME = "Investigador Chefe"
 FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
-MANAGEMENT_ROLE_NAMES = ("Management", "Gerência", "Gerencia")
+MANAGEMENT_ROLE_NAMES = ("Gerência", "Management", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
 PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
@@ -631,7 +633,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
         if selected != answer:
             self.bot.verification_challenges.pop(self.member_id, None)
             await interaction.edit_original_response(
-                content="Código incorreto. O cargo Visitor não foi liberado. Clique em **Iniciar verificação** para tentar novamente.",
+                content="Código incorreto. O cargo Visitante não foi liberado. Clique em **Iniciar verificação** para tentar novamente.",
                 embed=None,
                 attachments=[],
                 view=VerificationStartView(self.bot),
@@ -643,6 +645,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
             role_named(
                 interaction.guild,
                 getattr(self.bot.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
                 "Visitor",
             )
             if interaction.guild
@@ -662,7 +665,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
         self.bot.verification_challenges.pop(self.member_id, None)
         if member is None or member.bot or visitor is None:
             await interaction.edit_original_response(
-                content="Eu não consegui liberar o cargo Visitor. Procure a staff.",
+                content="Eu não consegui liberar o cargo Visitante. Procure a staff.",
                 embed=None,
                 attachments=[],
                 view=None,
@@ -670,7 +673,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
             return
         if role_member(member, self.bot.settings.peace_role_id):
             await interaction.edit_original_response(
-                content="Eu confirmei sua conta, mas não apliquei Visitor porque você já possui o cargo Peace.",
+                content="Eu confirmei sua conta, mas não apliquei Visitante porque você já possui o cargo Peace.",
                 embed=None,
                 attachments=[],
                 view=None,
@@ -679,7 +682,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
         if visitor in member.roles:
             if not_verified is not None and not_verified in member.roles:
                 try:
-                    await member.remove_roles(not_verified, reason="Visitor já verificado pelo CAPTCHA")
+                    await member.remove_roles(not_verified, reason="Visitante já verificado pelo CAPTCHA")
                 except (discord.Forbidden, discord.HTTPException):
                     await interaction.edit_original_response(
                         content="Eu confirmei sua conta, mas não consegui remover o cargo Not Verified. A staff precisa corrigir isso.",
@@ -689,7 +692,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
                     )
                     return
             await interaction.edit_original_response(
-                content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
+                content="Eu já confirmei sua conta e o cargo Visitante já está liberado.",
                 embed=None,
                 attachments=[],
                 view=None,
@@ -706,7 +709,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
             )
         ):
             await interaction.edit_original_response(
-                content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitor. A staff precisa corrigir isso.",
+                content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitante. A staff precisa corrigir isso.",
                 embed=None,
                 attachments=[],
                 view=None,
@@ -723,8 +726,8 @@ class VerificationCaptchaSelect(discord.ui.Select):
                 try:
                     await member.remove_roles(visitor, reason="Rollback de verificação incompleta")
                 except (discord.Forbidden, discord.HTTPException):
-                    log.exception("Falha ao reverter Visitor após falha na remoção de Not Verified")
-            log.exception("Falha ao aplicar Visitor após verificação para %s", member.id)
+                    log.exception("Falha ao reverter Visitante após falha na remoção de Not Verified")
+            log.exception("Falha ao aplicar Visitante após verificação para %s", member.id)
             await interaction.edit_original_response(
                 content="Não consegui concluir a verificação. Nenhum acesso foi liberado; clique em **Iniciar verificação** para tentar novamente.",
                 embed=None,
@@ -733,7 +736,7 @@ class VerificationCaptchaSelect(discord.ui.Select):
             )
             return
         await interaction.edit_original_response(
-            content="Eu confirmei que você não é um bot e liberei o cargo Visitor. Agora você pode acessar as áreas de visitante.",
+            content="Eu confirmei que você não é um bot e liberei o cargo Visitante. Agora você pode acessar as áreas de visitante.",
             embed=None,
             attachments=[],
             view=None,
@@ -755,18 +758,19 @@ class VerificationStartView(discord.ui.View):
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
         if member is None or member.bot:
             await interaction.edit_original_response(
-                content="Eu não libero o cargo Visitor para contas de bot.",
+                content="Eu não libero o cargo Visitante para contas de bot.",
                 view=None,
             )
             return
         visitor = role_named(
             member.guild,
             getattr(self.bot.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
             "Visitor",
         )
         if visitor is not None and visitor in member.roles:
             await interaction.edit_original_response(
-                content="Eu já confirmei sua conta e o cargo Visitor já está liberado.",
+                content="Eu já confirmei sua conta e o cargo Visitante já está liberado.",
                 view=None,
             )
             return
@@ -1606,7 +1610,12 @@ class ReturnApprovalView(discord.ui.View):
                     view=self,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
-                visitor_role = role_named(target.guild, getattr(self.bot.settings, "visitor_role_id", None), "Visitor")
+                visitor_role = role_named(
+                    target.guild,
+                    getattr(self.bot.settings, "visitor_role_id", None),
+                    VISITOR_ROLE_NAME,
+                    "Visitor",
+                )
                 not_verified_role = role_named(
                     target.guild,
                     getattr(self.bot.settings, "not_verified_role_id", None),
@@ -2202,7 +2211,6 @@ class WelcomeView(discord.ui.View):
     def __init__(self, bot: "PeaceBot"):
         super().__init__(timeout=None)
         guild_id = bot.settings.guild_id
-        set_id = bot.settings.set_channel_id
         rules_id = bot.settings.rules_channel_id
         ticket_id = bot.settings.ticket_panel_channel_id
         if rules_id is not None:
@@ -2212,9 +2220,9 @@ class WelcomeView(discord.ui.View):
                 url=f"https://discord.com/channels/{guild_id}/{rules_id}",
             ))
         self.add_item(discord.ui.Button(
-            label="◈ Pedir set",
+            label="↗ Candidatar pelo site",
             style=discord.ButtonStyle.link,
-            url=f"https://discord.com/channels/{guild_id}/{set_id}",
+            url=f"{bot.settings.website_url.rstrip('/')}/candidatura/",
         ))
         if ticket_id is not None:
             self.add_item(discord.ui.Button(
@@ -2721,7 +2729,6 @@ class PeaceBot(commands.Bot):
         self.database.initialize()
         await self.start_public_api()
         await self.start_central_bridge()
-        self.add_view(SetView(self))
         self.add_view(VerificationStartView(self))
         self.add_view(SupportView(self))
         self.add_view(OperationsView(self))
@@ -2769,30 +2776,36 @@ class PeaceBot(commands.Bot):
             (
                 NOT_VERIFIED_ROLE_NAME,
                 getattr(self.settings, "not_verified_role_id", None),
-                ("Não verificado", "Nao verificado"),
+                ("Não Verificado", "Não verificado", "Nao verificado"),
                 discord.Colour(0x7F8C8D),
             ),
             (
                 INTERN_ROLE_NAME,
                 getattr(self.settings, "intern_role_id", None),
-                ("Estagiário", "Estagiario"),
+                ("Intern", "Estagiario"),
                 discord.Colour(0x1ABC9C),
             ),
             (
-                "Investigator",
+                INVESTIGATOR_ROLE_NAME,
                 getattr(self.settings, "investigator_role_id", None),
-                ("Investigador",),
+                ("Investigator",),
                 discord.Colour(0x3498DB),
             ),
             (
-                "Lead Investigator",
+                LEAD_INVESTIGATOR_ROLE_NAME,
                 getattr(self.settings, "lead_investigator_role_id", None),
-                ("Chief Investigator", "Investigador-chefe", "Investigador chefe"),
+                (
+                    "Lead Investigator",
+                    "Chief Investigator",
+                    "Investigador Líder",
+                    "Investigador-chefe",
+                    "Investigador chefe",
+                ),
                 discord.Colour(0x9B59B6),
             ),
         )
         for name, role_id, aliases, colour in specs:
-            access_role = name in {"Investigator", "Lead Investigator"}
+            access_role = name in {INVESTIGATOR_ROLE_NAME, LEAD_INVESTIGATOR_ROLE_NAME}
             role = (
                 unique_role_named(self.guild, role_id, name, *aliases)
                 if access_role
@@ -2829,9 +2842,9 @@ class PeaceBot(commands.Bot):
                     permissions=discord.Permissions.none(),
                     reason="Padronizar cargo do fluxo de entrada da Peace",
                 )
-            if name == "Investigator" and getattr(self.settings, "investigator_role_id", None) is None:
+            if name == INVESTIGATOR_ROLE_NAME and getattr(self.settings, "investigator_role_id", None) is None:
                 self.bind_flow_role_id("investigator_role_id", role.id)
-            elif name == "Lead Investigator" and getattr(self.settings, "lead_investigator_role_id", None) is None:
+            elif name == LEAD_INVESTIGATOR_ROLE_NAME and getattr(self.settings, "lead_investigator_role_id", None) is None:
                 self.bind_flow_role_id("lead_investigator_role_id", role.id)
 
     def entry_guild(self) -> discord.Guild | None:
@@ -2941,7 +2954,12 @@ class PeaceBot(commands.Bot):
         guild = self.entry_guild()
         if guild is None:
             return
-        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor")
+        visitor = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
         not_verified = role_named(
             guild,
             getattr(self.settings, "not_verified_role_id", None),
@@ -3032,7 +3050,16 @@ class PeaceBot(commands.Bot):
         await self.refresh_entry_session(session)
         member = self.entry_member(session)
         guild = self.entry_guild()
-        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor") if guild else None
+        visitor = (
+            role_named(
+                guild,
+                getattr(self.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
+                "Visitor",
+            )
+            if guild
+            else None
+        )
         not_verified = (
             role_named(
                 guild,
@@ -3188,7 +3215,12 @@ class PeaceBot(commands.Bot):
         guild = self.entry_guild()
         if member is None or guild is None:
             return web.json_response({"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "Não consegui localizar sua entrada no servidor."}, status=404)
-        visitor = role_named(guild, getattr(self.settings, "visitor_role_id", None), "Visitor")
+        visitor = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
         not_verified = role_named(
             guild,
             getattr(self.settings, "not_verified_role_id", None),
@@ -3903,7 +3935,7 @@ class PeaceBot(commands.Bot):
         if peace_member:
             return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user})
         if visitor:
-            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitor foi confirmada. Continue a entrevista.", "discord_user": discord_user})
+            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitante foi confirmada. Continue a entrevista.", "discord_user": discord_user})
         if not_verified:
             return web.json_response({"ok": True, "status": "verification_pending", "next_stage": 2, "message": "Sua conta está no servidor. Conclua a verificação humana no canal #verify.", "discord_user": discord_user})
         return web.json_response({"ok": True, "status": "role_missing", "next_stage": 2, "message": "Sua conta está no servidor, mas o cargo de entrada não foi localizado.", "discord_user": discord_user})
@@ -5548,6 +5580,7 @@ class PeaceBot(commands.Bot):
             visitor = role_named(
                 after.guild,
                 getattr(self.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
                 "Visitor",
             )
             not_verified = role_named(
@@ -5704,7 +5737,6 @@ class PeaceBot(commands.Bot):
 
     async def sync_panels(self) -> bool:
         results = await asyncio.gather(
-            self.sync_one_panel(self.settings.set_channel_id, "peace_pedir_set_open", self.set_panel_embeds(), SetView(self), SET_PANEL_ASSET),
             self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embeds(), SupportView(self), TICKET_PANEL_ASSET),
             self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embeds(), OperationsView(self), OPERATIONS_PANEL_ASSET),
         )
@@ -5741,7 +5773,7 @@ class PeaceBot(commands.Bot):
             title="Como funciona",
             description=(
                 "Clique em **Iniciar verificação**, leia o código da imagem e selecione a resposta. "
-                "Quando a escolha estiver correta, eu libero o cargo **Visitor** para você."
+                "Quando a escolha estiver correta, eu libero o cargo **Visitante** para você."
             ),
             color=0x101827,
         )
@@ -6341,7 +6373,7 @@ class PeaceBot(commands.Bot):
         )
         embed.add_field(
             name="2 · ENTRAR",
-            value="Peça seu set quando estiver pronto.",
+            value="Envie sua candidatura pelo site oficial.",
             inline=True,
         )
         embed.add_field(
@@ -6358,7 +6390,7 @@ class PeaceBot(commands.Bot):
             title="Como funciona",
             description=(
                 "Use os botões para seguir o primeiro acesso na ordem certa: leia as regras, "
-                "faça sua entrevista e procure a equipe quando precisar."
+                "abra a candidatura no site e procure a equipe quando precisar."
             ),
             color=0x101827,
         )
@@ -6891,6 +6923,7 @@ class PeaceBot(commands.Bot):
         visitor = role_named(
             member.guild,
             getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
             "Visitor",
         )
         not_verified = role_named(
@@ -7554,6 +7587,7 @@ class PeaceBot(commands.Bot):
         visitor_role = role_named(
             target.guild,
             getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
             "Visitor",
         )
         not_verified_role = role_named(
@@ -8363,6 +8397,7 @@ class PeaceBot(commands.Bot):
         visitor_role = role_named(
             guild,
             getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
             "Visitor",
         )
         not_verified_role = role_named(
@@ -8574,22 +8609,6 @@ async def start(interaction: discord.Interaction) -> None:
     )
 
 
-@app_commands.command(name="painel_set", description="Publica ou atualiza o painel de pedido de set")
-async def panel_set(interaction: discord.Interaction) -> None:
-    bot = interaction.client
-    if not isinstance(bot, PeaceBot) or not isinstance(interaction.user, discord.Member):
-        return
-    if not staff_member(interaction.user, bot.settings):
-        await respond(interaction, "Apenas a staff pode sincronizar painéis.")
-        return
-    if interaction.channel_id != bot.settings.set_channel_id:
-        await respond(interaction, "Use este comando no canal de pedir set.")
-        return
-    await interaction.response.defer(ephemeral=True)
-    await bot.sync_one_panel(bot.settings.set_channel_id, "peace_pedir_set_open", bot.set_panel_embeds(), SetView(bot), SET_PANEL_ASSET)
-    await interaction.followup.send("Painel de set sincronizado.", ephemeral=True)
-
-
 async def booster_owner_context(interaction: discord.Interaction):
     bot = interaction.client
     if not isinstance(bot, PeaceBot) or not isinstance(interaction.user, discord.Member):
@@ -8739,7 +8758,6 @@ def run() -> None:
     guild = discord.Object(id=settings.guild_id)
     bot.tree.add_command(start)
     for command in (
-        panel_set,
         sync_panels,
         absence,
         farm,
