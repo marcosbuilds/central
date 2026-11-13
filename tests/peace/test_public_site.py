@@ -1686,14 +1686,16 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     redirects = (Path(__file__).parents[2] / "bot" / "site" / "_redirects").read_text(encoding="utf-8")
 
-    assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
-    assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
-    assert "/estudos /estudos/ 301!" in redirects
-    assert "/meu-processo /meu-processo/ 301!" in redirects
-    assert "/estudos/civil /estudos/civil/ 301!" in redirects
-    assert "/estudos/peace /estudos/peace/ 301!" in redirects
-    assert "/estudos/a-peace /estudos/peace/ 301!" in redirects
-    assert "/estudos/a-peace/ /estudos/peace/ 301!" in redirects
+    redirect_lines = redirects.splitlines()
+
+    assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirect_lines
+    assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirect_lines
+    assert "/estudos /estudos/ 301" in redirect_lines
+    assert "/meu-processo /meu-processo/ 301" in redirect_lines
+    assert "/estudos/civil /estudos/civil/ 301" in redirect_lines
+    assert "/estudos/peace /estudos/peace/ 301" in redirect_lines
+    assert "/estudos/a-peace /estudos/peace/ 301" in redirect_lines
+    assert "/estudos/a-peace/ /estudos/peace/ 301" in redirect_lines
     assert "/api/status https://peace-tools-8be02694.aclclouds.online/api/status 200!" in redirects
     assert "/api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!" in redirects
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
