@@ -50,7 +50,7 @@ directory directly. `script.js` and `styles.css` remain compatibility
 entrypoints for every route; their implementation is split into
 `bot/site/js/` and `bot/site/css/` by responsibility. This keeps cacheable
 public URLs stable while allowing media, candidature, access, member-area,
-layout, and responsive rules to be maintained independently.
+study/process, layout, and responsive rules to be maintained independently.
 
 ACL deployment packages are backend-only. A valid package contains the bot
 entrypoint and its support modules, configuration, persistence, operations,
@@ -113,6 +113,30 @@ overview keeps a separate per-member refresh throttle. Source blocks report
 `ready`, `empty`, or `unavailable` with `stale` metadata rather than presenting
 a failed Discord/SQLite read as current data.
 
+The public learning library is separate from `/area/`. `/estudos/` links to
+the Civil study material and the Peace convivencia manual, while
+`/meu-processo/` is the candidate-facing shell for future Discord-linked exam
+tracking. These pages do not require a Peace role. They currently expose
+truthful pending states for the PDFs and the selection integration; they do not
+invent grades, attempts, deadlines, approvals, or candidate records.
+
+The public shell also makes the future selection contract visible without
+pretending that it is active: the Civil page explains that the question bank is
+shared while the per-attempt order may differ, and the process page separates
+the authenticated Discord ID from the display-only username. The PDF cards are
+non-interactive pending states until the team publishes a reviewed file. The
+navigation keeps the current study context visible and fragment targets are
+focusable so keyboard and screen-reader users can move from the outline to the
+requested chapter.
+
+The deferred selection contract is intentionally narrower than the member
+area: only Gerência may create, assign, revoke, or grade an exam, and that
+authorization must be enforced server-side by a stable Discord role ID. A
+future candidate session may read only records bound to its authenticated
+Discord ID. A username is a display snapshot rather than an authorization
+key. See `docs/architecture/decisions/2026-11-13-peace-public-learning-and-selection.md`
+for the public boundary and deferred work.
+
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
 to the public Discord invite with a temporary redirect. It also proxies the
@@ -157,7 +181,12 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/acessar/` | serves the member Peace ID + code login UI |
 | Netlify `/avisos/` | serves the dedicated public notices interface |
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
-| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros` | normalize to their trailing-slash routes |
+| Netlify `/estudos/` | serves the public study library and PDF-ready material cards |
+| Netlify `/estudos/civil/` | serves the public Civil study structure and pending PDF slot |
+| Netlify `/estudos/peace/` | serves the public Peace convivencia manual structure and pending PDF slot |
+| Netlify `/meu-processo/` | serves the candidate-owned process shell without synthetic records |
+| Netlify `/estudos/a-peace` | redirects to `/estudos/peace/` as a readable alias |
+| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell |
 | Netlify `/api/status` | proxies only the public backend status contract |

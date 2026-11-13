@@ -7,8 +7,8 @@
     <meta name="description" content="Peace é uma comunidade para conversar, criar e participar. Conheça a entrada e os espaços públicos da comunidade.">
     <title>Peace — comunidade, presença e participação</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-   <link rel="stylesheet" href="/styles.css?v=20261112-28">
-  <script defer src="/script.js?v=20261112-28"></script>
+   <link rel="stylesheet" href="/styles.css?v=20261113-01">
+  <script defer src="/script.js?v=20261113-01"></script>
   </head>
   <body data-page="home">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -22,6 +22,9 @@
 
         <nav class="site-nav" id="site-nav" aria-label="Navegação principal">
           <a href="#sobre">A Peace</a>
+          <a href="/estudos/">Estudos</a>
+          <a href="/meu-processo/">Meu processo</a>
+          <a class="site-nav-entry" href="/entrar/">Entrar para Peace</a>
           <a href="#entrada">Como entrar</a>
           <a href="/avisos/">Avisos</a>
           <a href="/parceiros/">Parceiros</a>
@@ -42,7 +45,7 @@
         </button>
       </header>
 
-      <main id="conteudo">
+      <main id="conteudo" tabindex="-1">
         <section class="hero" id="top" aria-labelledby="hero-title">
           <div class="hero-orbit hero-orbit--outer" aria-hidden="true"></div>
           <div class="hero-orbit hero-orbit--middle" aria-hidden="true"></div>
@@ -63,12 +66,12 @@
             <h1 id="hero-title">O seu espaço.<br><em>Nosso jeito.</em></h1>
             <p class="hero-lede">Uma comunidade feita de presença, conversa e respeito. Sem precisar ser mais complicado que isso.</p>
             <div class="hero-actions">
-              <a class="button button--light button--large" href="/entrar/">
+              <a class="button button--light button--large" href="/estudos/">
                 <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
-                <span>Entrar para Peace</span>
+                <span>Estudar para entrar</span>
                 <span class="button-icon" aria-hidden="true">↗</span>
               </a>
-              <a class="hero-secondary-action" href="#sobre">Conhecer a Peace <span class="button-icon" aria-hidden="true">↓</span></a>
+              <a class="hero-secondary-action" href="/meu-processo/">Acompanhar meu processo <span class="button-icon" aria-hidden="true">↗</span></a>
             </div>
           </div>
 
@@ -97,6 +100,17 @@
             <div role="listitem" data-reveal><span>01</span><strong>Presença</strong><p>Chegar, acompanhar e participar com atenção.</p></div>
             <div role="listitem" data-reveal><span>02</span><strong>Conversa</strong><p>Encontrar o canal certo antes de procurar atalhos.</p></div>
             <div role="listitem" data-reveal><span>03</span><strong>Respeito</strong><p>Construir um espaço claro para quem já está e quem chega.</p></div>
+          </div>
+        </section>
+
+        <section class="section learning-hub" id="estudos" aria-labelledby="learning-title">
+          <div class="section-heading section-heading--split" data-reveal>
+            <div><p class="eyebrow">02 / Estudos públicos</p><h2 id="learning-title">Antes de entrar, <em>entenda o caminho.</em></h2></div>
+            <div><p>Materiais públicos para conhecer a Peace e se preparar para a Civil. Os PDFs entram quando forem publicados; a estrutura já está pronta para receber cada versão.</p><a class="text-link" href="/estudos/">Abrir a biblioteca de estudos <span aria-hidden="true">↗</span></a></div>
+          </div>
+          <div class="learning-preview-grid" data-reveal>
+            <a class="learning-preview" href="/estudos/civil/"><span class="learning-preview-number">01 / CIVIL</span><h3>Apostila Civil</h3><p>Material de preparação com capítulos organizados e espaço para o PDF oficial.</p><span class="text-link">Estudar agora <span aria-hidden="true">↗</span></span></a>
+            <a class="learning-preview" href="/estudos/peace/"><span class="learning-preview-number">02 / A PEACE</span><h3>Manual de convivência</h3><p>Uma leitura web para acompanhar o manual e consultar o PDF quando estiver pronto.</p><span class="text-link">Conhecer a Peace <span aria-hidden="true">↗</span></span></a>
           </div>
         </section>
 
@@ -134,7 +148,7 @@
 
         <section class="section entry" id="entrada" aria-labelledby="entry-title">
           <div class="section-heading" data-reveal>
-            <p class="eyebrow">02 / Como entrar</p>
+            <p class="eyebrow">04 / Como entrar</p>
             <h2 id="entry-title">O caminho é curto.<br><em>O espaço continua aberto.</em></h2>
             <p>O servidor organiza a chegada em etapas claras. A liberação de acesso e qualquer decisão continuam sob autoridade do Discord e do Peace Tools.</p>
           </div>
@@ -170,7 +184,7 @@
 
         <section class="section history" id="historico" aria-labelledby="history-title">
           <div class="section-heading section-heading--split" data-reveal>
-            <div><p class="eyebrow">04 / Nossa trajetória</p><h2 id="history-title">A Peace toma forma <em>com quem chega.</em></h2></div>
+            <div><p class="eyebrow">05 / Nossa trajetória</p><h2 id="history-title">A Peace toma forma <em>com quem chega.</em></h2></div>
             <p>Uma leitura curta dos marcos públicos já registrados. O detalhe e a conversa continuam nos canais autorizados do Discord.</p>
           </div>
           <div class="history-list" role="list">
@@ -181,7 +195,7 @@
         </section>
 
         <section class="section member-invite" aria-labelledby="member-invite-title">
-          <div data-reveal><p class="eyebrow">05 / Área do membro</p><h2 id="member-invite-title">Depois da entrada, <em>acompanhe sem ruído.</em></h2><p>A área reúne status, pedidos e suporte sem tirar do Discord o que pertence à conversa. O acesso permanece condicionado à sessão e às permissões reais.</p><a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a></div>
+          <div data-reveal><p class="eyebrow">06 / Área do membro</p><h2 id="member-invite-title">Depois da entrada, <em>acompanhe sem ruído.</em></h2><p>A área reúne status, pedidos e suporte sem tirar do Discord o que pertence à conversa. O acesso permanece condicionado à sessão e às permissões reais.</p><a class="text-link" href="/area/">Conhecer a área do membro <span aria-hidden="true">↗</span></a></div>
           <div class="member-invite-mark" data-reveal aria-hidden="true"><span></span><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"><span></span></div>
         </section>
       </main>

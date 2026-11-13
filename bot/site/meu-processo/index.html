@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR" data-page="process">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Acompanhe seu processo seletivo, provas e resultados da Peace em um só lugar.">
+    <title>Meu processo — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261113-02">
+    <script defer src="/script.js?v=20261113-01"></script>
+  </head>
+  <body data-page="process">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page process-page">
+      <header class="flow-header" aria-label="Meu processo">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
+        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/" aria-current="page">Meu processo</a><a href="/avisos/">Avisos</a><a href="/parceiros/">Parceiros</a><a href="/#sobre">A Peace</a></nav>
+        <a class="button button--outline flow-header-cta" href="/entrar/"><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">Entrar para Peace</a>
+      </header>
+
+      <main id="conteudo" class="process-main" tabindex="-1">
+        <section class="process-hero" data-reveal aria-labelledby="process-title">
+          <div>
+            <p class="eyebrow">Acompanhamento individual</p>
+            <h1 id="process-title">Acompanhe o processo.<br><em>Sem adivinhação.</em></h1>
+            <p class="flow-lede">Esta área pública está sendo preparada para receber suas provas atribuídas, prazos, resultados e próximos passos. Quando a integração estiver ativa, o acesso será confirmado pelo Discord — sem exigir que você seja membro da Peace para consultar o próprio processo.</p>
+            <div class="process-actions"><a class="button button--light button--large" href="/estudos/civil/">Começar pela Apostila Civil <span class="button-icon" aria-hidden="true">→</span></a><a class="flow-secondary-action" href="#conexao">Como a conexão funcionará <span class="button-icon" aria-hidden="true">↓</span></a></div>
+          </div>
+          <aside class="process-hero-aside" aria-label="Estado da integração"><span class="status-mark" aria-hidden="true"></span><p class="eyebrow">Integração de identidade</p><strong>Acompanhamento em preparação.</strong><p>O painel visual já está definido. A conexão real com Discord e a consulta de provas serão ativadas na próxima etapa.</p></aside>
+        </section>
+
+        <section class="process-summary" aria-label="O que será acompanhado" data-reveal>
+          <article class="process-card"><p class="eyebrow">01 / Prova</p><h2>Questões atribuídas</h2><p>Você verá a versão da avaliação, o prazo e o acesso individual.</p></article>
+          <article class="process-card"><p class="eyebrow">02 / Resultado</p><h2>Nota e decisão</h2><p>O resultado ficará ligado ao seu Discord ID e à tentativa registrada.</p></article>
+          <article class="process-card"><p class="eyebrow">03 / Próximo passo</p><h2>Pedido de set</h2><p>Após aprovação, o pedido será encaminhado para revisão da equipe.</p></article>
+        </section>
+
+        <section class="process-empty" id="conexao" tabindex="-1" aria-labelledby="connection-title" data-reveal>
+          <span class="process-empty-icon" aria-hidden="true">ID</span>
+          <div><p class="eyebrow">Nenhum processo vinculado nesta sessão</p><h2 id="connection-title">A conexão com Discord ainda não está ativa.</h2><p>Quando o OAuth estiver conectado, esta página confirmará o Discord ID autenticado e mostrará somente os registros pertencentes a ele. Username será apenas uma identificação visual; nunca será usado sozinho para autorizar acesso.</p><span class="status-tag status-tag--planned">Integração planejada</span><dl class="process-identity-list" aria-label="Limites planejados de identidade"><div><dt>Discord ID</dt><dd>Fonte de autorização.</dd></div><div><dt>Username</dt><dd>Identificação visual.</dd></div><div><dt>Membro Peace</dt><dd>Não será pré-requisito.</dd></div></dl></div>
+        </section>
+
+        <section class="process-flow" aria-labelledby="flow-title" data-reveal>
+          <div class="study-section-heading"><div><p class="eyebrow">Como o processo será exibido</p><h2 id="flow-title">Um histórico que explica o próximo passo.</h2></div><p>Sem dados vinculados, mostramos somente a estrutura e o limite de cada etapa.</p></div>
+          <article class="process-flow-row"><span class="process-flow-index">01</span><div><h3>Identidade confirmada</h3><p>Discord ID autenticado e comparado com a atribuição criada pela Gerência.</p></div><span class="status-tag status-tag--planned">Aguardando conexão</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">02</span><div><h3>Prova atribuída</h3><p>Link único, prazo final e versão do banco de questões registrados no processo. A ordem será individual, sem mudar o conjunto de questões.</p></div><span class="status-tag status-tag--planned">Aguardando atribuição</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">03</span><div><h3>Resultado disponível</h3><p>Nota, tentativa e decisão aparecem depois do envio e da correção autorizada.</p></div><span class="status-tag status-tag--planned">Aguardando prova</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">04</span><div><h3>Solicitar set</h3><p>A aprovação habilita o pedido; a aplicação de cargo continua sob revisão da equipe e do bot.</p></div><span class="status-tag status-tag--planned">Após aprovação</span></article>
+        </section>
+
+        <section class="process-boundary" aria-labelledby="boundary-title" data-reveal>
+          <div><p class="eyebrow">Limite de acesso</p><strong id="boundary-title">Você verá somente o seu processo.</strong></div>
+          <p>Somente a Gerência poderá gerar, atribuir, revogar e corrigir provas. O candidato poderá estudar, confirmar sua identidade, realizar a prova atribuída e consultar seu próprio resultado. Nenhum cargo da Peace será necessário para a área pública.</p>
+        </section>
+      </main>
+
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Seu processo, com identidade e próximo passo.</p><a class="footer-link" href="/estudos/">Estudos <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

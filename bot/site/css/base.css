@@ -8,7 +8,7 @@
   --border-soft: rgba(185, 202, 211, 0.14);
   --text: #eef1f3;
   --muted: #9aa8b2;
-  --quiet: #71808a;
+  --quiet: #84939d;
   --accent: #b9cad3;
   --accent-strong: #e7f0f4;
   --cap: #263243;
@@ -117,6 +117,7 @@ button, a { -webkit-tap-highlight-color: transparent; touch-action: manipulation
 .site-nav a, .header-login, .footer-link, .text-link { transition: color 180ms var(--ease-fast); }
 .site-nav a:hover, .site-nav a:focus-visible, .header-login:hover, .header-login:focus-visible, .footer-link:hover, .footer-link:focus-visible, .text-link:hover, .text-link:focus-visible { color: var(--text); }
 .site-nav a[aria-current="page"] { color: var(--text); }
+.site-nav-entry { display: none; }
 
 .header-actions { display: flex; align-items: center; gap: 1.1rem; }
 .header-login { color: var(--muted); font-size: 0.77rem; }

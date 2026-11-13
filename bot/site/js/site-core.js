@@ -75,7 +75,7 @@
     });
 
     navigation.querySelectorAll("a").forEach(function (link) {
-      link.addEventListener("click", function () { closeMenu(false); });
+      link.addEventListener("click", function () { closeMenu(true); });
     });
 
     document.addEventListener("click", function (event) {

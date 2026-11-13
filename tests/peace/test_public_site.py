@@ -1414,6 +1414,9 @@ def test_public_site_files_are_complete():
     assert (member_root / "index.html").is_file()
     for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
         assert (site_root / route / "index.html").is_file()
+    for route in ("estudos", "estudos/civil", "estudos/peace", "meu-processo"):
+        assert (site_root / route / "index.html").is_file()
+    assert not list(site_root.rglob("*.pdf")), "PDFs must stay out of the public shell until published"
     assert "/api/status" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/request" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/verify" not in (site_root / "script.js").read_text(encoding="utf-8")
@@ -1446,6 +1449,7 @@ def test_public_site_files_are_complete():
                     site_root / "css" / "flows.css",
                     site_root / "css" / "media.css",
                     site_root / "css" / "responsive.css",
+                    site_root / "css" / "studies.css",
                 )
             ],
         ]
@@ -1453,6 +1457,10 @@ def test_public_site_files_are_complete():
     homepage = (site_root / "index.html").read_text(encoding="utf-8")
     assert "--canvas: #050607" in stylesheet
     assert "O seu espaço." in homepage
+    assert 'href="/estudos/"' in homepage
+    assert 'href="/meu-processo/"' in homepage
+    assert "Estudar para entrar" in homepage
+    assert "learning-hub" in homepage
     assert 'class="peace-icon"' in homepage
     assert 'id="avisos"' not in homepage
     assert 'id="parceiros"' not in homepage
@@ -1542,10 +1550,10 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261112-28"' in opening_html
-    assert 'src="/script.js?v=20261112-28"' in opening_html
+    assert 'href="/styles.css?v=20261113-01"' in opening_html
+    assert 'src="/script.js?v=20261113-01"' in opening_html
     assert '<style>' not in opening_html
-    assert 'src="/candidatura/abrindo-discord.js?v=20261112-28"' in opening_html
+    assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
     assert 'data-entry-confirm' not in candidature_html
     assert 'Progresso restaurado neste navegador' not in script
@@ -1569,6 +1577,41 @@ def test_public_site_files_are_complete():
     assert '.site-header { display: grid;' in stylesheet
     assert '.flow-copy,' in stylesheet and '.application-stage,' in stylesheet
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
+    studies_html = (site_root / "estudos" / "index.html").read_text(encoding="utf-8")
+    civil_html = (site_root / "estudos" / "civil" / "index.html").read_text(encoding="utf-8")
+    peace_html = (site_root / "estudos" / "peace" / "index.html").read_text(encoding="utf-8")
+    process_html = (site_root / "meu-processo" / "index.html").read_text(encoding="utf-8")
+    for html in (studies_html, civil_html, peace_html, process_html):
+        assert 'href="/styles.css?v=20261113-02"' in html
+        assert 'src="/script.js?v=20261113-01"' in html
+        assert 'aria-label="Páginas públicas"' in html
+    assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
+    assert "PDF em preparação" in civil_html
+    assert "Download ainda indisponível" in civil_html and "Download ainda indisponível" in peace_html
+    assert "Manual de convivência em PDF" in peace_html
+    assert "Como a conexão funcionará" in process_html
+    assert 'aria-current="location">Estudos</a>' in civil_html
+    assert 'aria-current="location">Estudos</a>' in peace_html
+    assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
+    assert 'class="study-reader" id="capitulos" tabindex="-1"' in civil_html
+    assert 'class="study-reader" id="manual" tabindex="-1"' in peace_html
+    assert '<section id="avaliacao" tabindex="-1"' in civil_html
+    assert '<section id="pdf" tabindex="-1"' in peace_html
+    assert 'class="process-empty" id="conexao" tabindex="-1"' in process_html
+    assert "Somente a Gerência poderá gerar, atribuir, revogar e corrigir provas." in process_html
+    assert "Mesmo banco de questões" in civil_html
+    assert "Sequência individual" in civil_html
+    assert "class=\"process-identity-list\"" in process_html
+    assert "Discord ID" in process_html and "Membro Peace" in process_html
+    assert "A ordem será individual" in process_html
+    assert "Começar pela Apostila Civil" in process_html
+    assert "synthetic" not in process_html.lower()
+    assert ".study-reader" in stylesheet and ".process-empty" in stylesheet
+    assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
+    assert ".process-identity-list" in stylesheet
+    assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
+    assert "flows.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert 'html.js-ready body { animation: none !important; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
@@ -1620,6 +1663,12 @@ def test_netlify_redirects_keep_the_short_discord_route():
 
     assert "/discord https://discord.gg/qUkQH8XmcN 302!" in redirects
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirects
+    assert "/estudos /estudos/ 301!" in redirects
+    assert "/meu-processo /meu-processo/ 301!" in redirects
+    assert "/estudos/civil /estudos/civil/ 301!" in redirects
+    assert "/estudos/peace /estudos/peace/ 301!" in redirects
+    assert "/estudos/a-peace /estudos/peace/ 301!" in redirects
+    assert "/estudos/a-peace/ /estudos/peace/ 301!" in redirects
     assert "/api/status http://141.11.237.97:25072/api/status 200!" in redirects
     assert "/api/media http://141.11.237.97:25072/api/media 200!" in redirects
     assert "/api/member/overview http://141.11.237.97:25072/api/member/overview 200!" in redirects
@@ -1690,11 +1739,21 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/acessar", 301, "/acessar/"),
             ("/avisos", 301, "/avisos/"),
             ("/parceiros", 301, "/parceiros/"),
+            ("/estudos", 301, "/estudos/"),
+            ("/estudos/civil", 301, "/estudos/civil/"),
+            ("/estudos/peace", 301, "/estudos/peace/"),
+            ("/meu-processo", 301, "/meu-processo/"),
+            ("/estudos/a-peace", 301, "/estudos/peace/"),
+            ("/estudos/a-peace/", 301, "/estudos/peace/"),
             ("/entrar/", 200, None),
             ("/candidatura/", 200, None),
             ("/acessar/", 200, None),
             ("/avisos/", 200, None),
             ("/parceiros/", 200, None),
+            ("/estudos/", 200, None),
+            ("/estudos/civil/", 200, None),
+            ("/estudos/peace/", 200, None),
+            ("/meu-processo/", 200, None),
         ):
             connection.request("GET", path)
             response = connection.getresponse()
