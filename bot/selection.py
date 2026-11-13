@@ -185,7 +185,6 @@ def public_question_payload(question: CivilQuestion, option_order: list[int]) ->
         "points": question.points,
     }
 
-
 def public_exam_payload(question_order: list[str], option_order: Mapping[str, list[int]]) -> list[dict[str, Any]]:
     questions_by_id = {question.question_id: question for question in CIVIL_QUESTION_BANK}
     return [
