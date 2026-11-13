@@ -117,6 +117,22 @@ def _discord_invite_env() -> str:
     return value
 
 
+def _discord_oauth_redirect_env() -> str:
+    value = os.getenv("DISCORD_OAUTH_REDIRECT_URI", "").strip()
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    is_loopback_http = parsed.scheme == "http" and parsed.hostname in LOOPBACK_HOSTS
+    is_production_https = parsed.scheme == "https" and bool(parsed.hostname)
+    if not (is_loopback_http or is_production_https):
+        raise RuntimeError(
+            "DISCORD_OAUTH_REDIRECT_URI precisa ser HTTPS; HTTP só é permitido em localhost"
+        )
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError("DISCORD_OAUTH_REDIRECT_URI não pode conter credenciais, query ou fragmento")
+    return value
+
+
 def parse_central_bridge_url(value: str) -> tuple[str, int, str]:
     """Return a safe loopback binding; the bridge never binds a remote host."""
     parsed = urlsplit(value.strip())
@@ -179,6 +195,14 @@ class Settings:
     api_host: str
     api_port: int
     discord_invite_url: str
+    discord_oauth_client_id: str
+    discord_oauth_client_secret: str
+    discord_oauth_redirect_uri: str
+    civil_answer_key: str
+    discord_oauth_state_ttl_seconds: int
+    discord_oauth_session_ttl_seconds: int
+    civil_passing_score: int
+    exam_max_deadline_days: int
     iris_enabled: bool
     iris_model: str
     iris_url: str
@@ -255,6 +279,20 @@ class Settings:
             api_host=os.getenv("PEACE_API_HOST", "0.0.0.0").strip() or "0.0.0.0",
             api_port=_int_env("PEACE_API_PORT", _int_env("PORT", 8080)),
             discord_invite_url=_discord_invite_env(),
+            discord_oauth_client_id=os.getenv("DISCORD_OAUTH_CLIENT_ID", "").strip(),
+            discord_oauth_client_secret=os.getenv("DISCORD_OAUTH_CLIENT_SECRET", "").strip(),
+            discord_oauth_redirect_uri=_discord_oauth_redirect_env(),
+            civil_answer_key=os.getenv("CIVIL_ANSWER_KEY", "").strip(),
+            discord_oauth_state_ttl_seconds=min(
+                15 * 60,
+                max(60, _int_env("DISCORD_OAUTH_STATE_TTL_SECONDS", 600)),
+            ),
+            discord_oauth_session_ttl_seconds=min(
+                7 * 24 * 60 * 60,
+                max(15 * 60, _int_env("DISCORD_OAUTH_SESSION_TTL_SECONDS", 24 * 60 * 60)),
+            ),
+            civil_passing_score=min(100, max(0, _int_env("CIVIL_PASSING_SCORE", 70))),
+            exam_max_deadline_days=min(30, max(1, _int_env("EXAM_MAX_DEADLINE_DAYS", 14))),
             iris_enabled=_bool_env("IRIS_ENABLED", False),
             iris_model=os.getenv("IRIS_MODEL", "iris-peace-micro").strip(),
             iris_url=os.getenv("IRIS_URL", "http://127.0.0.1:11435").rstrip("/"),

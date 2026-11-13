@@ -115,38 +115,34 @@ a failed Discord/SQLite read as current data.
 
 The public learning library is separate from `/area/`. `/estudos/` links to
 the Civil study material and the Peace convivencia manual, while
-`/meu-processo/` is the candidate-facing shell for future Discord-linked exam
-tracking. These pages do not require a Peace role. They currently expose
-truthful pending states for the PDFs and the selection integration; they do not
-invent grades, attempts, deadlines, approvals, or candidate records.
+`/meu-processo/` is the candidate-facing shell for Discord-linked exam
+tracking. These pages do not require a Peace role. The reader publishes
+rendered page images from the supplied PDFs rather than the original files, and
+the process page reads only records bound to the authenticated Discord ID.
 
-The public shell also makes the future selection contract visible without
-pretending that it is active: the Civil page explains that the question bank is
-shared while the per-attempt order may differ, and the process page separates
-the authenticated Discord ID from the display-only username. The PDF cards are
-non-interactive pending states until the team publishes a reviewed file. The
-navigation keeps the current study context visible and fragment targets are
-focusable so keyboard and screen-reader users can move from the outline to the
-requested chapter.
+The public shell makes the selection contract visible and active: the Civil
+page explains that the question bank is shared while the per-attempt order may
+differ, and the process page separates the authenticated Discord ID from the
+display-only username. The reader keeps the current study context visible and
+fragment targets are focusable so keyboard and screen-reader users can move
+from the outline to the requested chapter.
 
-The deferred selection contract is intentionally narrower than the member
-area: only Gerência may create, assign, revoke, or grade an exam, and that
-authorization must be enforced server-side by a stable Discord role ID. A
-future candidate session may read only records bound to its authenticated
-Discord ID. A username is a display snapshot rather than an authorization
-key. See `docs/architecture/decisions/2026-11-13-peace-public-learning-and-selection.md`
-for the public boundary and deferred work.
+The selection contract is intentionally narrower than the member area: only
+Gerência may create, assign, revoke, or grade an exam, and that authorization
+is enforced server-side by a stable Discord role ID. Candidate sessions read
+only records bound to their authenticated Discord ID. A username is a display
+snapshot rather than an authorization key. See
+`docs/architecture/decisions/2026-11-13-peace-public-learning-and-selection.md`
+for the public boundary and delivered flow.
 
 Netlify is the public TLS edge for the static front. The `bot/site/_redirects`
 file owns the short `/discord` and `/discord/` routes and sends them directly
 to the public Discord invite with a temporary redirect. It also proxies the
-bounded status and entry routes to the fixed public ACLClouds endpoint at
-`141.11.237.97:25072`, so the browser keeps a same-origin HTTPS request. The
+bounded status, notices, entry, OAuth, and exam routes to the fixed HTTPS
+ACLClouds endpoint, so the browser keeps a same-origin HTTPS request. The
 member-session proxy forwards only the member cookie or legacy bearer on the
 allowlisted member routes. Bot credentials and provider settings remain
-outside the repository. The current ACL origin is still plain HTTP behind the
-Netlify proxy; production publication of persistent browser sessions requires
-an HTTPS/private origin or an equivalent provider-side network boundary.
+outside the repository.
 
 For local review, run `python ops/peace_site_server.py --port 4173`. The
 localhost-only server mirrors the route contract needed by the static front:
@@ -181,10 +177,10 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/acessar/` | serves the member Peace ID + code login UI |
 | Netlify `/avisos/` | serves the dedicated public notices interface |
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
-| Netlify `/estudos/` | serves the public study library and PDF-ready material cards |
-| Netlify `/estudos/civil/` | serves the public Civil study structure and pending PDF slot |
-| Netlify `/estudos/peace/` | serves the public Peace convivencia manual structure and pending PDF slot |
-| Netlify `/meu-processo/` | serves the candidate-owned process shell without synthetic records |
+| Netlify `/estudos/` | serves the public study library and material cards |
+| Netlify `/estudos/civil/` | serves the Civil study reader and rendered pages |
+| Netlify `/estudos/peace/` | serves the Peace convivencia reader and rendered pages |
+| Netlify `/meu-processo/` | serves the candidate-owned Discord-linked process shell |
 | Netlify `/estudos/a-peace` | redirects to `/estudos/peace/` as a readable alias |
 | Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
@@ -200,6 +196,16 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/member/auth/session` | validates the bounded member session and the current Discord identity |
 | Netlify `/api/member/auth/revoke` | revokes the current member session and clears the cookie |
 | Netlify `/api/member/overview` | returns the read-only, capability-filtered member overview |
+| Netlify `/api/notices` | proxies the bounded public notices feed |
+| Netlify `/api/auth/discord/start` | starts Discord OAuth with PKCE and a persisted state |
+| Netlify `/api/auth/discord/callback` | validates the state, exchanges the code, and creates the HttpOnly session |
+| Netlify `/api/auth/discord/session` | returns the authenticated Discord identity and guild state |
+| Netlify `/api/auth/discord/logout` | revokes the current Discord session |
+| Netlify `/api/exams/process` | returns only the candidate's assignments and score |
+| Netlify `/api/exams/access` | validates the individualized assignment link against the authenticated Discord ID |
+| Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
+| Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
+| Netlify `/api/exams/assignments` | allows only Gerência to create and list assignments |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
 | ACLClouds `/api/status` | returns bot readiness without member data or secrets |
 | ACLClouds `/api/entry/start` | creates/resumes the 30-minute invite in the verification channel |
@@ -211,6 +217,9 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/member/auth/session` | rechecks the session, Discord user ID, and current Peace role |
 | ACLClouds `/api/member/auth/revoke` | revokes the current member session |
 | ACLClouds `/api/member/overview` | returns only source-backed blocks authorized for the current role |
+| ACLClouds `/api/notices` | returns the bounded public notices feed |
+| ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
+| ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -222,8 +231,9 @@ rule.
 ## Configuration boundary
 
 Production values belong in the provider environment, never in the public
-repository. The committed `.env.example` contains placeholders only for the
- invite URL and API listener port. The canonical public URL is configured as
+repository. The committed `.env.example` contains placeholders for OAuth and
+the protected answer key; the actual values are configured only in ACLClouds
+and the ignored local `.env`. The canonical public URL is configured as
 `PEACE_SITE_URL` so Discord buttons and external documentation can reference it
 without coupling the code to a provider hostname.
 
@@ -251,11 +261,11 @@ the six-digit code and keeps the Peace ID out of the second request. Releasing
 or reassigning a Peace identity revokes its sessions, and validation also
 requires the stored Discord user ID to match the live member.
 
-The local preview proxy forwards only the member session/challenge cookies and
-Bearer compatibility header. It does not follow ACLClouds redirects, so a
-misconfigured HTTP redirect cannot carry credentials to a different origin.
-Production deployment must still use an HTTPS/private ACLClouds origin; the
-current public IP route is a deployment limitation, not a secure transport.
+The local preview proxy forwards only the member session/challenge cookies,
+Discord OAuth cookies, and Bearer compatibility header. It does not follow
+ACLClouds redirects, so a misconfigured redirect cannot carry credentials to a
+different origin. Production uses the HTTPS ACLClouds hostname rather than the
+legacy public IP route.
 
 ## Visual and accessibility contract
 

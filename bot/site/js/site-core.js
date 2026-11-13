@@ -205,13 +205,29 @@
       MEMBER_AMBIGUOUS: "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
       INVALID_DISCORD_PROFILE: "Informe um link de perfil válido do Discord.",
       MEMBER_IDENTITY_MISMATCH: "O username, o ID e o link informado não pertencem à mesma conta.",
-      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente."
+      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
+      OAUTH_NOT_CONFIGURED: "A conexão com Discord ainda não foi configurada neste ambiente.",
+      OAUTH_UNAVAILABLE: "A conexão com Discord está temporariamente indisponível.",
+      OAUTH_SESSION_INVALID: "Conecte sua conta Discord para continuar.",
+      OAUTH_STATE_INVALID: "A conexão expirou. Inicie novamente.",
+      OAUTH_STATE_EXPIRED: "A conexão expirou. Inicie novamente.",
+      PROCESS_UNAVAILABLE: "Não consegui consultar seu processo agora. Tente novamente em instantes.",
+      EXAM_LINK_NOT_FOUND: "Esse link de prova não existe ou expirou.",
+      EXAM_IDENTITY_MISMATCH: "Este link pertence a outra conta Discord.",
+      EXAM_UNAVAILABLE: "Esta atribuição não está mais disponível.",
+      EXAM_EXPIRED: "O prazo desta prova terminou.",
+      EXAM_ALREADY_SUBMITTED: "Esta prova já foi enviada e não pode ser refeita.",
+      MANAGER_REQUIRED: "Somente Gerência pode acessar esta área.",
+      INVALID_DEADLINE: "Escolha um prazo futuro para a prova.",
+      DEADLINE_TOO_LONG: "O prazo escolhido ultrapassa o limite da equipe.",
+      EXAM_ASSIGNMENT_UNAVAILABLE: "Não consegui gerar a prova agora.",
+      CANDIDATE_IDENTITY_MISMATCH: "O username informado não corresponde ao Discord ID encontrado no servidor."
     };
 
     if (knownMessages[code]) return knownMessages[code];
-    if (status === 404) return "O serviço de entrada está sendo atualizado. Tente novamente em instantes.";
+    if (status === 404) return "Não encontrei este recurso. Revise o link e tente novamente.";
     if (status === 429) return "Aguarde alguns segundos e tente novamente.";
-    if (status >= 500) return "O serviço está temporariamente indisponível. Tente novamente em instantes.";
+    if (status >= 500) return "O serviço está indisponível agora. Tente novamente em instantes.";
     return fallback || "Não foi possível continuar agora. Tente novamente.";
   }
 

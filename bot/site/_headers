@@ -7,3 +7,8 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+/assets/studies/*
+  Cache-Control: private, no-store
+  Content-Disposition: inline
+  X-Content-Type-Options: nosniff

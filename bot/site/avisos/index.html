@@ -8,7 +8,8 @@
     <title>Avisos — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
     <link rel="stylesheet" href="/styles.css?v=20261113-01">
-    <script defer src="/script.js?v=20261113-01"></script>
+    <script defer src="/script.js?v=20261113-04"></script>
+    <script defer src="/js/notices.js?v=20261113-01"></script>
   </head>
   <body data-page="notices">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -18,20 +19,20 @@
           <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
           <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
         </a>
-        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/">Meu processo</a><a href="/avisos/" aria-current="page">Avisos</a><a href="/parceiros/">Parceiros</a><a href="/">A Peace</a></nav>
-        <a class="button button--outline flow-header-cta" href="/entrar/"><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">Entrar para Peace</a>
+        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/#sobre">A Peace</a><a href="/estudos/">Estudos</a><a href="/meu-processo/">Meu processo</a><a href="/#entrada">Como entrar</a><a href="/avisos/" aria-current="page">Avisos</a><a href="/parceiros/">Parceiros</a></nav>
+        <div class="flow-header-actions"><a class="flow-header-link flow-header-login" href="/acessar/">Acessar</a><a class="button button--outline flow-header-cta" href="/entrar/"><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">Entrar para Peace</a></div>
       </header>
 
       <main id="conteudo" class="flow-main flow-main--public" tabindex="-1">
         <section class="public-hero" data-reveal aria-labelledby="notices-title">
-          <div><p class="eyebrow">03 / Avisos públicos</p><h1 id="notices-title">O que importa aparece <em>no lugar certo.</em></h1><p class="flow-lede">Esta é a interface dedicada aos comunicados da equipe. Quando a integração autorizada estiver conectada, os avisos públicos entram aqui com fonte e data.</p></div>
-          <aside class="public-hero-mark"><span class="status-mark" aria-hidden="true"></span><strong>Fonte oficial</strong><p>Até a sincronização do site, acompanhe o Discord.</p><a class="text-link" href="/discord/"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Acompanhar no Discord <span aria-hidden="true">↗</span></a></aside>
+          <div><p class="eyebrow">03 / Avisos públicos</p><h1 id="notices-title">O que importa aparece <em>no lugar certo.</em></h1><p class="flow-lede">Esta página consulta o canal público configurado pela equipe. Cada item mostra data, autor e origem sem republicar conversas privadas.</p></div>
+          <aside class="public-hero-mark"><span class="status-mark" aria-hidden="true"></span><strong>Fonte oficial</strong><p>A leitura vem do Discord quando o canal público estiver acessível ao bot.</p><a class="text-link" href="/discord/"><img class="discord-icon discord-icon--small" src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13">Acompanhar no Discord <span aria-hidden="true">↗</span></a></aside>
         </section>
 
         <section class="notice-board" aria-labelledby="notice-board-title" data-reveal>
-          <div class="notice-board-heading"><div><p class="eyebrow">Mural público</p><h2 id="notice-board-title">Nenhum aviso sincronizado.</h2></div><span class="state-tag state-tag--pending">Integração pendente</span></div>
-          <div class="notice-empty"><img class="flow-symbol" src="/assets/shield-check.svg" alt="" width="32" height="32"><h3>A equipe ainda publica pelo canal autorizado.</h3><p>Quando houver uma API pública para avisos, esta tela vai mostrar título, data, fonte e o conteúdo público — sem republicar conversas privadas.</p></div>
-          <div class="notice-ledger" aria-label="Estado dos avisos"><div class="notice-line"><span>Fonte</span><strong>Canal autorizado</strong><small>aguardando integração pública</small></div><div class="notice-line"><span>Privacidade</span><strong>Sem conversa privada</strong><small>somente conteúdo explicitamente público</small></div><div class="notice-line"><span>Agora</span><strong>Sem itens para exibir</strong><small>estado honesto da instalação</small></div></div>
+          <div class="notice-board-heading"><div><p class="eyebrow">Mural público</p><h2 id="notice-board-title">Comunicados da equipe.</h2></div><span class="state-tag state-tag--pending" data-notices-source>Consultando fonte pública</span></div>
+          <div class="notice-empty" data-notices-list aria-live="polite"><img class="flow-symbol" src="/assets/shield-check.svg" alt="" width="32" height="32"><h3 data-notices-status>Consultando o canal público.</h3><p>O conteúdo aparece aqui quando existir uma publicação explicitamente pública.</p></div>
+          <div class="notice-ledger" aria-label="Estado dos avisos"><div class="notice-line"><span>Fonte</span><strong>Canal público configurado</strong><small>nome, data e origem vêm do Discord</small></div><div class="notice-line"><span>Privacidade</span><strong>Sem conversa privada</strong><small>somente conteúdo acessível ao público</small></div><div class="notice-line"><span>Agora</span><strong data-notices-status>Consultando</strong><small>estado atual da fonte</small></div></div>
         </section>
 
         <section class="public-invite" data-reveal aria-labelledby="invite-title">

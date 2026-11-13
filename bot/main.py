@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import html
 import logging
 import json
@@ -17,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urljoin, urlsplit
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
@@ -27,14 +29,30 @@ from discord.ext import commands
 
 if __package__ == "bot":
     from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
-    from .persistence.database import PeaceDatabase
+    from .persistence.database import ExamAssignmentExistsError, PeaceDatabase
+    from .selection import (
+        CIVIL_BANK_VERSION,
+        CIVIL_DEFAULT_PASSING_SCORE,
+        grade_exam,
+        materialize_exam,
+        parse_answer_key,
+        public_exam_payload,
+    )
     from .core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
     from .core.error_handling import configure_logging, exception_details
 else:
     from config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
-    from persistence.database import PeaceDatabase
+    from persistence.database import ExamAssignmentExistsError, PeaceDatabase
+    from selection import (
+        CIVIL_BANK_VERSION,
+        CIVIL_DEFAULT_PASSING_SCORE,
+        grade_exam,
+        materialize_exam,
+        parse_answer_key,
+        public_exam_payload,
+    )
     from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
     from core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
@@ -57,6 +75,7 @@ PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a
 PUBLIC_API_RATE_LIMITS = {
     "/api/status": (120, 60),
     "/api/media": (12, 60),
+    "/api/notices": (30, 60),
     "/api/entry/start": (12, 60),
     "/api/entry/status": (60, 60),
     "/api/entry/repair": (24, 60),
@@ -66,6 +85,15 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/member/auth/session": (120, 60),
     "/api/member/auth/revoke": (24, 60),
     "/api/member/overview": (60, 60),
+    "/api/auth/discord/start": (12, 60),
+    "/api/auth/discord/callback": (24, 60),
+    "/api/auth/discord/session": (120, 60),
+    "/api/auth/discord/logout": (24, 60),
+    "/api/exams/process": (60, 60),
+    "/api/exams/access": (24, 60),
+    "/api/exams/start": (12, 60),
+    "/api/exams/submit": (3, 60),
+    "/api/exams/assignments": (30, 60),
 }
 PUBLIC_API_ORIGINS = frozenset(
     {
@@ -76,6 +104,8 @@ PUBLIC_API_ORIGINS = frozenset(
         # sent over plain HTTP outside the local preview.
         "http://127.0.0.1:4173",
         "http://localhost:4173",
+        "http://127.0.0.1:4175",
+        "http://localhost:4175",
     }
 )
 PUBLIC_API_NO_STORE_ROUTES = frozenset(
@@ -89,6 +119,15 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/member/auth/session",
         "/api/member/auth/revoke",
         "/api/member/overview",
+        "/api/auth/discord/start",
+        "/api/auth/discord/callback",
+        "/api/auth/discord/session",
+        "/api/auth/discord/logout",
+        "/api/exams/process",
+        "/api/exams/access",
+        "/api/exams/start",
+        "/api/exams/submit",
+        "/api/exams/assignments",
     }
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
@@ -129,6 +168,14 @@ MANAGEMENT_ROLE_NAMES = ("Gerência", "Management", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
 PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
+PUBLIC_DISCORD_SESSION_COOKIE = "peace_discord_session"
+PUBLIC_DISCORD_OAUTH_STATE_COOKIE = "peace_discord_oauth_state"
+DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
+DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token"
+DISCORD_API_USER_URL = "https://discord.com/api/users/@me"
+DISCORD_OAUTH_SCOPE = "identify"
+DISCORD_OAUTH_ISSUER = "https://discord.com"
+OAUTH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 MAX_ANNOUNCEMENT_ATTACHMENTS = 10
 MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
 PUBLIC_MEDIA_HISTORY_LIMIT = 200
@@ -4699,6 +4746,782 @@ class PeaceBot(commands.Bot):
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    def public_announcement_channel(self) -> object | None:
+        """Find the explicitly named public announcement source in Discord."""
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
+        channels = getattr(guild, "text_channels", ()) or ()
+        return discord.utils.find(
+            lambda channel: callable(getattr(channel, "history", None))
+            and str(getattr(channel, "name", "")).casefold() in names,
+            channels,
+        )
+
+    async def public_api_notices(self, request: web.Request) -> web.Response:
+        """Expose only messages from the server's named public notices channel."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        channel = self.public_announcement_channel()
+        notices, available = await self.public_channel_messages(
+            channel,
+            kind="announcement",
+            limit=12,
+        )
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        source_state = "ready" if notices else ("empty" if available else "unavailable")
+        response = web.json_response(
+            {
+                "ok": True,
+                "updated_at": refreshed_at if available else None,
+                "notices": notices,
+                "source": {
+                    "state": source_state,
+                    "available": available,
+                    "channel": str(getattr(channel, "name", "")) or None,
+                },
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @staticmethod
+    def public_discord_oauth_token(request: web.Request) -> str | None:
+        token = request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE, "")
+        return token if OAUTH_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def public_discord_oauth_config(settings: object) -> dict[str, str] | None:
+        client_id = str(getattr(settings, "discord_oauth_client_id", "") or "").strip()
+        client_secret = str(getattr(settings, "discord_oauth_client_secret", "") or "").strip()
+        redirect_uri = str(getattr(settings, "discord_oauth_redirect_uri", "") or "").strip()
+        parsed = urlsplit(redirect_uri)
+        valid_redirect = bool(
+            redirect_uri
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and not parsed.query
+            and not parsed.fragment
+            and (
+                parsed.scheme == "https"
+                or (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"})
+            )
+        )
+        if not re.fullmatch(r"[0-9]{15,25}", client_id) or not client_secret or not valid_redirect:
+            return None
+        return {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+        }
+
+    @staticmethod
+    def public_oauth_return_to(value: object) -> str:
+        candidate = str(value or "").strip()
+        if (
+            not candidate
+            or len(candidate) > 220
+            or not candidate.startswith("/")
+            or candidate.startswith("//")
+            or "\\" in candidate
+            or any(ord(character) < 0x20 or ord(character) == 0x7F for character in candidate)
+        ):
+            return "/meu-processo/"
+        return candidate
+
+    @staticmethod
+    def public_oauth_redirect(return_to: str, status: str) -> web.HTTPFound:
+        separator = "&" if "?" in return_to else "?"
+        return web.HTTPFound(f"{return_to}{separator}{urlencode({'oauth': status})}")
+
+    def public_oauth_cookie_secure(self) -> bool:
+        config = self.public_discord_oauth_config(self.settings)
+        return bool(config and config["redirect_uri"].startswith("https://"))
+
+    def public_oauth_state_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "discord_oauth_state_ttl_seconds", 600))
+        except (TypeError, ValueError):
+            configured = 600
+        return min(15 * 60, max(60, configured))
+
+    def public_oauth_session_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "discord_oauth_session_ttl_seconds", 24 * 60 * 60))
+        except (TypeError, ValueError):
+            configured = 24 * 60 * 60
+        return min(7 * 24 * 60 * 60, max(15 * 60, configured))
+
+    def public_exam_passing_score(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "civil_passing_score", CIVIL_DEFAULT_PASSING_SCORE))
+        except (TypeError, ValueError):
+            configured = CIVIL_DEFAULT_PASSING_SCORE
+        return min(100, max(0, configured))
+
+    def public_exam_answer_key(self) -> dict[str, int] | None:
+        """Load the answer key only from the protected runtime secret store."""
+        raw = str(getattr(self.settings, "civil_answer_key", "") or "").strip()
+        if not raw:
+            return None
+        try:
+            return parse_answer_key(raw)
+        except ValueError:
+            log.error("CIVIL_ANSWER_KEY está ausente, inválida ou incompatível com o banco")
+            return None
+
+    def public_exam_max_deadline_days(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "exam_max_deadline_days", 14))
+        except (TypeError, ValueError):
+            configured = 14
+        return min(30, max(1, configured))
+
+    @staticmethod
+    def public_exam_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token if OAUTH_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def public_exam_assignment_id(value: object) -> int | None:
+        if value is None or isinstance(value, bool):
+            return None
+        raw = str(value).strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,18}", raw):
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def public_exam_deadline(value: object) -> datetime | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    @staticmethod
+    def public_exam_assignment_payload(row: object) -> dict[str, object]:
+        return {
+            "id": int(row["id"]),
+            "candidate_username": str(row["candidate_username_snapshot"]),
+            "question_bank_version": str(row["question_bank_version"]),
+            "passing_score": int(row["passing_score"]),
+            "deadline_at": str(row["deadline_at"]),
+            "status": str(row["status"]),
+            "created_at": str(row["created_at"]),
+            "started_at": row["started_at"],
+            "submitted_at": row["submitted_at"],
+            "score": int(row["score"]) if row["score"] is not None else None,
+            "correct_count": int(row["correct_count"]) if row["correct_count"] is not None else None,
+            "passed": bool(row["passed"]) if row["passed"] is not None else None,
+        }
+
+    @staticmethod
+    def public_exam_manager_assignment_payload(row: object) -> dict[str, object]:
+        """Add candidate identity only on the manager-scoped response."""
+        payload = PeaceBot.public_exam_assignment_payload(row)
+        payload.update(
+            {
+                "candidate_discord_user_id": str(row["candidate_discord_user_id"]),
+                "manager_discord_user_id": str(row["manager_discord_user_id"]),
+            }
+        )
+        return payload
+
+    async def public_discord_auth_start(self, request: web.Request) -> web.StreamResponse:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        return_to = self.public_oauth_return_to(request.query.get("return_to"))
+        config = self.public_discord_oauth_config(self.settings)
+        if config is None:
+            if "text/html" in str(request.headers.get("Accept", "")):
+                return self.public_oauth_redirect(return_to, "not-configured")
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "OAUTH_NOT_CONFIGURED",
+                    "message": "A conexão com Discord ainda não está configurada.",
+                },
+                status=503,
+            )
+        state = secrets.token_urlsafe(32)
+        code_verifier = secrets.token_urlsafe(48)
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(code_verifier.encode("ascii")).digest()
+        ).rstrip(b"=").decode("ascii")
+        ttl = self.public_oauth_state_ttl()
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        try:
+            self.database.create_discord_oauth_state(
+                state=state,
+                code_verifier=code_verifier,
+                return_to=return_to,
+                expires_at=expires_at.isoformat(),
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui persistir o estado OAuth do Discord", exc_info=True)
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "OAUTH_UNAVAILABLE",
+                    "message": "A conexão com Discord está temporariamente indisponível.",
+                },
+                status=503,
+            )
+        location = f"{DISCORD_OAUTH_AUTHORIZE_URL}?{urlencode({
+            'response_type': 'code',
+            'client_id': config['client_id'],
+            'scope': DISCORD_OAUTH_SCOPE,
+            'state': state,
+            'redirect_uri': config['redirect_uri'],
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256',
+        })}"
+        response = web.HTTPFound(location)
+        response.set_cookie(
+            PUBLIC_DISCORD_OAUTH_STATE_COOKIE,
+            state,
+            max_age=ttl,
+            httponly=True,
+            secure=self.public_oauth_cookie_secure(),
+            samesite="Lax",
+            path="/api/auth/discord",
+        )
+        return response
+
+    async def discord_oauth_user(self, *, code: str, code_verifier: str, config: dict[str, str]) -> dict[str, object] | None:
+        timeout = ClientTimeout(total=8)
+        async with ClientSession(timeout=timeout) as client:
+            async with client.post(
+                DISCORD_OAUTH_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": config["redirect_uri"],
+                    "client_id": config["client_id"],
+                    "client_secret": config["client_secret"],
+                    "code_verifier": code_verifier,
+                },
+                headers={"Accept": "application/json"},
+            ) as token_response:
+                if token_response.status != 200:
+                    return None
+                token_payload = await token_response.json(content_type=None)
+            access_token = str(token_payload.get("access_token", "") or "")
+            if not access_token or not re.fullmatch(r"[A-Za-z0-9._-]{16,256}", access_token):
+                return None
+            async with client.get(
+                DISCORD_API_USER_URL,
+                headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}"},
+            ) as user_response:
+                if user_response.status != 200:
+                    return None
+                user_payload = await user_response.json(content_type=None)
+        return user_payload if isinstance(user_payload, dict) else None
+
+    async def public_discord_auth_callback(self, request: web.Request) -> web.StreamResponse:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        state = str(request.query.get("state", "") or "").strip()
+        state_cookie = str(request.cookies.get(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, "") or "").strip()
+        if not state or not OAUTH_TOKEN_PATTERN.fullmatch(state) or not hmac.compare_digest(state, state_cookie):
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_STATE_INVALID", "message": "A conexão expirou. Inicie novamente."},
+                status=400,
+            )
+        try:
+            state_row = self.database.consume_discord_oauth_state(state)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui consumir o estado OAuth do Discord", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_UNAVAILABLE", "message": "A conexão está temporariamente indisponível."},
+                status=503,
+            )
+        if state_row is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_STATE_EXPIRED", "message": "A conexão expirou. Inicie novamente."},
+                status=400,
+            )
+        return_to = self.public_oauth_return_to(state_row["return_to"])
+        if request.query.get("iss") != DISCORD_OAUTH_ISSUER:
+            return self.public_oauth_redirect(return_to, "issuer-error")
+        if request.query.get("error"):
+            return self.public_oauth_redirect(return_to, "cancelled")
+        code = str(request.query.get("code", "") or "").strip()
+        config = self.public_discord_oauth_config(self.settings)
+        if not code or len(code) > 512 or config is None:
+            return self.public_oauth_redirect(return_to, "unavailable")
+        try:
+            user_payload = await self.discord_oauth_user(
+                code=code,
+                code_verifier=str(state_row["code_verifier"]),
+                config=config,
+            )
+            if user_payload is None:
+                return self.public_oauth_redirect(return_to, "unavailable")
+            discord_user_id = str(user_payload.get("id", "")).strip()
+            if not re.fullmatch(r"[0-9]{15,25}", discord_user_id):
+                return self.public_oauth_redirect(return_to, "identity-error")
+            username = str(user_payload.get("username", "") or "").strip()[:80] or "Discord"
+            global_name = str(user_payload.get("global_name", "") or "").strip()[:80] or None
+            display_name = global_name or username
+            self.database.upsert_candidate_profile(
+                discord_user_id=discord_user_id,
+                username=username,
+                global_name=global_name,
+                display_name=display_name,
+            )
+            session_token = self.database.create_discord_oauth_session(
+                discord_user_id=discord_user_id,
+                username=username,
+                global_name=global_name,
+                display_name=display_name,
+                expires_at=(datetime.now(timezone.utc) + timedelta(seconds=self.public_oauth_session_ttl())).isoformat(),
+            )
+        except (ClientError, asyncio.TimeoutError, OSError, ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
+            log.warning("Não consegui concluir o callback OAuth do Discord", exc_info=True)
+            return self.public_oauth_redirect(return_to, "unavailable")
+        response = self.public_oauth_redirect(return_to, "connected")
+        response.set_cookie(
+            PUBLIC_DISCORD_SESSION_COOKIE,
+            session_token,
+            max_age=self.public_oauth_session_ttl(),
+            httponly=True,
+            secure=self.public_oauth_cookie_secure(),
+            samesite="Lax",
+            path="/",
+        )
+        response.del_cookie(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, path="/api/auth/discord")
+        return response
+
+    async def public_discord_session_context(self, request: web.Request) -> tuple[str | None, object | None]:
+        token = self.public_discord_oauth_token(request)
+        if token is None:
+            return None, None
+        row = self.database.validate_discord_oauth_session(token)
+        return token, row
+
+    async def public_discord_auth_session(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token, row = await self.public_discord_session_context(request)
+        if token is None or row is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        profile = self.database.candidate_profile(row["discord_user_id"])
+        membership = await self.public_discord_membership_payload(row["discord_user_id"])
+        return web.json_response(
+            {
+                "ok": True,
+                "identity": {
+                    "discord_id": str(row["discord_user_id"]),
+                    "username": str(row["username"]),
+                    "global_name": row["global_name"],
+                    "display_name": row["display_name"] or row["username"],
+                },
+                "profile": {
+                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                    "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
+                },
+                "server": membership,
+            }
+        )
+
+    async def public_discord_auth_logout(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token = self.public_discord_oauth_token(request)
+        if token is not None:
+            self.database.revoke_discord_oauth_session(token)
+        response = web.json_response({"ok": True, "message": "Sessão encerrada."})
+        response.del_cookie(PUBLIC_DISCORD_SESSION_COOKIE, path="/")
+        response.del_cookie(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, path="/api/auth/discord")
+        return response
+
+    async def public_discord_member_state(
+        self,
+        discord_user_id: int | str,
+    ) -> tuple[discord.Member | None, str]:
+        """Resolve live guild membership without confusing absence and outage."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None, "unavailable"
+        fetch_member = getattr(guild, "fetch_member", None)
+        if callable(fetch_member):
+            try:
+                return await fetch_member(int(discord_user_id)), "member"
+            except discord.NotFound:
+                return None, "not_member"
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
+                return None, "unavailable"
+        get_member = getattr(guild, "get_member", None)
+        if not callable(get_member):
+            return None, "unavailable"
+        member = get_member(int(discord_user_id))
+        return (member, "member") if member is not None else (None, "not_member")
+
+    async def public_discord_member_by_id(self, discord_user_id: int | str) -> discord.Member | None:
+        member, _ = await self.public_discord_member_state(discord_user_id)
+        return member
+
+    async def public_discord_membership_payload(self, discord_user_id: int | str) -> dict[str, object]:
+        member, state = await self.public_discord_member_state(discord_user_id)
+        if member is None:
+            return {
+                "state": state,
+                "is_member": False if state == "not_member" else None,
+                "is_peace_member": False if state == "not_member" else None,
+                "is_manager": False if state == "not_member" else None,
+            }
+        try:
+            is_peace_member = self.public_member_has_peace_role(member)
+        except (AttributeError, TypeError):
+            is_peace_member = False
+        try:
+            is_manager = management_role_member(member, self.settings)
+        except (AttributeError, TypeError):
+            is_manager = False
+        return {
+            "state": "peace" if is_peace_member else "member",
+            "is_member": True,
+            "is_peace_member": bool(is_peace_member),
+            "is_manager": bool(is_manager),
+        }
+
+    async def public_manager_member(self, discord_user_id: int | str) -> discord.Member | None:
+        member = await self.public_discord_member_by_id(discord_user_id)
+        if member is None:
+            return None
+        try:
+            return member if management_role_member(member, self.settings) else None
+        except (AttributeError, TypeError):
+            role_id = getattr(self.settings, "manager_role_id", None)
+            return member if role_id is not None and role_member(member, role_id) else None
+
+    async def public_exam_process(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para ver seu processo."},
+                status=401,
+            )
+        try:
+            profile = self.database.candidate_profile(session["discord_user_id"])
+            assignments = self.database.exam_assignments_for_candidate(session["discord_user_id"])
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui consultar o processo de seleção", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "PROCESS_UNAVAILABLE", "message": "O processo está temporariamente indisponível."},
+                status=503,
+            )
+        membership = await self.public_discord_membership_payload(session["discord_user_id"])
+        return web.json_response(
+            {
+                "ok": True,
+                "identity": {
+                    "discord_id": str(session["discord_user_id"]),
+                    "username": str(session["username"]),
+                    "global_name": session["global_name"],
+                    "display_name": session["display_name"] or session["username"],
+                },
+                "profile": {
+                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                    "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
+                    "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
+                },
+                "server": membership,
+                "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
+            }
+        )
+
+    async def public_exam_access(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de abrir a prova."},
+                status=401,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
+        access_token = self.public_exam_token(payload.get("access_token"))
+        if access_token is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token)
+        if assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_LINK_NOT_FOUND", "message": "Esse link não existe ou já não está disponível."}, status=404)
+        if str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "Este link foi atribuído a outra conta Discord."}, status=403)
+        if assignment["status"] in {"revoked", "expired"}:
+            return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Este prazo ou atribuição não está mais disponível."}, status=410)
+        return web.json_response({"ok": True, "assignment": self.public_exam_assignment_payload(assignment)})
+
+    async def public_exam_start(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de iniciar."}, status=401)
+        if self.public_exam_answer_key() is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "A prova ainda não está configurada pela equipe."},
+                status=503,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
+        access_token = self.public_exam_token(payload.get("access_token"))
+        if access_token is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token)
+        if assignment is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "O link não pertence à conta conectada."}, status=403)
+        assignment_id = int(assignment["id"])
+        if assignment["status"] == "submitted":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi enviada e não pode ser refeita.", "assignment": self.public_exam_assignment_payload(assignment)}, status=409)
+        question_order, option_order = materialize_exam()
+        assignment, attempt = self.database.start_exam_attempt(
+            assignment_id=assignment_id,
+            candidate_discord_user_id=session["discord_user_id"],
+            question_order=question_order,
+            option_order=option_order,
+        )
+        if assignment is None or assignment["status"] == "expired":
+            return web.json_response({"ok": False, "code": "EXAM_EXPIRED", "message": "O prazo desta prova terminou."}, status=410)
+        if attempt is None or attempt["status"] != "in_progress":
+            return web.json_response({"ok": False, "code": "EXAM_NOT_STARTABLE", "message": "Esta prova não pode ser iniciada agora."}, status=409)
+        try:
+            stored_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            stored_options = {
+                str(key): [int(index) for index in value]
+                for key, value in json.loads(str(attempt["option_order_json"])).items()
+            }
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            log.error("Tentativa de prova %s possui materialização inválida", int(attempt["id"]))
+            return web.json_response({"ok": False, "code": "EXAM_CORRUPTED", "message": "Não consegui abrir esta prova. A equipe precisa revisar a atribuição."}, status=500)
+        return web.json_response(
+            {
+                "ok": True,
+                "assignment": self.public_exam_assignment_payload(assignment),
+                "attempt": {
+                    "id": int(attempt["id"]),
+                    "started_at": str(attempt["started_at"]),
+                    "questions": public_exam_payload(stored_order, stored_options),
+                },
+            }
+        )
+
+    async def deliver_exam_result_once(self, assignment: object) -> str:
+        assignment_id = int(assignment["id"])
+        if not self.database.claim_exam_result_delivery(assignment_id):
+            return "already_claimed"
+        manager = await self.public_discord_member_by_id(assignment["manager_discord_user_id"])
+        if manager is None:
+            self.database.set_exam_result_delivery(assignment_id, status="failed", error="manager_unavailable")
+            return "failed"
+        embed = discord.Embed(
+            title="Peace · resultado da Apostila Civil",
+            description="Uma tentativa única foi finalizada.",
+            colour=discord.Colour(0xB9CAD3),
+        )
+        embed.add_field(name="Candidato", value=str(assignment["candidate_username_snapshot"]), inline=True)
+        embed.add_field(name="Discord ID", value=f"`{assignment['candidate_discord_user_id']}`", inline=True)
+        embed.add_field(name="Nota", value=f"**{int(assignment['score'])}/{100}**", inline=True)
+        embed.add_field(name="Situação", value="Aprovado" if bool(assignment["passed"]) else "Não aprovado", inline=True)
+        embed.add_field(name="Atribuição", value=f"`#{assignment_id}`", inline=True)
+        try:
+            await manager.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            self.database.set_exam_result_delivery(assignment_id, status="failed", error="manager_dm_failed")
+            return "failed"
+        self.database.set_exam_result_delivery(assignment_id, status="sent")
+        return "sent"
+
+    async def public_exam_submit(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de enviar."}, status=401)
+        answer_key = self.public_exam_answer_key()
+        if answer_key is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "A prova ainda não está configurada pela equipe."},
+                status=503,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Respostas inválidas."}, status=400)
+        assignment_id = self.public_exam_assignment_id(payload.get("assignment_id"))
+        answers = payload.get("answers")
+        if assignment_id is None or not isinstance(answers, dict):
+            return web.json_response({"ok": False, "code": "INVALID_ANSWERS", "message": "Envie todas as respostas da prova."}, status=400)
+        assignment = self.database.exam_assignment(assignment_id)
+        attempt = self.database.exam_attempt_for_candidate(assignment_id, session["discord_user_id"])
+        if assignment is None or attempt is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "Não encontrei uma tentativa vinculada à sua conta."}, status=404)
+        if attempt["status"] != "in_progress":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi finalizada."}, status=409)
+        try:
+            question_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            option_order = {
+                str(key): [int(index) for index in value]
+                for key, value in json.loads(str(attempt["option_order_json"])).items()
+            }
+            result = grade_exam(answers, question_order, option_order, answer_key)
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            return web.json_response({"ok": False, "code": "INVALID_ANSWERS", "message": "Responda todas as questões uma única vez.", "detail": str(error)}, status=400)
+        passing_score = int(assignment["passing_score"])
+        passed = int(result["score"]) >= passing_score
+        status, saved_assignment, _ = self.database.submit_exam_attempt(
+            assignment_id=assignment_id,
+            candidate_discord_user_id=session["discord_user_id"],
+            answers=answers,
+            score=int(result["score"]),
+            correct_count=int(result["correct_count"]),
+            passed=passed,
+        )
+        if status == "already_submitted":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi finalizada."}, status=409)
+        if status == "expired":
+            return web.json_response({"ok": False, "code": "EXAM_EXPIRED", "message": "O prazo terminou antes do envio."}, status=409)
+        if status != "submitted" or saved_assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_NOT_SUBMITTABLE", "message": "Não foi possível finalizar esta tentativa."}, status=409)
+        delivery_status = await self.deliver_exam_result_once(saved_assignment)
+        return web.json_response(
+            {
+                "ok": True,
+                "result": {
+                    "score": int(saved_assignment["score"]),
+                    "scale": 100,
+                    "passing_score": passing_score,
+                    "correct_count": int(saved_assignment["correct_count"]),
+                    "total_questions": len(question_order),
+                    "passed": bool(saved_assignment["passed"]),
+                    "submitted_at": str(saved_assignment["submitted_at"]),
+                },
+                "manager_delivery": "sent" if delivery_status == "sent" else "pending_or_failed",
+            }
+        )
+
+    async def public_exam_assignments(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para acessar a gerência."}, status=401)
+        manager = await self.public_manager_member(session["discord_user_id"])
+        if manager is None:
+            return web.json_response({"ok": False, "code": "MANAGER_REQUIRED", "message": "Somente Gerência pode gerar provas."}, status=403)
+        if self.public_exam_answer_key() is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "O gabarito protegido ainda não está configurado pela equipe."},
+                status=503,
+            )
+        if request.method == "GET":
+            assignments = self.database.exam_assignments_for_manager(session["discord_user_id"])
+            return web.json_response({"ok": True, "assignments": [self.public_exam_manager_assignment_payload(row) for row in assignments]})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da atribuição inválidos."}, status=400)
+        candidate_id = str(payload.get("candidate_discord_user_id", "") or "").strip()
+        candidate_username = str(payload.get("candidate_username", "") or "").strip()
+        deadline = self.public_exam_deadline(payload.get("deadline_at"))
+        if not re.fullmatch(r"[0-9]{15,25}", candidate_id):
+            return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_ID", "message": "Informe um Discord ID válido."}, status=400)
+        if not 2 <= len(candidate_username) <= 80:
+            return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_USERNAME", "message": "Informe o username real do Discord."}, status=400)
+        now = datetime.now(timezone.utc)
+        if deadline is None or deadline <= now + timedelta(minutes=1):
+            return web.json_response({"ok": False, "code": "INVALID_DEADLINE", "message": "O prazo precisa estar no futuro."}, status=400)
+        if deadline > now + timedelta(days=self.public_exam_max_deadline_days()):
+            return web.json_response({"ok": False, "code": "DEADLINE_TOO_LONG", "message": "O prazo ultrapassa o limite configurado pela equipe."}, status=400)
+        candidate_member, candidate_state = await self.public_discord_member_state(candidate_id)
+        if candidate_state == "member":
+            known_names = {
+                str(getattr(candidate_member, "name", "") or "").casefold(),
+                str(getattr(candidate_member, "global_name", "") or "").casefold(),
+                str(getattr(candidate_member, "display_name", "") or "").casefold(),
+            }
+            if candidate_username.casefold() not in known_names:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "CANDIDATE_IDENTITY_MISMATCH",
+                        "message": "O username não corresponde ao Discord ID informado.",
+                    },
+                    status=409,
+                )
+        try:
+            assignment, raw_token = self.database.create_exam_assignment(
+                candidate_discord_user_id=candidate_id,
+                candidate_username=candidate_username,
+                manager_discord_user_id=session["discord_user_id"],
+                question_bank_version=CIVIL_BANK_VERSION,
+                passing_score=self.public_exam_passing_score(),
+                deadline_at=deadline.isoformat(),
+            )
+        except ExamAssignmentExistsError:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "EXAM_ALREADY_ASSIGNED",
+                    "message": "Este Discord ID já possui uma prova única registrada.",
+                },
+                status=409,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui criar atribuição de prova", exc_info=True)
+            return web.json_response({"ok": False, "code": "EXAM_ASSIGNMENT_UNAVAILABLE", "message": "Não consegui gerar a prova agora."}, status=503)
+        base_url = str(getattr(self.settings, "website_url", "") or "").rstrip("/")
+        host = str(request.host or "")
+        if host.startswith(("127.0.0.1:", "localhost:", "[::1]:")):
+            base_url = f"{request.scheme}://{host}"
+        access_url = f"{base_url}/prova/?access={urlencode({'': raw_token})[1:]}" if base_url else f"/prova/?access={raw_token}"
+        return web.json_response({"ok": True, "assignment": self.public_exam_manager_assignment_payload(assignment), "access_url": access_url})
+
     @staticmethod
     @web.middleware
     async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
@@ -4721,6 +5544,11 @@ class PeaceBot(commands.Bot):
         cookie_mutation = route in {
             "/api/member/auth/verify",
             "/api/member/auth/revoke",
+            "/api/auth/discord/logout",
+            "/api/exams/access",
+            "/api/exams/start",
+            "/api/exams/submit",
+            "/api/exams/assignments",
         }
         if (
             request.method == "POST"
@@ -4728,6 +5556,7 @@ class PeaceBot(commands.Bot):
             and (
                 request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE)
                 or request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE)
+                or request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE)
             )
             and origin not in PUBLIC_API_ORIGINS
         ):
@@ -4849,6 +5678,7 @@ class PeaceBot(commands.Bot):
         app.router.add_get("/healthz", self.public_api_health)
         app.router.add_get("/api/status", self.public_api_status)
         app.router.add_get("/api/media", self.public_api_media)
+        app.router.add_get("/api/notices", self.public_api_notices)
         app.router.add_post("/api/entry/start", self.public_api_entry_start)
         app.router.add_get("/api/entry/status", self.public_api_entry_status)
         app.router.add_post("/api/entry/status", self.public_api_entry_status)
@@ -4859,9 +5689,20 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/member/auth/session", self.public_member_auth_session)
         app.router.add_post("/api/member/auth/revoke", self.public_member_auth_revoke)
         app.router.add_get("/api/member/overview", self.public_member_auth_overview)
+        app.router.add_get("/api/auth/discord/start", self.public_discord_auth_start)
+        app.router.add_get("/api/auth/discord/callback", self.public_discord_auth_callback)
+        app.router.add_get("/api/auth/discord/session", self.public_discord_auth_session)
+        app.router.add_post("/api/auth/discord/logout", self.public_discord_auth_logout)
+        app.router.add_get("/api/exams/process", self.public_exam_process)
+        app.router.add_post("/api/exams/access", self.public_exam_access)
+        app.router.add_post("/api/exams/start", self.public_exam_start)
+        app.router.add_post("/api/exams/submit", self.public_exam_submit)
+        app.router.add_get("/api/exams/assignments", self.public_exam_assignments)
+        app.router.add_post("/api/exams/assignments", self.public_exam_assignments)
         for route in (
             "/api/status",
             "/api/media",
+            "/api/notices",
             "/api/entry/start",
             "/api/entry/status",
             "/api/entry/repair",
@@ -4871,6 +5712,15 @@ class PeaceBot(commands.Bot):
             "/api/member/auth/session",
             "/api/member/auth/revoke",
             "/api/member/overview",
+            "/api/auth/discord/start",
+            "/api/auth/discord/callback",
+            "/api/auth/discord/session",
+            "/api/auth/discord/logout",
+            "/api/exams/process",
+            "/api/exams/access",
+            "/api/exams/start",
+            "/api/exams/submit",
+            "/api/exams/assignments",
         ):
             app.router.add_route("OPTIONS", route, self.public_api_options)
         return app

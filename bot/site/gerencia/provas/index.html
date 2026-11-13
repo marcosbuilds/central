@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR" data-page="manager">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Gerência Peace — atribuição da prova Civil.">
+    <title>Gerência · Provas — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261113-03">
+    <script defer src="/script.js?v=20261113-03"></script>
+  </head>
+  <body data-page="manager">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page study-page manager-page">
+      <header class="flow-header" aria-label="Gerência de provas">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
+        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/">Meu processo</a><a href="/estudos/civil/">Apostila Civil</a><a href="/#sobre">A Peace</a></nav>
+        <button class="button button--outline flow-header-cta" type="button" data-manager-logout hidden>Sair</button>
+      </header>
+
+      <main id="conteudo" class="manager-main" tabindex="-1">
+        <div class="study-breadcrumb"><a href="/estudos/">Estudos</a><span aria-hidden="true">/</span><span aria-current="page">Gerência · Provas</span></div>
+        <section class="manager-hero" data-reveal aria-labelledby="manager-title"><div><p class="eyebrow">Acesso restrito · Gerência</p><h1 id="manager-title">Atribua a prova.<br><em>Registre o processo.</em></h1><p class="flow-lede">Crie uma atribuição única para um Discord ID, defina o prazo e envie o link opaco ao candidato. O servidor confirma a cargo de Gerência antes de criar qualquer prova.</p></div><aside class="manager-hero-aside"><p class="eyebrow">Banco Civil</p><strong>10 questões · 100 pontos.</strong><p>6 questões gerais, 2 de investigação e 2 de patrulha. A nota mínima é configurada no backend.</p></aside></section>
+
+        <section class="manager-gate" data-manager-gate aria-labelledby="manager-gate-title"><p class="eyebrow">Identidade da equipe</p><h2 id="manager-gate-title">Conecte o Discord para verificar seu cargo.</h2><p>Somente o cargo de Gerência, conferido no servidor pelo bot, pode gerar atribuições. Staff, Founder e Recrutador não recebem esta permissão nesta etapa.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fgerencia%2Fprovas%2F" data-manager-connect><span data-manager-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><p class="form-status" data-manager-message role="status" aria-live="polite"></p></section>
+
+        <section class="manager-workspace" data-manager-workspace hidden aria-labelledby="assignment-form-title">
+          <div class="manager-workspace-heading"><div><p class="eyebrow">Nova atribuição</p><h2 id="assignment-form-title">Gerar link individual.</h2></div><span class="status-tag status-tag--ready">Gerência confirmada</span></div>
+          <form class="manager-form" data-manager-form novalidate>
+            <div class="manager-field-grid"><label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" minlength="15" maxlength="25" required placeholder="Ex.: 000000000000000000"><small>Use o ID real. O username sozinho nunca autoriza a prova.</small></label><label class="field"><span>Username atual no Discord</span><input name="candidate_username" maxlength="80" required placeholder="Ex.: nome-do-candidato"><small>Será salvo como snapshot visual; o ID autenticado é a chave.</small></label></div>
+            <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required><small>O backend converte para UTC e valida o limite configurado.</small></label>
+            <div class="manager-form-actions"><button class="button button--light" type="submit" data-manager-submit>Gerar atribuição <span class="button-icon" aria-hidden="true">→</span></button><p class="form-status" data-manager-form-message role="status" aria-live="polite"></p></div>
+          </form>
+          <section class="manager-generated" data-manager-generated hidden aria-labelledby="generated-title"><p class="eyebrow">Link pronto</p><h3 id="generated-title">Envie uma única vez ao candidato.</h3><p>O token não é salvo em texto no banco. Copie agora e trate este link como privado.</p><div class="manager-link-row"><code id="generated-link" data-manager-generated-link></code><button class="button button--outline" type="button" data-copy-target="#generated-link">Copiar link</button></div><p class="copy-status" data-copy-status role="status" aria-live="polite"></p></section>
+          <section class="manager-history" aria-labelledby="history-title"><div class="study-section-heading"><div><p class="eyebrow">Suas atribuições</p><h2 id="history-title">Acompanhe quem recebeu prova.</h2></div><p>O histórico abaixo é limitado às atribuições criadas por esta Gerência.</p></div><div class="manager-assignment-list" data-manager-list></div></section>
+        </section>
+      </main>
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Gerência com rastreabilidade.</p><a class="footer-link" href="/estudos/civil/">Apostila Civil <span class="button-icon" aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

@@ -18,11 +18,12 @@
 .flow-header-nav a { position: relative; display: inline-flex; min-height: 2.25rem; align-items: center; }
 .flow-header-link:hover, .flow-header-link:focus-visible, .flow-header-nav a:hover, .flow-header-nav a:focus-visible, .flow-header-nav a[aria-current="page"] { color: var(--text); }
 .flow-header-nav a[aria-current="page"]::after, .flow-header-nav a[aria-current="location"]::after { position: absolute; right: 0; bottom: 0.15rem; left: 0; height: 1px; background: var(--accent); content: ""; }
-.flow-header-nav { display: flex; justify-content: center; gap: clamp(1rem, 3vw, 2.6rem); }
-.flow-header-login { justify-self: end; min-height: 2.7rem; padding-inline: 0.85rem; }
+.flow-header-nav { display: flex; justify-content: center; gap: clamp(0.75rem, 1.8vw, 1.6rem); }
+.flow-header-actions { display: flex; align-items: center; justify-self: end; gap: 0.55rem; }
+.flow-header-login { min-height: 2.7rem; padding-inline: 0.85rem; }
 .flow-header-login .peace-icon { width: 1rem; height: 1rem; }
 .flow-header-login small { color: var(--quiet); font-size: 0.58rem; letter-spacing: 0.06em; text-transform: uppercase; }
-.flow-header-cta { justify-self: end; min-height: 2.5rem; }
+.flow-header-cta { min-height: 2.5rem; }
 .flow-header-cta .peace-icon { width: 1rem; height: 1rem; }
 .flow-main { width: min(100%, var(--content)); margin: 0 auto; padding: clamp(3.5rem, 8vw, 7rem) 1.25rem clamp(5rem, 9vw, 8rem); }
 .flow-main--entry { padding-top: clamp(2.75rem, 5vw, 5rem); padding-bottom: clamp(3rem, 5vw, 4.5rem); }
@@ -355,7 +356,7 @@ body[data-page="candidatura"] [data-entry-connect] { min-width: 15rem; }
   .flow-header { grid-template-columns: auto auto; justify-content: space-between; }
   .flow-header-context { display: none; }
   .flow-header-login small { display: none; }
-  .flow-header-login { grid-column: 2; }
+  .flow-header-actions { grid-column: 2; grid-row: 1; }
   .flow-header-nav { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; overflow-x: auto; padding-top: 0.6rem; }
   .flow-header-cta { grid-column: 2; grid-row: 1; }
   .flow-actions, .stage-actions { align-items: stretch; flex-direction: column; }

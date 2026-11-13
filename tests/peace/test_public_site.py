@@ -1416,6 +1416,13 @@ def test_public_site_files_are_complete():
         assert (site_root / route / "index.html").is_file()
     for route in ("estudos", "estudos/civil", "estudos/peace", "meu-processo"):
         assert (site_root / route / "index.html").is_file()
+    for route in ("estudos/civil/leitor", "estudos/peace/leitor"):
+        assert (site_root / route / "index.html").is_file()
+    for asset in (
+        "assets/studies/civil/civil-cover-01.png",
+        "assets/studies/peace/a-peace-cover-1.png",
+    ):
+        assert (site_root / asset).is_file()
     assert not list(site_root.rglob("*.pdf")), "PDFs must stay out of the public shell until published"
     assert "/api/status" not in (site_root / "script.js").read_text(encoding="utf-8")
     assert "/api/auth/code/request" not in (site_root / "script.js").read_text(encoding="utf-8")
@@ -1580,16 +1587,34 @@ def test_public_site_files_are_complete():
     studies_html = (site_root / "estudos" / "index.html").read_text(encoding="utf-8")
     civil_html = (site_root / "estudos" / "civil" / "index.html").read_text(encoding="utf-8")
     peace_html = (site_root / "estudos" / "peace" / "index.html").read_text(encoding="utf-8")
+    civil_reader_html = (site_root / "estudos" / "civil" / "leitor" / "index.html").read_text(encoding="utf-8")
+    peace_reader_html = (site_root / "estudos" / "peace" / "leitor" / "index.html").read_text(encoding="utf-8")
     process_html = (site_root / "meu-processo" / "index.html").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
         assert 'href="/styles.css?v=20261113-02"' in html
         assert 'src="/script.js?v=20261113-01"' in html
         assert 'aria-label="Páginas públicas"' in html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
-    assert "PDF em preparação" in civil_html
-    assert "Download ainda indisponível" in civil_html and "Download ainda indisponível" in peace_html
-    assert "Manual de convivência em PDF" in peace_html
-    assert "Como a conexão funcionará" in process_html
+    assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
+    assert "Disponível para estudo" in civil_html and "Disponível para estudo" in peace_html
+    assert "PDF em preparação" not in civil_html and "PDF em preparação" not in peace_html
+    assert "Download ainda indisponível" not in civil_html and "Download ainda indisponível" not in peace_html
+    assert "O download do PDF original não é oferecido." in civil_html
+    assert "O download do PDF original não é oferecido." in peace_html
+    assert 'src="/assets/studies/civil/civil-cover-01.png"' in civil_html
+    assert 'src="/assets/studies/peace/a-peace-cover-1.png"' in peace_html
+    assert 'href="/estudos/civil/leitor/" target="_blank" rel="noopener"' in civil_html
+    assert 'href="/estudos/peace/leitor/" target="_blank" rel="noopener"' in peace_html
+    for reader_html, reader_label in (
+        (civil_reader_html, 'aria-label="Páginas da Apostila Civil"'),
+        (peace_reader_html, 'aria-label="Páginas do manual A Peace"'),
+    ):
+        assert 'class="reader-cover-frame"' in reader_html
+        assert 'class="reader-pages"' in reader_html
+        assert reader_label in reader_html
+        assert "Leitor visual, sem download do original." in reader_html
+        assert "PDF original não é publicado nesta página." in reader_html
+    assert "Conecte o Discord para abrir seu processo." in process_html
     assert 'aria-current="location">Estudos</a>' in civil_html
     assert 'aria-current="location">Estudos</a>' in peace_html
     assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
@@ -1603,7 +1628,7 @@ def test_public_site_files_are_complete():
     assert "Sequência individual" in civil_html
     assert "class=\"process-identity-list\"" in process_html
     assert "Discord ID" in process_html and "Membro Peace" in process_html
-    assert "A ordem será individual" in process_html
+    assert "A ordem muda por tentativa, sem mudar o conjunto de questões." in process_html
     assert "Começar pela Apostila Civil" in process_html
     assert "synthetic" not in process_html.lower()
     assert ".study-reader" in stylesheet and ".process-empty" in stylesheet
@@ -1611,7 +1636,7 @@ def test_public_site_files_are_complete():
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
     assert "flows.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261113-03" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert 'html.js-ready body { animation: none !important; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html
@@ -1669,9 +1694,9 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/estudos/peace /estudos/peace/ 301!" in redirects
     assert "/estudos/a-peace /estudos/peace/ 301!" in redirects
     assert "/estudos/a-peace/ /estudos/peace/ 301!" in redirects
-    assert "/api/status http://141.11.237.97:25072/api/status 200!" in redirects
-    assert "/api/media http://141.11.237.97:25072/api/media 200!" in redirects
-    assert "/api/member/overview http://141.11.237.97:25072/api/member/overview 200!" in redirects
+    assert "/api/status https://peace-tools-8be02694.aclclouds.online/api/status 200!" in redirects
+    assert "/api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!" in redirects
+    assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
         assert f"{route} {route}/ 301!" not in redirects

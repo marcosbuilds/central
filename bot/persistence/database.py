@@ -15,6 +15,10 @@ else:
     from core.identity import prefix_for_roles
 
 
+class ExamAssignmentExistsError(sqlite3.IntegrityError):
+    """Raised when a candidate already has the one allowed selection exam."""
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -228,6 +232,115 @@ CREATE INDEX IF NOT EXISTS idx_central_login_sessions_client
 CREATE INDEX IF NOT EXISTS idx_central_login_sessions_expiry
     ON central_login_sessions(client_id, expires_at, revoked_at);
 
+CREATE TABLE IF NOT EXISTS candidate_profiles (
+    discord_user_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    global_name TEXT,
+    display_name TEXT,
+    score INTEGER,
+    score_scale INTEGER NOT NULL DEFAULT 100,
+    passed INTEGER,
+    last_assignment_id INTEGER,
+    last_submitted_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exam_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    access_token_hash TEXT NOT NULL UNIQUE,
+    candidate_discord_user_id TEXT NOT NULL,
+    candidate_username_snapshot TEXT NOT NULL,
+    manager_discord_user_id TEXT NOT NULL,
+    question_bank_version TEXT NOT NULL,
+    passing_score INTEGER NOT NULL,
+    deadline_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'assigned',
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    submitted_at TEXT,
+    revoked_at TEXT,
+    score INTEGER,
+    correct_count INTEGER,
+    passed INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_assignments_candidate
+    ON exam_assignments(candidate_discord_user_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exam_assignments_manager
+    ON exam_assignments(manager_discord_user_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exam_assignments_deadline
+    ON exam_assignments(status, deadline_at);
+
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id INTEGER NOT NULL UNIQUE REFERENCES exam_assignments(id) ON DELETE CASCADE,
+    attempt_token_hash TEXT NOT NULL UNIQUE,
+    candidate_discord_user_id TEXT NOT NULL,
+    question_order_json TEXT NOT NULL,
+    option_order_json TEXT NOT NULL,
+    answers_json TEXT,
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    started_at TEXT NOT NULL,
+    submitted_at TEXT,
+    score INTEGER,
+    correct_count INTEGER,
+    passed INTEGER,
+    result_delivery_attempted_at TEXT,
+    result_delivery_status TEXT,
+    result_delivery_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_attempts_candidate
+    ON exam_attempts(candidate_discord_user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS exam_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_id INTEGER NOT NULL REFERENCES exam_assignments(id) ON DELETE CASCADE,
+    actor_discord_user_id TEXT,
+    event_type TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_exam_events_assignment
+    ON exam_events(assignment_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS discord_oauth_states (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    state_hash TEXT NOT NULL UNIQUE,
+    code_verifier TEXT NOT NULL,
+    return_to TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_oauth_states_expiry
+    ON discord_oauth_states(expires_at, consumed_at);
+
+CREATE TABLE IF NOT EXISTS discord_oauth_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_selector TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    token_salt TEXT NOT NULL,
+    discord_user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    global_name TEXT,
+    display_name TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_user
+    ON discord_oauth_sessions(discord_user_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_expiry
+    ON discord_oauth_sessions(expires_at, revoked_at);
+
 """
 
 
@@ -254,6 +367,14 @@ def _central_token_hash(token: str, salt: str) -> str:
 
 
 def _central_challenge_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _oauth_state_hash(state: str) -> str:
+    return hashlib.sha256(state.encode("utf-8")).hexdigest()
+
+
+def _exam_access_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -289,9 +410,11 @@ class PeaceDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 10000")
+        connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
     def initialize(self) -> None:
@@ -357,6 +480,22 @@ class PeaceDatabase:
             connection.execute(
                 """
                 DELETE FROM central_login_sessions
+                WHERE expires_at <= ?
+                   OR (revoked_at IS NOT NULL AND revoked_at <= ?)
+                """,
+                (auth_now, auth_retention_cutoff),
+            )
+            connection.execute(
+                """
+                DELETE FROM discord_oauth_states
+                WHERE expires_at <= ?
+                   OR (consumed_at IS NOT NULL AND consumed_at <= ?)
+                """,
+                (auth_now, auth_retention_cutoff),
+            )
+            connection.execute(
+                """
+                DELETE FROM discord_oauth_sessions
                 WHERE expires_at <= ?
                    OR (revoked_at IS NOT NULL AND revoked_at <= ?)
                 """,
@@ -504,6 +643,558 @@ class PeaceDatabase:
             return connection.execute(
                 "SELECT * FROM members WHERE discord_user_id = ?", (str(discord_user_id),)
             ).fetchone()
+
+    def create_discord_oauth_state(
+        self,
+        *,
+        state: str,
+        code_verifier: str,
+        return_to: str,
+        expires_at: str,
+    ) -> None:
+        """Persist one short-lived PKCE state without retaining the raw nonce."""
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO discord_oauth_states (
+                    state_hash, code_verifier, return_to, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    _oauth_state_hash(state),
+                    code_verifier,
+                    return_to,
+                    now_iso(),
+                    expires_at,
+                ),
+            )
+            connection.commit()
+
+    def consume_discord_oauth_state(self, state: str, *, now: str | None = None) -> sqlite3.Row | None:
+        """Atomically consume a matching, unexpired OAuth state."""
+        self.initialize()
+        current_time = now or now_iso()
+        state_hash = _oauth_state_hash(state)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT * FROM discord_oauth_states
+                WHERE state_hash = ? AND consumed_at IS NULL AND expires_at > ?
+                """,
+                (state_hash, current_time),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            updated = connection.execute(
+                """
+                UPDATE discord_oauth_states
+                SET consumed_at = ?
+                WHERE id = ? AND consumed_at IS NULL
+                """,
+                (current_time, int(row["id"])),
+            )
+            if updated.rowcount != 1:
+                connection.rollback()
+                return None
+            consumed = connection.execute(
+                "SELECT * FROM discord_oauth_states WHERE id = ?",
+                (int(row["id"]),),
+            ).fetchone()
+            connection.commit()
+        return consumed
+
+    def create_discord_oauth_session(
+        self,
+        *,
+        discord_user_id: int | str,
+        username: str,
+        global_name: str | None,
+        display_name: str | None,
+        expires_at: str,
+    ) -> str:
+        """Create a browser session and return the raw token exactly once."""
+        self.initialize()
+        token = secrets.token_urlsafe(32)
+        salt = secrets.token_hex(16)
+        selector = _central_token_selector(token)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO discord_oauth_sessions (
+                    session_selector, token_hash, token_salt, discord_user_id,
+                    username, global_name, display_name, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    selector,
+                    _central_token_hash(token, salt),
+                    salt,
+                    str(discord_user_id),
+                    str(username)[:80],
+                    str(global_name)[:80] if global_name else None,
+                    str(display_name)[:80] if display_name else None,
+                    now_iso(),
+                    expires_at,
+                ),
+            )
+            connection.commit()
+        return token
+
+    def validate_discord_oauth_session(
+        self,
+        token: str,
+        *,
+        now: str | None = None,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        if not token:
+            return None
+        current_time = now or now_iso()
+        selector = _central_token_selector(token)
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM discord_oauth_sessions
+                WHERE session_selector = ? AND revoked_at IS NULL AND expires_at > ?
+                """,
+                (selector, current_time),
+            ).fetchone()
+        if row is None or not hmac.compare_digest(
+            _central_token_hash(token, str(row["token_salt"])),
+            str(row["token_hash"]),
+        ):
+            return None
+        return row
+
+    def revoke_discord_oauth_session(self, token: str) -> bool:
+        self.initialize()
+        if not token:
+            return False
+        selector = _central_token_selector(token)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT token_hash, token_salt, revoked_at FROM discord_oauth_sessions WHERE session_selector = ?",
+                (selector,),
+            ).fetchone()
+            if row is None or row["revoked_at"] is not None:
+                return False
+            if not hmac.compare_digest(
+                _central_token_hash(token, str(row["token_salt"])),
+                str(row["token_hash"]),
+            ):
+                return False
+            connection.execute(
+                "UPDATE discord_oauth_sessions SET revoked_at = ? WHERE session_selector = ? AND revoked_at IS NULL",
+                (now_iso(), selector),
+            )
+            connection.commit()
+        return True
+
+    def upsert_candidate_profile(
+        self,
+        *,
+        discord_user_id: int | str,
+        username: str,
+        global_name: str | None = None,
+        display_name: str | None = None,
+    ) -> sqlite3.Row:
+        """Keep a current Discord identity snapshot without changing its score."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO candidate_profiles (
+                    discord_user_id, username, global_name, display_name, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(discord_user_id) DO UPDATE SET
+                    username=excluded.username,
+                    global_name=excluded.global_name,
+                    display_name=excluded.display_name,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    str(discord_user_id),
+                    str(username)[:80],
+                    str(global_name)[:80] if global_name else None,
+                    str(display_name)[:80] if display_name else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM candidate_profiles WHERE discord_user_id = ?",
+                (str(discord_user_id),),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        return row
+
+    def candidate_profile(self, discord_user_id: int | str) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM candidate_profiles WHERE discord_user_id = ?",
+                (str(discord_user_id),),
+            ).fetchone()
+
+    def create_exam_assignment(
+        self,
+        *,
+        candidate_discord_user_id: int | str,
+        candidate_username: str,
+        manager_discord_user_id: int | str,
+        question_bank_version: str,
+        passing_score: int,
+        deadline_at: str,
+    ) -> tuple[sqlite3.Row, str]:
+        """Create an assignment and return its opaque access link token once."""
+        self.initialize()
+        raw_token = secrets.token_urlsafe(32)
+        timestamp = now_iso()
+        candidate_id = str(candidate_discord_user_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT id, status FROM exam_assignments WHERE candidate_discord_user_id = ? LIMIT 1",
+                (candidate_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ExamAssignmentExistsError(f"candidate already has assignment {int(existing['id'])}")
+            cursor = connection.execute(
+                """
+                INSERT INTO exam_assignments (
+                    access_token_hash, candidate_discord_user_id, candidate_username_snapshot,
+                    manager_discord_user_id, question_bank_version, passing_score,
+                    deadline_at, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?)
+                """,
+                (
+                    _exam_access_token_hash(raw_token),
+                    candidate_id,
+                    str(candidate_username)[:80],
+                    str(manager_discord_user_id),
+                    str(question_bank_version),
+                    int(passing_score),
+                    deadline_at,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                VALUES (?, ?, 'assigned', '{}', ?)
+                """,
+                (int(cursor.lastrowid), str(manager_discord_user_id), timestamp),
+            )
+            connection.commit()
+        assert row is not None
+        return row, raw_token
+
+    def exam_assignment_by_access_token(self, token: str) -> sqlite3.Row | None:
+        self.initialize()
+        if not token:
+            return None
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM exam_assignments WHERE access_token_hash = ?",
+                (_exam_access_token_hash(token),),
+            ).fetchone()
+
+    def exam_assignment(self, assignment_id: int | str) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+
+    def exam_assignments_for_candidate(self, discord_user_id: int | str) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM exam_assignments
+                    WHERE candidate_discord_user_id = ?
+                    ORDER BY id DESC
+                    """,
+                    (str(discord_user_id),),
+                ).fetchall()
+            )
+
+    def exam_assignments_for_manager(self, discord_user_id: int | str) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM exam_assignments
+                    WHERE manager_discord_user_id = ?
+                    ORDER BY id DESC
+                    """,
+                    (str(discord_user_id),),
+                ).fetchall()
+            )
+
+    def start_exam_attempt(
+        self,
+        *,
+        assignment_id: int,
+        candidate_discord_user_id: int | str,
+        question_order: list[str],
+        option_order: Mapping[str, list[int]],
+        now: str | None = None,
+    ) -> tuple[sqlite3.Row | None, sqlite3.Row | None]:
+        """Start once under an immediate transaction; a reload resumes the same attempt."""
+        self.initialize()
+        current_time = now or now_iso()
+        candidate_id = str(candidate_discord_user_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            assignment = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ? AND candidate_discord_user_id = ?",
+                (int(assignment_id), candidate_id),
+            ).fetchone()
+            if assignment is None:
+                connection.rollback()
+                return None, None
+            attempt = connection.execute(
+                "SELECT * FROM exam_attempts WHERE assignment_id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            if assignment["status"] == "assigned":
+                if str(assignment["deadline_at"]) <= current_time:
+                    connection.execute(
+                        "UPDATE exam_assignments SET status = 'expired' WHERE id = ? AND status = 'assigned'",
+                        (int(assignment_id),),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                        VALUES (?, ?, 'expired', '{}', ?)
+                        """,
+                        (int(assignment_id), candidate_id, current_time),
+                    )
+                else:
+                    attempt_token = secrets.token_urlsafe(32)
+                    connection.execute(
+                        """
+                        INSERT INTO exam_attempts (
+                            assignment_id, attempt_token_hash, candidate_discord_user_id,
+                            question_order_json, option_order_json, status, started_at
+                        ) VALUES (?, ?, ?, ?, ?, 'in_progress', ?)
+                        """,
+                        (
+                            int(assignment_id),
+                            _exam_access_token_hash(attempt_token),
+                            candidate_id,
+                            json.dumps(question_order, ensure_ascii=True, separators=(",", ":")),
+                            json.dumps(option_order, ensure_ascii=True, separators=(",", ":")),
+                            current_time,
+                        ),
+                    )
+                    connection.execute(
+                        "UPDATE exam_assignments SET status = 'in_progress', started_at = ? WHERE id = ? AND status = 'assigned'",
+                        (current_time, int(assignment_id)),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                        VALUES (?, ?, 'started', '{}', ?)
+                        """,
+                        (int(assignment_id), candidate_id, current_time),
+                    )
+            assignment = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            attempt = connection.execute(
+                "SELECT * FROM exam_attempts WHERE assignment_id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            connection.commit()
+        return assignment, attempt
+
+    def exam_attempt_for_candidate(
+        self,
+        assignment_id: int | str,
+        discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM exam_attempts
+                WHERE assignment_id = ? AND candidate_discord_user_id = ?
+                """,
+                (int(assignment_id), str(discord_user_id)),
+            ).fetchone()
+
+    def submit_exam_attempt(
+        self,
+        *,
+        assignment_id: int,
+        candidate_discord_user_id: int | str,
+        answers: Mapping[str, Any],
+        score: int,
+        correct_count: int,
+        passed: bool,
+        now: str | None = None,
+    ) -> tuple[str, sqlite3.Row | None, sqlite3.Row | None]:
+        """Finalize an attempt once and update the candidate score atomically."""
+        self.initialize()
+        current_time = now or now_iso()
+        candidate_id = str(candidate_discord_user_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            assignment = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ? AND candidate_discord_user_id = ?",
+                (int(assignment_id), candidate_id),
+            ).fetchone()
+            attempt = connection.execute(
+                "SELECT * FROM exam_attempts WHERE assignment_id = ? AND candidate_discord_user_id = ?",
+                (int(assignment_id), candidate_id),
+            ).fetchone()
+            if assignment is None or attempt is None:
+                connection.rollback()
+                return "not_found", assignment, attempt
+            if assignment["status"] == "submitted" or attempt["status"] == "submitted":
+                connection.commit()
+                return "already_submitted", assignment, attempt
+            if assignment["status"] != "in_progress" or attempt["status"] != "in_progress":
+                connection.commit()
+                return "not_submittable", assignment, attempt
+            if str(assignment["deadline_at"]) <= current_time:
+                connection.execute(
+                    "UPDATE exam_attempts SET status = 'expired', submitted_at = ? WHERE id = ? AND status = 'in_progress'",
+                    (current_time, int(attempt["id"])),
+                )
+                connection.execute(
+                    "UPDATE exam_assignments SET status = 'expired' WHERE id = ? AND status = 'in_progress'",
+                    (int(assignment_id),),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                    VALUES (?, ?, 'expired', '{}', ?)
+                    """,
+                    (int(assignment_id), candidate_id, current_time),
+                )
+                connection.commit()
+                return "expired", assignment, attempt
+            answers_json = json.dumps(dict(answers), ensure_ascii=True, separators=(",", ":"))
+            connection.execute(
+                """
+                UPDATE exam_attempts
+                SET answers_json = ?, status = 'submitted', submitted_at = ?, score = ?, correct_count = ?, passed = ?
+                WHERE id = ? AND status = 'in_progress'
+                """,
+                (
+                    answers_json,
+                    current_time,
+                    int(score),
+                    int(correct_count),
+                    int(bool(passed)),
+                    int(attempt["id"]),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE exam_assignments
+                SET status = 'submitted', submitted_at = ?, score = ?, correct_count = ?, passed = ?
+                WHERE id = ? AND status = 'in_progress'
+                """,
+                (current_time, int(score), int(correct_count), int(bool(passed)), int(assignment_id)),
+            )
+            connection.execute(
+                """
+                INSERT INTO candidate_profiles (
+                    discord_user_id, username, score, score_scale, passed,
+                    last_assignment_id, last_submitted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, 100, ?, ?, ?, ?, ?)
+                ON CONFLICT(discord_user_id) DO UPDATE SET
+                    score=excluded.score,
+                    score_scale=excluded.score_scale,
+                    passed=excluded.passed,
+                    last_assignment_id=excluded.last_assignment_id,
+                    last_submitted_at=excluded.last_submitted_at,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    candidate_id,
+                    str(assignment["candidate_username_snapshot"]),
+                    int(score),
+                    int(bool(passed)),
+                    int(assignment_id),
+                    current_time,
+                    current_time,
+                    current_time,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                VALUES (?, ?, 'submitted', ?, ?)
+                """,
+                (
+                    int(assignment_id),
+                    candidate_id,
+                    json.dumps({"score": int(score), "passed": bool(passed)}, ensure_ascii=True, separators=(",", ":")),
+                    current_time,
+                ),
+            )
+            assignment = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            attempt = connection.execute(
+                "SELECT * FROM exam_attempts WHERE id = ?",
+                (int(attempt["id"]),),
+            ).fetchone()
+            connection.commit()
+        return "submitted", assignment, attempt
+
+    def claim_exam_result_delivery(self, assignment_id: int | str) -> bool:
+        """Claim the one allowed manager delivery before the Discord side effect."""
+        self.initialize()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE exam_attempts
+                SET result_delivery_attempted_at = ?, result_delivery_status = 'pending'
+                WHERE assignment_id = ? AND status = 'submitted' AND result_delivery_status IS NULL
+                """,
+                (now_iso(), int(assignment_id)),
+            )
+            connection.commit()
+        return cursor.rowcount == 1
+
+    def set_exam_result_delivery(
+        self,
+        assignment_id: int | str,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE exam_attempts
+                SET result_delivery_status = ?, result_delivery_error = ?
+                WHERE assignment_id = ? AND result_delivery_status = 'pending'
+                """,
+                (str(status), str(error)[:300] if error else None, int(assignment_id)),
+            )
+            connection.commit()
 
     def member_by_peace_id(self, peace_id: int | str) -> sqlite3.Row | None:
         with self.connect() as connection:

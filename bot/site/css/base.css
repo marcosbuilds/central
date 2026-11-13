@@ -88,7 +88,8 @@ button, a { -webkit-tap-highlight-color: transparent; touch-action: manipulation
   transition: transform 180ms var(--ease-fast);
 }
 
-.skip-link:focus { transform: translateY(0); }
+.skip-link:focus,
+.skip-link:focus-visible { top: 1rem; transform: none; }
 
 .site-header {
   position: fixed;
@@ -319,7 +320,7 @@ h2 em, h1 em { color: var(--accent); font-style: normal; }
 .brand--footer .brand-mark img { width: 2.1rem; height: 2.1rem; }
 .brand--footer .brand-lockup strong { font-size: 0.88rem; }
 .site-footer p { margin: 0; color: var(--quiet); font-size: 0.72rem; }
-.footer-link { justify-self: end; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.footer-link { min-height: 2.75rem; justify-self: end; padding: 0.75rem 0; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
 .footer-link, .member-header-discord { display: inline-flex; align-items: center; gap: 0.55rem; }
 
 .discord-copy { display: grid; grid-template-columns: auto minmax(0, auto) auto; align-items: center; gap: 0.45rem 0.75rem; margin-top: 1.5rem; }

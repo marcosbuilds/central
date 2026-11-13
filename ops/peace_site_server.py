@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 
 SITE_DIRECTORY = Path(__file__).resolve().parents[1] / "bot" / "site"
-ACL_ORIGIN = "http://141.11.237.97:25072"
+ACL_ORIGIN = "https://peace-tools-8be02694.aclclouds.online"
 ACL_API_ROUTES = {
     "/api/status",
     "/api/media",
@@ -32,13 +32,31 @@ ACL_API_ROUTES = {
     "/api/member/auth/session",
     "/api/member/auth/revoke",
     "/api/member/overview",
+    "/api/auth/discord/start",
+    "/api/auth/discord/callback",
+    "/api/auth/discord/session",
+    "/api/auth/discord/logout",
+    "/api/exams/process",
+    "/api/exams/access",
+    "/api/exams/start",
+    "/api/exams/submit",
+    "/api/exams/assignments",
 }
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
 MEMBER_SESSION_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_session=([^;]*)")
 MEMBER_CHALLENGE_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_challenge=([^;]*)")
 MEMBER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
 MEMBER_BEARER_PATTERN = re.compile(r"Bearer [A-Za-z0-9_-]{32,128}")
-LOCAL_PROXY_ORIGINS = {"http://127.0.0.1:4173", "http://localhost:4173"}
+OAUTH_COOKIE_PATTERNS = {
+    "peace_discord_session": re.compile(r"(?:^|;\s*)peace_discord_session=([^;]*)"),
+    "peace_discord_oauth_state": re.compile(r"(?:^|;\s*)peace_discord_oauth_state=([^;]*)"),
+}
+LOCAL_PROXY_ORIGINS = {
+    "http://127.0.0.1:4173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4175",
+    "http://localhost:4175",
+}
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -66,6 +84,21 @@ def filtered_member_proxy_headers(cookie_header: str, authorization: str) -> dic
         headers["Cookie"] = "; ".join(allowed_cookies)
     if MEMBER_BEARER_PATTERN.fullmatch(authorization or ""):
         headers["Authorization"] = authorization
+    return headers
+
+
+def filtered_oauth_proxy_headers(cookie_header: str, origin: str) -> dict[str, str]:
+    """Forward only the two cookies used by the Discord OAuth contract."""
+    cookies = []
+    for name, pattern in OAUTH_COOKIE_PATTERNS.items():
+        match = pattern.search(cookie_header or "")
+        if match and MEMBER_TOKEN_PATTERN.fullmatch(match.group(1)):
+            cookies.append(f"{name}={match.group(1)}")
+    headers: dict[str, str] = {}
+    if cookies:
+        headers["Cookie"] = "; ".join(cookies)
+    if origin in LOCAL_PROXY_ORIGINS:
+        headers["Origin"] = origin
     return headers
 
 
@@ -102,6 +135,10 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/estudos/civil",
             "/estudos/peace",
             "/meu-processo",
+            "/prova",
+            "/gerencia/provas",
+            "/estudos/civil/leitor",
+            "/estudos/peace/leitor",
         }:
             self._redirect(route + "/", 301)
             return
@@ -141,6 +178,11 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/member/auth/verify",
             "/api/member/auth/session",
             "/api/member/auth/revoke",
+            "/api/auth/discord/logout",
+            "/api/exams/access",
+            "/api/exams/start",
+            "/api/exams/submit",
+            "/api/exams/assignments",
         }:
             self.send_error(404)
             return
@@ -171,6 +213,13 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             origin = self.headers.get("Origin", "")
             if origin in LOCAL_PROXY_ORIGINS:
                 headers["Origin"] = origin
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/"):
+            headers.update(
+                filtered_oauth_proxy_headers(
+                    self.headers.get("Cookie", ""),
+                    self.headers.get("Origin", ""),
+                )
+            )
         if method == "POST":
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length)
@@ -188,11 +237,13 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 status = response.status
                 content_type = response.headers.get("Content-Type", "application/json")
                 set_cookies = response.headers.get_all("Set-Cookie", []) or []
+                location = response.headers.get("Location")
         except HTTPError as error:
             payload = error.read()
             status = error.code
             content_type = error.headers.get("Content-Type", "application/json")
             set_cookies = error.headers.get_all("Set-Cookie", []) or []
+            location = error.headers.get("Location")
         except (TimeoutError, URLError, OSError):
             payload = json.dumps(
                 {
@@ -206,6 +257,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             status = 503
             content_type = "application/json; charset=utf-8"
             set_cookies = []
+            location = None
 
         if route.startswith("/api/member/"):
             set_cookies = [
@@ -213,12 +265,18 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 for value in set_cookies
                 if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
             ]
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/"):
+            set_cookies = [
+                value
+                for value in set_cookies
+                if re.match(r"^\s*(?:peace_discord_session|peace_discord_oauth_state)=", value, flags=re.IGNORECASE)
+            ]
         else:
             # The local proxy has no reason to establish browser state for any
             # public route outside the member session contract.
             set_cookies = []
 
-        if 300 <= status < 400:
+        if 300 <= status < 400 and not route.startswith("/api/auth/discord/"):
             payload = json.dumps(
                 {
                     "ok": False,
@@ -230,10 +288,37 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             status = 502
             content_type = "application/json; charset=utf-8"
             set_cookies = []
+            location = None
+
+        if 300 <= status < 400 and route.startswith("/api/auth/discord/"):
+            allowed_location = bool(
+                location
+                and (
+                    location.startswith("https://discord.com/")
+                    or location.startswith("/")
+                    or location.startswith("http://127.0.0.1:")
+                    or location.startswith("http://localhost:")
+                )
+            )
+            if not allowed_location:
+                payload = json.dumps(
+                    {
+                        "ok": False,
+                        "code": "ACL_REDIRECT_REJECTED",
+                        "message": "ACLClouds retornou um redirecionamento inesperado.",
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                status = 502
+                content_type = "application/json; charset=utf-8"
+                set_cookies = []
+                location = None
 
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        if 300 <= status < 400 and location:
+            self.send_header("Location", location)
         for set_cookie in set_cookies:
             self.send_header("Set-Cookie", set_cookie)
         self.end_headers()

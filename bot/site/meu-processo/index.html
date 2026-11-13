@@ -15,8 +15,8 @@
     <div class="site-shell flow-page process-page">
       <header class="flow-header" aria-label="Meu processo">
         <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
-        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/" aria-current="page">Meu processo</a><a href="/avisos/">Avisos</a><a href="/parceiros/">Parceiros</a><a href="/#sobre">A Peace</a></nav>
-        <a class="button button--outline flow-header-cta" href="/entrar/"><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">Entrar para Peace</a>
+        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/#sobre">A Peace</a><a href="/estudos/">Estudos</a><a href="/meu-processo/" aria-current="page">Meu processo</a><a href="/#entrada">Como entrar</a><a href="/avisos/">Avisos</a><a href="/parceiros/">Parceiros</a></nav>
+        <div class="flow-header-actions"><a class="flow-header-link flow-header-login" href="/acessar/">Acessar</a><a class="button button--outline flow-header-cta" href="/api/auth/discord/start?return_to=%2Fmeu-processo%2F" data-discord-connect><img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254"><span data-discord-connect-label>Conectar Discord</span></a></div>
       </header>
 
       <main id="conteudo" class="process-main" tabindex="-1">
@@ -24,10 +24,10 @@
           <div>
             <p class="eyebrow">Acompanhamento individual</p>
             <h1 id="process-title">Acompanhe o processo.<br><em>Sem adivinhação.</em></h1>
-            <p class="flow-lede">Esta área pública está sendo preparada para receber suas provas atribuídas, prazos, resultados e próximos passos. Quando a integração estiver ativa, o acesso será confirmado pelo Discord — sem exigir que você seja membro da Peace para consultar o próprio processo.</p>
-            <div class="process-actions"><a class="button button--light button--large" href="/estudos/civil/">Começar pela Apostila Civil <span class="button-icon" aria-hidden="true">→</span></a><a class="flow-secondary-action" href="#conexao">Como a conexão funcionará <span class="button-icon" aria-hidden="true">↓</span></a></div>
+            <p class="flow-lede">Conecte sua conta Discord para consultar apenas o seu processo: prova atribuída, prazo, nota e próximo passo. Você não precisa ser membro da Peace para estudar ou acompanhar uma atribuição.</p>
+            <div class="process-actions"><a class="button button--light button--large" href="/api/auth/discord/start?return_to=%2Fmeu-processo%2F" data-discord-connect><span data-discord-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">→</span></a><a class="flow-secondary-action" href="/estudos/civil/">Começar pela Apostila Civil <span class="button-icon" aria-hidden="true">↗</span></a><a class="flow-secondary-action" href="#conexao">Como a conexão funciona <span class="button-icon" aria-hidden="true">↓</span></a></div>
           </div>
-          <aside class="process-hero-aside" aria-label="Estado da integração"><span class="status-mark" aria-hidden="true"></span><p class="eyebrow">Integração de identidade</p><strong>Acompanhamento em preparação.</strong><p>O painel visual já está definido. A conexão real com Discord e a consulta de provas serão ativadas na próxima etapa.</p></aside>
+          <aside class="process-hero-aside" aria-label="Estado da integração"><span class="status-mark" aria-hidden="true"></span><p class="eyebrow">Integração de identidade</p><strong>Discord ID como fonte.</strong><p>O username aparece apenas como identificação visual. A autorização e o histórico usam o ID retornado pelo Discord.</p></aside>
         </section>
 
         <section class="process-summary" aria-label="O que será acompanhado" data-reveal>
@@ -38,15 +38,29 @@
 
         <section class="process-empty" id="conexao" tabindex="-1" aria-labelledby="connection-title" data-reveal>
           <span class="process-empty-icon" aria-hidden="true">ID</span>
-          <div><p class="eyebrow">Nenhum processo vinculado nesta sessão</p><h2 id="connection-title">A conexão com Discord ainda não está ativa.</h2><p>Quando o OAuth estiver conectado, esta página confirmará o Discord ID autenticado e mostrará somente os registros pertencentes a ele. Username será apenas uma identificação visual; nunca será usado sozinho para autorizar acesso.</p><span class="status-tag status-tag--planned">Integração planejada</span><dl class="process-identity-list" aria-label="Limites planejados de identidade"><div><dt>Discord ID</dt><dd>Fonte de autorização.</dd></div><div><dt>Username</dt><dd>Identificação visual.</dd></div><div><dt>Membro Peace</dt><dd>Não será pré-requisito.</dd></div></dl></div>
+          <div>
+            <p class="eyebrow" data-process-kicker>Identidade ainda não conectada</p>
+            <h2 id="connection-title" data-process-title>Conecte o Discord para abrir seu processo.</h2>
+            <p data-process-copy>O site confirmará a conta pela autorização oficial do Discord e mostrará somente os registros pertencentes ao seu Discord ID.</p>
+            <div class="process-identity-actions"><a class="button button--outline" href="/api/auth/discord/start?return_to=%2Fmeu-processo%2F" data-discord-connect><span data-discord-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><a class="button button--ghost" href="/entrar/" data-process-set-link hidden>Pedir set / entrar</a><button class="button button--ghost" type="button" data-discord-logout hidden>Sair</button></div>
+            <p class="form-status" data-process-status role="status" aria-live="polite"></p>
+            <p class="process-membership-note" data-process-membership-note role="status" aria-live="polite"></p>
+            <dl class="process-identity-list" aria-label="Limites da identidade"><div><dt>Discord ID</dt><dd data-process-discord-id>Aguardando conexão.</dd></div><div><dt>Username</dt><dd data-process-username>Identificação visual.</dd></div><div><dt>Membro Peace</dt><dd data-process-membership>Será confirmado pelo servidor.</dd></div></dl>
+            <aside class="process-score" data-process-score hidden aria-label="Pontuação do perfil"><div><p class="eyebrow">Pontuação do perfil</p><strong data-process-score-value>—</strong></div><p data-process-score-copy>A nota aparece depois da prova única.</p></aside>
+          </div>
+        </section>
+
+        <section class="process-results" data-process-results hidden aria-labelledby="process-results-title">
+          <div class="study-section-heading"><div><p class="eyebrow">Histórico privado</p><h2 id="process-results-title">Suas provas e resultados.</h2></div><p>Este resumo só aparece para o Discord ID conectado.</p></div>
+          <div class="process-assignment-list" data-process-assignment-list></div>
         </section>
 
         <section class="process-flow" aria-labelledby="flow-title" data-reveal>
           <div class="study-section-heading"><div><p class="eyebrow">Como o processo será exibido</p><h2 id="flow-title">Um histórico que explica o próximo passo.</h2></div><p>Sem dados vinculados, mostramos somente a estrutura e o limite de cada etapa.</p></div>
-          <article class="process-flow-row"><span class="process-flow-index">01</span><div><h3>Identidade confirmada</h3><p>Discord ID autenticado e comparado com a atribuição criada pela Gerência.</p></div><span class="status-tag status-tag--planned">Aguardando conexão</span></article>
-          <article class="process-flow-row"><span class="process-flow-index">02</span><div><h3>Prova atribuída</h3><p>Link único, prazo final e versão do banco de questões registrados no processo. A ordem será individual, sem mudar o conjunto de questões.</p></div><span class="status-tag status-tag--planned">Aguardando atribuição</span></article>
-          <article class="process-flow-row"><span class="process-flow-index">03</span><div><h3>Resultado disponível</h3><p>Nota, tentativa e decisão aparecem depois do envio e da correção autorizada.</p></div><span class="status-tag status-tag--planned">Aguardando prova</span></article>
-          <article class="process-flow-row"><span class="process-flow-index">04</span><div><h3>Solicitar set</h3><p>A aprovação habilita o pedido; a aplicação de cargo continua sob revisão da equipe e do bot.</p></div><span class="status-tag status-tag--planned">Após aprovação</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">01</span><div><h3>Identidade confirmada</h3><p>Discord ID autenticado e comparado com a atribuição criada pela Gerência.</p></div><span class="status-tag status-tag--planned" data-process-step="identity">Aguardando conexão</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">02</span><div><h3>Prova atribuída</h3><p>Link único, prazo final e versão do banco de questões registrados no processo. A ordem muda por tentativa, sem mudar o conjunto de questões.</p></div><span class="status-tag status-tag--planned" data-process-step="exam">Aguardando atribuição</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">03</span><div><h3>Resultado disponível</h3><p>Nota, tentativa e decisão aparecem depois do envio, com o resultado entregue uma única vez ao gerente criador.</p></div><span class="status-tag status-tag--planned" data-process-step="result">Aguardando prova</span></article>
+          <article class="process-flow-row"><span class="process-flow-index">04</span><div><h3>Solicitar set</h3><p>A aprovação habilita o pedido; a aplicação do cargo continua sob revisão da equipe e do bot.</p></div><span class="status-tag status-tag--planned">Após aprovação</span></article>
         </section>
 
         <section class="process-boundary" aria-labelledby="boundary-title" data-reveal>

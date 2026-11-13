@@ -9,7 +9,11 @@
     home: ["js/public-media.js"],
     candidatura: ["js/candidature.js"],
     login: ["js/login.js"],
-    member: ["js/member-area.js"]
+    member: ["js/member-area.js"],
+    process: ["js/process.js"],
+    exam: ["js/exam.js"],
+    manager: ["js/manager-exams.js"],
+    reader: ["js/reader.js"]
   };
   var modules = ["js/site-core.js"].concat(pageModules[document.body.dataset.page] || []);
 
