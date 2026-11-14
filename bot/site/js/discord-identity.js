@@ -107,6 +107,27 @@
     return link;
   }
 
+  function setConnectionState(state) {
+    document.body.dataset.discordState = state;
+    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]");
+    controls.forEach(function (node) {
+      if (node.closest(".discord-identity-host")) return;
+      if (state === "loading" || state === "connected") node.hidden = true;
+      else node.hidden = false;
+    });
+  }
+
+  function renderLoading(host) {
+    host.textContent = "";
+    host.setAttribute("aria-busy", "true");
+    var loading = createElement("span", "discord-identity-loading");
+    loading.setAttribute("role", "status");
+    loading.setAttribute("aria-live", "polite");
+    loading.appendChild(createElement("span", "discord-identity-loading-avatar"));
+    loading.appendChild(createElement("span", "discord-identity-loading-copy", "Validando Discord…"));
+    host.appendChild(loading);
+  }
+
   function menuLink(menu, label, href) {
     var link = createElement("a", "discord-identity-menu-link", label);
     link.href = href;
@@ -116,6 +137,7 @@
 
   function renderConnected(host, session) {
     host.textContent = "";
+    host.removeAttribute("aria-busy");
     var wrapper = createElement("div", "discord-identity");
     var id = "peace-discord-menu-" + (++identityCounter);
     var trigger = createElement("button", "discord-identity-trigger");
@@ -129,15 +151,22 @@
     avatar.width = 32;
     avatar.height = 32;
     avatar.alt = "Avatar de " + username(session);
+    var fallback = createElement("span", "discord-identity-fallback", initials(session));
+    fallback.hidden = true;
+    function showFallback() {
+      avatar.hidden = true;
+      fallback.hidden = false;
+    }
+    avatar.addEventListener("error", showFallback);
     if (session.identity && session.identity.avatar_url) {
       avatar.src = session.identity.avatar_url;
     } else {
-      avatar.hidden = true;
-      trigger.appendChild(createElement("span", "discord-identity-fallback", initials(session)));
+      showFallback();
     }
     var arrow = createElement("span", "discord-identity-arrow", "⌄");
     trigger.appendChild(name);
     trigger.appendChild(avatar);
+    trigger.appendChild(fallback);
     trigger.appendChild(arrow);
 
     var menu = createElement("div", "discord-identity-menu");
@@ -212,6 +241,7 @@
     wrapper.appendChild(trigger);
     wrapper.appendChild(menu);
     host.appendChild(wrapper);
+    setConnectionState("connected");
     document.body.dataset.discordConnected = "true";
     document.body.dataset.discordId = session.identity && session.identity.discord_id ? session.identity.discord_id : "";
     document.body.dataset.peaceMember = server.is_peace_member === true ? "true" : "false";
@@ -220,14 +250,19 @@
 
   function renderDisconnected(host) {
     host.textContent = "";
+    host.removeAttribute("aria-busy");
     connectLink(host);
+    setConnectionState("disconnected");
     document.body.dataset.discordConnected = "false";
+    document.body.dataset.discordId = "";
+    document.body.dataset.peaceMember = "false";
+    document.body.dataset.manager = "false";
   }
 
-  function hideConnectedDuplicates(connected) {
+  function hideConnectedDuplicates(connected, state) {
     document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
-      if (connected) node.hidden = true;
+      node.hidden = connected || state === "loading";
     });
   }
 
@@ -238,7 +273,16 @@
       if (session) renderConnected(host, session);
       else renderDisconnected(host);
     });
-    hideConnectedDuplicates(Boolean(session));
+    hideConnectedDuplicates(Boolean(session), document.body.dataset.discordState);
+  }
+
+  function renderPending() {
+    setConnectionState("loading");
+    document.body.dataset.discordConnected = "pending";
+    document.body.dataset.peaceMember = "pending";
+    document.body.dataset.manager = "pending";
+    allHeaderHosts().forEach(renderLoading);
+    hideConnectedDuplicates(false, "loading");
   }
 
   document.addEventListener("click", function (event) {
@@ -262,22 +306,33 @@
     });
   });
 
-  // Render a stable disconnected state before the asynchronous session check.
-  // This keeps the header width and action order unchanged while the API is
-  // resolving, so navigation does not jump between an empty action area and
-  // the final Discord control.
-  render(null);
+  // Keep every Discord action in a non-interactive skeleton until the
+  // HttpOnly session and the live guild profile have been resolved. Showing a
+  // second "Conectar" action during this window makes an already-connected
+  // person restart OAuth unnecessarily.
+  renderPending();
 
-  site.discordSessionPromise = site.attemptEndpoint("/api/auth/discord/session", {
-    headers: { Accept: "application/json" }
-  }, 9000).then(function (response) {
-    return response.json();
-  }).then(function (payload) {
-    render(payload && payload.ok ? payload : null);
-    return payload && payload.ok ? payload : null;
-  }).catch(function (error) {
-    render(null);
-    return null;
-  });
+  function requestDiscordSession() {
+    renderPending();
+    site.discordSessionError = null;
+    return site.attemptEndpoint("/api/auth/discord/session", {
+      headers: { Accept: "application/json" }
+    }, 9000).then(function (response) {
+      return response.json();
+    }).then(function (payload) {
+      render(payload && payload.ok ? payload : null);
+      return payload && payload.ok ? payload : null;
+    }).catch(function (error) {
+      site.discordSessionError = error;
+      render(null);
+      return null;
+    });
+  }
+  site.discordSessionError = null;
+  site.discordSessionPromise = requestDiscordSession();
   site.getDiscordSession = function () { return site.discordSessionPromise; };
+  site.refreshDiscordSession = function () {
+    site.discordSessionPromise = requestDiscordSession();
+    return site.discordSessionPromise;
+  };
 })(window);

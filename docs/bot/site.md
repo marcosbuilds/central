@@ -184,7 +184,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/estudos/a-peace` | redirects to `/estudos/peace/` as a readable alias |
 | Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
-| Netlify `/area/` | serves the gated member-area UI shell |
+| Netlify `/area/` | serves the gated member-area UI shell; its Peace panel is revealed only after the Discord session, live Peace role, and candidate process are all confirmed |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | Netlify `/api/media` | proxies the bounded public Discord media feed |
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
@@ -201,7 +201,8 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/auth/discord/callback` | validates the state, exchanges the code, and creates the HttpOnly session |
 | Netlify `/api/auth/discord/session` | returns the authenticated Discord identity and guild state |
 | Netlify `/api/auth/discord/logout` | revokes the current Discord session |
-| Netlify `/api/exams/process` | returns only the candidate's assignments and score |
+| Netlify `/api/exams/process` | returns only the authenticated candidate's assignments and score for the public process page |
+| Netlify `/api/peace/process` | returns the panel process only after the authenticated Discord account has a live Peace role |
 | Netlify `/api/exams/access` | validates the individualized assignment link against the authenticated Discord ID |
 | Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
 | Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
@@ -220,6 +221,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/notices` | returns the bounded public notices feed |
 | ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
 | ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
+| ACLClouds `/api/peace/process` | rechecks the live Peace role before returning panel process data; 401, 403, or 503 remain distinct |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -227,6 +229,30 @@ provider sets `PORT`, the API uses it as the default. `PEACE_API_ENABLED=false`
 disables this listener without changing the bot's other services. The public
 domain remains on Netlify; the API origin is used only by the explicit proxy
 rule.
+
+### Peace panel navigation
+
+The authenticated `/area/` panel uses a responsive side navigation. It is a
+navigation aid, not an authorization boundary: every destination must keep its
+own server-side checks and a hidden menu item must not be treated as protection.
+The current destinations are:
+
+- `#overview` — the confirmed Peace overview;
+- `/estudos/` — public study library;
+- `/avisos/` — public notices;
+- `/parceiros/` — public partners;
+- `/#momentos` — the home media section for clips and moments (there is no
+  `/clipes/` route);
+- `/meu-processo/` — the authenticated Discord-linked process;
+- `/discord` — the public Discord destination;
+- `/gerencia/provas/` — shown only for the manager capability and still guarded
+  by the server.
+
+While the Discord session, live membership result, or process response is
+pending, the panel content remains behind a skeleton. A `401` offers an
+explicit connection action, a connected account without the Peace role offers
+the public setagem flow, and an inconclusive Discord/API response offers a
+retry without starting a second login.
 
 ## Configuration boundary
 

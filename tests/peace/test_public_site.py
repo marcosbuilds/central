@@ -1335,6 +1335,47 @@ def test_public_member_session_uses_bounded_cookie_and_overview_is_role_scoped(t
     assert denied["code"] == "AUTH_SESSION_INVALID"
 
 
+def test_peace_process_route_rechecks_live_peace_role_without_changing_candidate_process(tmp_path):
+    bot = make_bot(tmp_path)
+    discord_user_id = 12345678901234567
+    token = bot.database.create_discord_oauth_session(
+        discord_user_id=str(discord_user_id),
+        username="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        avatar_hash=None,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    member = SimpleNamespace(
+        id=discord_user_id,
+        roles=[SimpleNamespace(id=200, name="Visitor")],
+    )
+    bot.guild = SimpleNamespace(get_member=lambda user_id: member if user_id == discord_user_id else None)
+    cookies = {"peace_discord_session": token}
+
+    status, denied = run_configured_api(bot, "/api/peace/process", cookies=cookies)
+
+    assert status == 403
+    assert denied["code"] == "PEACE_ROLE_REQUIRED"
+
+    status, candidate_process = run_configured_api(bot, "/api/exams/process", cookies=cookies)
+
+    assert status == 200
+    assert candidate_process["server"]["is_peace_member"] is False
+
+    member.roles = [SimpleNamespace(id=100, name="Peace")]
+    status, panel_process = run_configured_api(bot, "/api/peace/process", cookies=cookies)
+
+    assert status == 200
+    assert panel_process["server"]["is_peace_member"] is True
+
+    bot.guild = None
+    status, unavailable = run_configured_api(bot, "/api/peace/process", cookies=cookies)
+
+    assert status == 503
+    assert unavailable["code"] == "PEACE_MEMBERSHIP_UNAVAILABLE"
+
+
 def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
     from bot.main import EntryInviteSession
 
@@ -1539,6 +1580,8 @@ def test_public_site_files_are_complete():
     assert "Acesso web em preparação" not in script
     assert "discord-identity-menu" in script
     assert "avatar_url" in script
+    assert "initMaterialCovers" in script
+    assert "material-cover-fallback" in script
     assert "status unavailable" not in script
     assert "fetch unavailable" not in script
     assert "request timeout" not in script
@@ -1578,8 +1621,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261113-04"' in opening_html
-    assert 'src="/script.js?v=20261113-05"' in opening_html
+    assert 'href="/styles.css?v=20261114-01"' in opening_html
+    assert 'src="/script.js?v=20261114-01"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1619,8 +1662,8 @@ def test_public_site_files_are_complete():
     peace_reader_html = (site_root / "estudos" / "peace" / "leitor" / "index.html").read_text(encoding="utf-8")
     process_html = (site_root / "meu-processo" / "index.html").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261113-04"' in html
-        assert 'src="/script.js?v=20261113-05"' in html
+        assert 'href="/styles.css?v=20261114-01"' in html
+        assert 'src="/script.js?v=20261114-01"' in html
         assert 'aria-label="Páginas públicas"' in html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
     assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
@@ -1631,6 +1674,9 @@ def test_public_site_files_are_complete():
     assert "O download do PDF original não é oferecido." in peace_html
     assert 'src="/assets/studies/civil/civil-cover-01.png"' in civil_html
     assert 'src="/assets/studies/peace/a-peace-cover-1.png"' in peace_html
+    for cover_html in (studies_html, civil_html, peace_html, civil_reader_html, peace_reader_html):
+        assert 'data-material-cover' in cover_html
+        assert 'class="material-cover-overlay"' in cover_html
     assert 'href="/estudos/civil/leitor/" target="_blank" rel="noopener"' in civil_html
     assert 'href="/estudos/peace/leitor/" target="_blank" rel="noopener"' in peace_html
     for reader_html, reader_label in (
@@ -1644,6 +1690,7 @@ def test_public_site_files_are_complete():
         assert "PDF original não é publicado nesta página." in reader_html
         assert 'class="reader-shell"' in reader_html
         assert 'class="reader-page"' not in reader_html.split("<body", 1)[1].split(">", 1)[0]
+        assert 'data-material-cover' not in reader_html.split('class="reader-pages"', 1)[1]
     assert "Conecte o Discord para abrir seu processo." in process_html
     assert 'aria-current="location">Estudos</a>' in civil_html
     assert 'aria-current="location">Estudos</a>' in peace_html
@@ -1665,9 +1712,9 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261113-04" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
     reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
     assert 'page.matches("figure.reader-page")' in reader_script
     civil_notes = reader_script.split("civil: [", 1)[1].split("peace: [", 1)[0]
@@ -1709,9 +1756,20 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     member_html = (site_root / "area" / "index.html").read_text(encoding="utf-8")
     script = (site_root / "script.js").read_text(encoding="utf-8")
     member_script = (site_root / "js" / "member-area.js").read_text(encoding="utf-8")
+    stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
+    member_stylesheet = (site_root / "css" / "member.css").read_text(encoding="utf-8")
 
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
+    assert 'class="member-sidebar"' in member_html
+    assert 'href="/#momentos"' in member_html
+    assert 'href="/estudos/"' in member_html
+    assert 'href="/avisos/"' in member_html
+    assert 'href="/parceiros/"' in member_html
+    assert 'href="/meu-processo/"' in member_html
+    assert 'data-member-retry' in member_html
+    assert 'data-member-workspace-skeleton' in member_html
+    assert '/clipes/' not in member_html
     assert "data-member-preview" not in member_html
     assert "data-preview-toggle" not in member_html
     assert "data-preview-screen" not in member_html
@@ -1733,6 +1791,14 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
     assert "data.updated_at" in member_script
+    assert "getDiscordSession" in member_script
+    assert "is_peace_member" in member_script
+    assert "showConnectedNonMember" in member_script
+    assert "showUnavailable" in member_script
+    assert "showWorkspaceLoading" in member_script
+    assert "/api/peace/process" in member_script
+    assert ".member-welcome { grid-template-columns: auto minmax(0, 1fr);" in member_stylesheet
+    assert ".member-overview-grid { grid-template-columns: 1fr; }" in member_stylesheet
     public_media_script = (site_root / "js" / "public-media.js").read_text(encoding="utf-8")
     assert "cleanMediaText" in public_media_script
     assert "Empty Markdown links" in public_media_script
@@ -1760,6 +1826,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!" in redirects
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
+    assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
         assert f"{route} {route}/ 301!" not in redirects
 

@@ -2,6 +2,10 @@
 .discord-identity-host { position: relative; min-width: 0; }
 .discord-connect-action { white-space: nowrap; }
 .discord-identity-icon { flex: 0 0 auto; width: 1.05rem; height: auto; }
+.discord-identity-loading { display: inline-flex; min-height: 2.65rem; align-items: center; gap: 0.55rem; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.58rem; letter-spacing: 0.04em; white-space: nowrap; }
+.discord-identity-loading-avatar { display: block; width: 2rem; height: 2rem; flex: 0 0 2rem; border: 1px solid rgba(185, 202, 211, 0.16); border-radius: 50%; background: linear-gradient(100deg, rgba(185, 202, 211, 0.08), rgba(185, 202, 211, 0.22), rgba(185, 202, 211, 0.08)); background-size: 220% 100%; animation: discord-identity-shimmer 1.2s linear infinite; }
+.discord-identity-loading-copy { display: block; width: 5.5rem; height: 0.65rem; overflow: hidden; border-radius: 999px; background: linear-gradient(100deg, rgba(185, 202, 211, 0.08), rgba(185, 202, 211, 0.22), rgba(185, 202, 211, 0.08)); background-size: 220% 100%; color: transparent; animation: discord-identity-shimmer 1.2s linear infinite; }
+@keyframes discord-identity-shimmer { to { background-position: -220% 0; } }
 .discord-identity { position: relative; z-index: 40; }
 .discord-identity-trigger { display: inline-flex; min-height: 2.65rem; max-width: min(17rem, 42vw); align-items: center; gap: 0.55rem; padding: 0.25rem 0.35rem 0.25rem 0.85rem; border: 1px solid rgba(185, 202, 211, 0.2); border-radius: 999px; background: rgba(11, 15, 17, 0.82); color: var(--text); cursor: pointer; font: inherit; transition: border-color 180ms var(--ease-fast), background 180ms var(--ease-fast), transform 180ms var(--ease-fast); }
 .discord-identity-trigger:hover, .discord-identity-trigger:focus-visible, .discord-identity.is-open .discord-identity-trigger { border-color: rgba(123, 201, 166, 0.72); background: rgba(19, 35, 31, 0.92); outline: none; }
@@ -33,10 +37,17 @@
   .discord-identity-trigger { min-height: 2.45rem; padding-left: 0.65rem; }
   .discord-identity-name { max-width: 6rem; font-size: 0.64rem; }
   .discord-identity-avatar, .discord-identity-fallback { width: 1.8rem; height: 1.8rem; flex-basis: 1.8rem; }
+  .discord-identity-loading { min-height: 2.45rem; }
+  .discord-identity-loading-copy { display: none; }
   .discord-identity-arrow { display: none; }
   .discord-connect-copy { display: none; }
   .discord-connect-action { min-width: 2.7rem; justify-content: center; padding-inline: 0.65rem; }
   .discord-connect-action .button-icon { display: none; }
   .member-header-actions.discord-identity-host { gap: 0.45rem; }
   .member-header-actions > .discord-identity-host .member-header-link { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discord-identity-loading-avatar,
+  .discord-identity-loading-copy { animation: none; }
 }

@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Área da Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261113-04">
-    <script defer src="../script.js?v=20261113-05"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261114-01">
+    <script defer src="../script.js?v=20261114-01"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -32,7 +32,7 @@
             <p class="eyebrow">Área da comunidade</p>
             <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
             <p data-member-gate-message>Conecte seu Discord para acompanhar progresso, materiais e informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
-            <div class="gate-actions"><a class="button button--light button--large" href="../acessar/" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
+            <div class="gate-actions"><a class="button button--light button--large" href="../acessar/" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><button class="text-button" type="button" data-member-retry hidden>Tentar validar novamente</button><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
           </div>
           <aside class="gate-note" aria-label="Limite da área web">
             <p class="eyebrow">Fonte de autoridade</p>
@@ -43,40 +43,51 @@
         <section class="member-workspace" data-member-workspace hidden aria-labelledby="workspace-title">
           <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Carregando área do membro"><span></span><span></span><span></span></div>
           <div data-member-workspace-content hidden>
-            <div class="member-workspace-topline">
-              <div>
-                <p class="eyebrow">Área autenticada</p>
-                <h2 id="workspace-title">Visão geral.</h2>
+            <div class="member-workspace-layout">
+              <aside class="member-sidebar" aria-label="Navegação do painel Peace">
+                <div class="member-sidebar-heading"><p class="eyebrow">Painel Peace</p><strong>Seu espaço</strong></div>
+                <nav class="member-nav" aria-label="Seções do painel">
+                  <a aria-current="page" href="#overview">Visão geral</a>
+                  <a href="/estudos/">Área de estudos</a>
+                  <a href="/avisos/">Avisos</a>
+                  <a href="/parceiros/">Parceiros</a>
+                  <a href="/#momentos">Clipes e momentos</a>
+                  <a href="/meu-processo/">Meu processo</a>
+                  <a href="/discord">Discord</a>
+                  <a href="/gerencia/provas/" data-member-manager hidden>Gerenciar provas</a>
+                </nav>
+                <p class="member-sidebar-note">A navegação organiza os caminhos. Cada página confirma seu acesso novamente.</p>
+              </aside>
+
+              <div class="member-workspace-main">
+                <div class="member-workspace-topline">
+                  <div>
+                    <p class="eyebrow">Área autenticada</p>
+                    <h2 id="workspace-title">Visão geral.</h2>
+                  </div>
+                  <div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div>
+                </div>
+
+                <div class="member-welcome" id="overview">
+                  <div class="member-avatar-wrap"><img data-member-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
+                  <div>
+                    <p class="eyebrow">Sessão confirmada pelo Discord</p>
+                    <h2>Olá, <span data-member-name>membro</span>.</h2>
+                    <p>Esta é uma visão resumida. Ações e suporte continuam no servidor.</p>
+                  </div>
+                  <div class="member-welcome-actions"><button class="button button--outline" data-member-refresh type="button">Atualizar</button><button class="text-button" data-member-logout type="button">Sair</button></div>
+                </div>
+
+                <div class="member-next-action" data-member-next-action></div>
+
+                <div class="member-overview-grid" data-member-overview>
+                  <section class="member-data-block member-data-block--wide" data-member-block="announcements" data-member-title="Avisos recentes"></section>
+                  <section class="member-data-block" id="media" data-member-block="media" data-member-title="Mídias recentes"></section>
+                  <section class="member-data-block" data-member-block="active_members" data-member-title="Membros ativos"></section>
+                  <section class="member-data-block" data-member-block="partners" data-member-title="Parceiros"></section>
+                  <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden></section>
+                </div>
               </div>
-              <div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div>
-            </div>
-
-            <nav class="member-nav" aria-label="Navegação da área">
-              <a aria-current="page" href="#overview">Meu progresso</a>
-              <a href="#member-materials">Materiais</a>
-              <a href="#member-results">Provas e resultados</a>
-              <a href="../discord">Discord</a>
-              <a href="../gerencia/provas/" data-member-manager hidden>Gerenciar provas</a>
-            </nav>
-
-            <div class="member-welcome" id="overview">
-              <div class="member-avatar-wrap"><img data-member-avatar alt="" width="48" height="48" hidden></div>
-              <div>
-                <p class="eyebrow">Sessão confirmada pelo Discord</p>
-                <h2>Olá, <span data-member-name>membro</span>.</h2>
-                <p>Esta é uma visão resumida. Ações e suporte continuam no servidor.</p>
-              </div>
-              <div class="member-welcome-actions"><button class="button button--outline" data-member-refresh type="button">Atualizar</button><button class="text-button" data-member-logout type="button">Sair</button></div>
-            </div>
-
-            <div class="member-next-action" data-member-next-action></div>
-
-            <div class="member-overview-grid" data-member-overview>
-              <section class="member-data-block member-data-block--wide" data-member-block="announcements" data-member-title="Avisos recentes"></section>
-              <section class="member-data-block" id="media" data-member-block="media" data-member-title="Mídias recentes"></section>
-              <section class="member-data-block" data-member-block="active_members" data-member-title="Membros ativos"></section>
-              <section class="member-data-block" data-member-block="partners" data-member-title="Parceiros"></section>
-              <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden></section>
             </div>
           </div>
         </section>

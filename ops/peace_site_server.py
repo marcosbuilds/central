@@ -38,6 +38,7 @@ ACL_API_ROUTES = {
     "/api/auth/discord/logout",
     "/api/notices",
     "/api/exams/process",
+    "/api/peace/process",
     "/api/exams/access",
     "/api/exams/start",
     "/api/exams/submit",
@@ -217,7 +218,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             )
             if frontend_origin:
                 headers["Origin"] = frontend_origin
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/"):
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route == "/api/peace/process":
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),
@@ -269,7 +270,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 for value in set_cookies
                 if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
             ]
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/"):
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route == "/api/peace/process":
             set_cookies = [
                 value
                 for value in set_cookies

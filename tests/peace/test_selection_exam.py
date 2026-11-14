@@ -83,6 +83,9 @@ def test_oauth_local_callback_is_allowlisted_and_avatar_is_safe():
     assert PeaceBot.public_discord_avatar_url("12345678901234567", "a_abc123") == (
         "https://cdn.discordapp.com/avatars/12345678901234567/a_abc123.gif?size=128"
     )
+    assert PeaceBot.public_discord_avatar_url("12345678901234567", "") == (
+        "https://cdn.discordapp.com/embed/avatars/3.png"
+    )
     assert PeaceBot.public_discord_avatar_url("123", "unsafe/hash") is None
 
 

@@ -90,6 +90,7 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/auth/discord/session": (120, 60),
     "/api/auth/discord/logout": (24, 60),
     "/api/exams/process": (60, 60),
+    "/api/peace/process": (60, 60),
     "/api/exams/access": (24, 60),
     "/api/exams/start": (12, 60),
     "/api/exams/submit": (3, 60),
@@ -128,6 +129,7 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/auth/discord/session",
         "/api/auth/discord/logout",
         "/api/exams/process",
+        "/api/peace/process",
         "/api/exams/access",
         "/api/exams/start",
         "/api/exams/submit",
@@ -4843,7 +4845,17 @@ class PeaceBot(commands.Bot):
     def public_discord_avatar_url(discord_user_id: object, avatar_hash: object) -> str | None:
         user_id = str(discord_user_id or "").strip()
         hash_value = str(avatar_hash or "").strip()
-        if not re.fullmatch(r"[0-9]{15,25}", user_id) or not DISCORD_AVATAR_HASH_PATTERN.fullmatch(hash_value):
+        if not re.fullmatch(r"[0-9]{15,25}", user_id):
+            return None
+        if not hash_value:
+            # Discord exposes users without a custom avatar through its
+            # official default-avatar endpoint. Snowflakes from the current
+            # username system derive the default index from their timestamp
+            # bits; returning this URL keeps the profile image authoritative
+            # instead of silently replacing it with initials.
+            default_index = (int(user_id) >> 22) % 6
+            return f"https://cdn.discordapp.com/embed/avatars/{default_index}.png"
+        if not DISCORD_AVATAR_HASH_PATTERN.fullmatch(hash_value):
             return None
         extension = "gif" if hash_value.startswith("a_") else "png"
         return f"https://cdn.discordapp.com/avatars/{user_id}/{hash_value}.{extension}?size=128"
@@ -5267,7 +5279,7 @@ class PeaceBot(commands.Bot):
             role_id = getattr(self.settings, "manager_role_id", None)
             return member if role_id is not None and role_member(member, role_id) else None
 
-    async def public_exam_process(self, request: web.Request) -> web.Response:
+    async def public_exam_process(self, request: web.Request, *, require_peace: bool = False) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
@@ -5277,6 +5289,27 @@ class PeaceBot(commands.Bot):
                 {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para ver seu processo."},
                 status=401,
             )
+        membership = None
+        if require_peace:
+            membership = await self.public_discord_membership_payload(session["discord_user_id"])
+            if membership["state"] == "unavailable" or membership["is_peace_member"] is None:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "PEACE_MEMBERSHIP_UNAVAILABLE",
+                        "message": "Não foi possível confirmar seu cargo Peace agora.",
+                    },
+                    status=503,
+                )
+            if membership["is_peace_member"] is not True:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "PEACE_ROLE_REQUIRED",
+                        "message": "O painel Peace está disponível somente para contas com cargo Peace.",
+                    },
+                    status=403,
+                )
         try:
             profile = self.database.candidate_profile(session["discord_user_id"])
             assignments = self.database.exam_assignments_for_candidate(session["discord_user_id"])
@@ -5286,7 +5319,8 @@ class PeaceBot(commands.Bot):
                 {"ok": False, "code": "PROCESS_UNAVAILABLE", "message": "O processo está temporariamente indisponível."},
                 status=503,
             )
-        membership = await self.public_discord_membership_payload(session["discord_user_id"])
+        if membership is None:
+            membership = await self.public_discord_membership_payload(session["discord_user_id"])
         return web.json_response(
             {
                 "ok": True,
@@ -5307,6 +5341,10 @@ class PeaceBot(commands.Bot):
                 "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
             }
         )
+
+    async def public_peace_process(self, request: web.Request) -> web.Response:
+        """Return the panel process only after the live Peace role check."""
+        return await self.public_exam_process(request, require_peace=True)
 
     async def public_exam_access(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
@@ -5744,6 +5782,7 @@ class PeaceBot(commands.Bot):
         app.router.add_get("/api/auth/discord/session", self.public_discord_auth_session)
         app.router.add_post("/api/auth/discord/logout", self.public_discord_auth_logout)
         app.router.add_get("/api/exams/process", self.public_exam_process)
+        app.router.add_get("/api/peace/process", self.public_peace_process)
         app.router.add_post("/api/exams/access", self.public_exam_access)
         app.router.add_post("/api/exams/start", self.public_exam_start)
         app.router.add_post("/api/exams/submit", self.public_exam_submit)
@@ -5767,6 +5806,7 @@ class PeaceBot(commands.Bot):
             "/api/auth/discord/session",
             "/api/auth/discord/logout",
             "/api/exams/process",
+            "/api/peace/process",
             "/api/exams/access",
             "/api/exams/start",
             "/api/exams/submit",

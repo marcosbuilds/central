@@ -248,6 +248,8 @@
       OAUTH_STATE_INVALID: "A conexão expirou. Inicie novamente.",
       OAUTH_STATE_EXPIRED: "A conexão expirou. Inicie novamente.",
       PROCESS_UNAVAILABLE: "Não consegui consultar seu processo agora. Tente novamente em instantes.",
+      PEACE_ROLE_REQUIRED: "O painel Peace está disponível somente para contas com cargo Peace.",
+      PEACE_MEMBERSHIP_UNAVAILABLE: "Não consegui confirmar seu cargo Peace agora. Tente novamente em instantes.",
       EXAM_LINK_NOT_FOUND: "Esse link de prova não existe ou expirou.",
       EXAM_IDENTITY_MISMATCH: "Este link pertence a outra conta Discord.",
       EXAM_UNAVAILABLE: "Esta atribuição não está mais disponível.",
@@ -318,6 +320,44 @@
     });
   }
 
+  function initMaterialCovers() {
+    document.querySelectorAll("[data-material-cover]").forEach(function (cover) {
+      var image = cover.querySelector("img");
+      if (!image) return;
+      cover.classList.add("is-loading");
+      cover.setAttribute("aria-busy", "true");
+
+      function markLoaded() {
+        cover.classList.remove("is-loading", "is-error");
+        cover.classList.add("is-loaded");
+        cover.setAttribute("aria-busy", "false");
+      }
+      function markError() {
+        image.hidden = true;
+        cover.classList.remove("is-loading", "is-loaded");
+        cover.classList.add("is-error");
+        cover.setAttribute("aria-busy", "false");
+        var fallback = cover.querySelector("[data-cover-fallback]");
+        if (!fallback) {
+          fallback = document.createElement("span");
+          fallback.className = "material-cover-fallback";
+          fallback.setAttribute("data-cover-fallback", "");
+          fallback.setAttribute("role", "status");
+          fallback.textContent = "Capa indisponível";
+          cover.appendChild(fallback);
+        }
+        fallback.hidden = false;
+      }
+      image.addEventListener("load", markLoaded, { once: true });
+      image.addEventListener("error", markError, { once: true });
+      if (image.complete) {
+        if (image.naturalWidth > 0) markLoaded();
+        else markError();
+      }
+    });
+  }
+
+  initMaterialCovers();
 
   window.PeaceSite = {
     body: body,
@@ -326,6 +366,7 @@
     setStatusMessage: setStatusMessage,
     setButtonBusy: setButtonBusy,
     friendlyError: friendlyError,
-    attemptEndpoint: attemptEndpoint
+    attemptEndpoint: attemptEndpoint,
+    initMaterialCovers: initMaterialCovers
   };
 })();

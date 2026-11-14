@@ -13,15 +13,22 @@
     var overview = workspace && workspace.querySelector("[data-member-overview]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
+    var memberAvatarFallback = workspace && workspace.querySelector("[data-member-avatar-fallback]");
     var connection = workspace && workspace.querySelector("[data-member-connection]");
     var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
     var logout = workspace && workspace.querySelector("[data-member-logout]");
     var refresh = workspace && workspace.querySelector("[data-member-refresh]");
+    var retry = gate && gate.querySelector("[data-member-retry]");
     var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
 
     function request(url, options) {
       return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 15000).then(function (response) { return response.json(); });
+    }
+    function getDiscordSession() {
+      if (site.discordSessionError && typeof site.refreshDiscordSession === "function") return site.refreshDiscordSession();
+      if (typeof site.getDiscordSession === "function") return site.getDiscordSession();
+      return request("/api/auth/discord/session");
     }
     function setConnection(message, tone) {
       if (connection) { connection.textContent = message; connection.dataset.state = tone || "ready"; }
@@ -36,11 +43,34 @@
       if (item.status === "expired") return "Prazo encerrado";
       return "Aguardando início";
     }
+    function initials(identity) {
+      var value = (identity && (identity.global_name || identity.display_name || identity.username) || "Discord").replace(/^@/, "").trim();
+      var parts = value.split(/\s+/).filter(Boolean);
+      return (parts.length > 1 ? parts[0].charAt(0) + parts[parts.length - 1].charAt(0) : value.slice(0, 2)).toUpperCase() || "D";
+    }
+    function renderAvatar(identity) {
+      if (!memberAvatar) return;
+      var profile = identity || {};
+      var fallback = function () {
+        memberAvatar.hidden = true;
+        if (memberAvatarFallback) {
+          memberAvatarFallback.textContent = initials(profile);
+          memberAvatarFallback.hidden = false;
+        }
+      };
+      memberAvatar.hidden = true;
+      if (memberAvatarFallback) memberAvatarFallback.hidden = true;
+      memberAvatar.alt = "Avatar de @" + (profile.username || "membro");
+      memberAvatar.onerror = fallback;
+      if (!profile.avatar_url) { fallback(); return; }
+      memberAvatar.src = profile.avatar_url;
+      memberAvatar.hidden = false;
+    }
 
     function renderOverview(session, process) {
       if (!overview) return;
-      var identity = session.identity || {};
       var data = process || {};
+      var identity = data.identity || session.identity || {};
       var profile = data.profile || {};
       var updatedAt = data.updated_at || null;
       var assignments = Array.isArray(data.assignments) ? data.assignments : [];
@@ -112,57 +142,100 @@
         nextAction.appendChild(nextText);
       }
       var managerLink = document.querySelector("[data-member-manager]");
-      if (managerLink) managerLink.hidden = !(session.server && session.server.is_manager === true);
-      if (memberName) memberName.textContent = identity.global_name || identity.username || "membro";
-      if (memberAvatar && identity.avatar_url) { memberAvatar.src = identity.avatar_url; memberAvatar.alt = "Avatar de @" + (identity.username || "membro"); memberAvatar.hidden = false; }
+      if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
+      if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
+      renderAvatar(identity);
+      if (updatedAt) setConnection("Atualizado em " + date(updatedAt), "ready");
+      else setConnection("Sessão e processo confirmados pelo Discord", "ready");
     }
 
-    function showGate(message) {
+    function configureGate(mode, message) {
       if (workspace) workspace.hidden = true;
       if (gate) gate.hidden = false;
       var gateText = gate && gate.querySelector("[data-member-gate-message]");
       if (gateText && message) gateText.textContent = message;
-    }
-
-    function showConnectedNonMember() {
-      showGate("Discord conectado, mas esta conta ainda não tem cargo Peace. Continue pelo processo público para solicitar a setagem.");
       if (gateAction) {
-        gateAction.hidden = false;
-        gateAction.href = "../entrar/";
-        gateAction.innerHTML = "Solicitar setagem <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
-        gateAction.removeAttribute("data-member-discord-connect");
+        gateAction.hidden = mode !== "connect" && mode !== "set";
+        if (mode === "set") {
+          gateAction.href = "../entrar/";
+          gateAction.innerHTML = "Solicitar setagem <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
+          gateAction.removeAttribute("data-member-discord-connect");
+        } else if (mode === "connect") {
+          gateAction.href = "../acessar/";
+          gateAction.innerHTML = "Conectar Discord <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
+          gateAction.setAttribute("data-member-discord-connect", "");
+        }
       }
+      if (retry) retry.hidden = mode !== "retry";
+    }
+    function showDisconnected(message) {
+      configureGate("connect", message || "Conecte uma conta Discord com cargo Peace para abrir o painel. Se você ainda não tem o cargo, siga para Meu processo.");
+    }
+    function showConnectedNonMember() {
+      configureGate("set", "Discord conectado, mas esta conta ainda não tem cargo Peace. Continue pelo processo público para solicitar a setagem.");
+    }
+    function showUnavailable() {
+      configureGate("retry", "Não foi possível confirmar a conexão com Discord agora. O painel continua bloqueado até a verificação terminar; tente novamente em instantes.");
+    }
+    function showWorkspaceLoading() {
+      if (gate) gate.hidden = true;
+      if (workspace) workspace.hidden = false;
+      if (skeleton) skeleton.hidden = false;
+      if (content) content.hidden = true;
+      setConnection("Validando sessão, cargo Peace e processo…", "pending");
+    }
+    function showWorkspace() {
+      if (gate) gate.hidden = true;
+      if (workspace) workspace.hidden = false;
+      if (skeleton) skeleton.hidden = true;
+      if (content) content.hidden = false;
     }
 
     function load() {
       if (loading) return;
       loading = true;
-      if (workspace) workspace.hidden = false;
-      if (skeleton) skeleton.hidden = false;
-      if (content) content.hidden = true;
-      request("/api/auth/discord/session")
+      showWorkspaceLoading();
+      getDiscordSession()
         .then(function (session) {
-          if (!session || !session.server || session.server.is_peace_member !== true) {
-            if (session && session.server) showConnectedNonMember();
-            else showGate("Conecte uma conta Discord com cargo Peace para abrir o painel. Se você ainda não tem o cargo, siga para Meu processo.");
+          var sessionError = site.discordSessionError;
+          if (!session) {
+            if (sessionError && sessionError.status !== 401) showUnavailable();
+            else showDisconnected();
             return null;
           }
-          if (gate) gate.hidden = true;
-          if (skeleton) skeleton.hidden = true;
-          if (content) content.hidden = false;
-          return request("/api/exams/process").then(function (process) {
-            setConnection(process.updated_at ? "Atualizado em " + date(process.updated_at) : "Sessão validada pelo Discord", "ready");
+          var server = session.server || {};
+          if (server.state === "unavailable" || server.is_peace_member == null) {
+            showUnavailable();
+            return null;
+          }
+          if (server.is_peace_member !== true) {
+            showConnectedNonMember();
+            return null;
+          }
+          return request("/api/peace/process").then(function (process) {
+            var processServer = process && process.server ? process.server : {};
+            if (processServer.state === "unavailable" || processServer.is_peace_member == null) {
+              showUnavailable();
+              return;
+            }
+            if (processServer.is_peace_member !== true) {
+              showConnectedNonMember();
+              return;
+            }
             renderOverview(session, process);
+            showWorkspace();
+          }).catch(function (error) {
+            if (error && error.status === 401) showDisconnected("Sua sessão Discord expirou. Conecte novamente para continuar.");
+            else if (error && error.status === 403) showConnectedNonMember();
+            else showUnavailable();
           });
         })
-        .catch(function (error) {
-          if (error && error.status === 401) showGate();
-          else showGate("Não foi possível confirmar o cargo Peace agora. Tente novamente em instantes.");
-        })
+        .catch(function () { showUnavailable(); })
         .finally(function () { loading = false; });
     }
 
     if (refresh) refresh.addEventListener("click", load);
+    if (retry) retry.addEventListener("click", load);
     if (logout) logout.addEventListener("click", function () {
       logout.disabled = true;
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
