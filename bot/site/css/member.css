@@ -23,9 +23,14 @@
 .member-assignment-row:last-child { border-bottom: 1px solid var(--border); }
 .member-assignment-row strong { color: var(--text); font-size: 0.82rem; }
 .member-assignment-row p { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.7rem; line-height: 1.55; }
-.member-material-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; margin-top: 1rem; }
-.member-material-links a { display: flex; min-height: 3rem; align-items: center; justify-content: space-between; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.6rem; color: var(--text); font-size: 0.75rem; text-decoration: none; }
-.member-material-links a:hover, .member-material-links a:focus-visible { border-color: var(--accent); outline: none; }
+.member-material-covers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.member-material-card { display: block; min-width: 0; border: 1px solid transparent; border-radius: calc(var(--container-radius) - 0.2rem); text-decoration: none; }
+.member-material-card:hover, .member-material-card:focus-visible { border-color: var(--accent); outline: none; }
+.member-material-card .material-cover--member { aspect-ratio: 0.86; border: 0; border-radius: calc(var(--container-radius) - 0.3rem); }
+.member-material-card .material-cover-overlay { padding: 0.75rem; }
+.member-material-card .material-cover-overlay h4 { margin: 0.35rem 0 0.25rem; color: var(--text); font-size: clamp(1rem, 2vw, 1.45rem); letter-spacing: -0.04em; line-height: 1; }
+.member-material-card .material-cover-overlay p { font-size: 0.68rem; }
+.member-material-card .material-cover-kicker, .member-material-card .material-cover-meta { font-size: 0.46rem; }
 .member-intro { display: grid; min-height: auto; grid-template-columns: minmax(0, 1.1fr) minmax(14rem, 0.9fr); align-items: end; gap: 4rem; width: min(100%, var(--content)); margin: 0 auto; padding: clamp(6rem, 13vh, 10rem) 1.25rem clamp(4rem, 9vh, 6rem); }
 .member-intro h1 { max-width: 52rem; margin: 0 0 1.4rem; font-size: clamp(3.4rem, 7vw, 7rem); letter-spacing: -0.075em; line-height: 0.9; }
 .member-intro .hero-lede { max-width: 37rem; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.75; }
@@ -307,7 +312,7 @@
   .discord-copy .copy-button { justify-self: start; }
   .member-header { grid-template-columns: 1fr auto; }
   .member-header-context { display: none; }
-  .member-progress-grid, .member-material-links { grid-template-columns: 1fr; }
+  .member-progress-grid, .member-material-covers { grid-template-columns: 1fr; }
   .member-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .member-nav a { min-height: 2.9rem; }
   .member-sidebar-note { display: none; }

@@ -254,6 +254,14 @@ explicit connection action, a connected account without the Peace role offers
 the public setagem flow, and an inconclusive Discord/API response offers a
 retry without starting a second login.
 
+The same `material-cover` component is reused for the home learning previews,
+the study library, each reader cover, and the authenticated panel's public
+materials. It keeps the supplied cover image as the visual base, adds a dark
+bottom-up gradient, and places the title, description, page count, and
+availability metadata over that gradient instead of repeating the material
+details below the cover. The image is still a public static asset; its loading
+and error state remains explicit and does not grant access to the panel.
+
 ## Configuration boundary
 
 Production values belong in the provider environment, never in the public

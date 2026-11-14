@@ -320,8 +320,9 @@
     });
   }
 
-  function initMaterialCovers() {
-    document.querySelectorAll("[data-material-cover]").forEach(function (cover) {
+  function initMaterialCovers(root) {
+    var scope = root && typeof root.querySelectorAll === "function" ? root : document;
+    scope.querySelectorAll("[data-material-cover]").forEach(function (cover) {
       var image = cover.querySelector("img");
       if (!image) return;
       cover.classList.add("is-loading");
@@ -334,6 +335,7 @@
       }
       function markError() {
         image.hidden = true;
+        cover.querySelectorAll(".status-tag").forEach(function (status) { status.hidden = true; });
         cover.classList.remove("is-loading", "is-loaded");
         cover.classList.add("is-error");
         cover.setAttribute("aria-busy", "false");

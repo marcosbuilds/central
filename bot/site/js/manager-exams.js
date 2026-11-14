@@ -13,6 +13,7 @@
   var generated = document.querySelector("[data-manager-generated]");
   var generatedLink = document.querySelector("[data-manager-generated-link]");
   var logoutButton = document.querySelector("[data-manager-logout]");
+  var retryButton = document.querySelector("[data-manager-retry]");
 
   function setText(node, value) { if (node) node.textContent = value; }
   function request(url, options) {
@@ -26,8 +27,19 @@
     setMessage(message, messageText, "error");
     var connect = gate && gate.querySelector("[data-manager-connect]");
     if (connect) connect.hidden = true;
+    if (retryButton) retryButton.hidden = true;
     var title = gate && gate.querySelector("h2");
     if (title) title.textContent = "Discord conectado; cargo de Gerência necessário.";
+  }
+  function showUnavailable(messageText) {
+    if (gate) gate.hidden = false;
+    if (workspace) workspace.hidden = true;
+    var connect = gate && gate.querySelector("[data-manager-connect]");
+    if (connect) connect.hidden = true;
+    if (retryButton) { retryButton.hidden = false; retryButton.disabled = false; }
+    var title = gate && gate.querySelector("h2");
+    if (title) title.textContent = "Não foi possível confirmar a Gerência.";
+    setMessage(message, messageText || "O Discord ou a fonte de membros está temporariamente indisponível. Tente novamente.", "error");
   }
   function date(value) {
     try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value || "—"; }
@@ -119,23 +131,44 @@
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" }).then(function () { window.location.reload(); }).catch(function () { logoutButton.disabled = false; setMessage(formMessage, "Não consegui encerrar a sessão agora.", "error"); });
     });
   }
+  function loadManager() {
+    if (retryButton) { retryButton.disabled = true; retryButton.hidden = true; }
+    request("/api/auth/discord/session")
+      .then(function (session) {
+        var server = session && session.server ? session.server : {};
+        if (!session || session.ok !== true) {
+          var sessionError = new Error("Sessão Discord inválida.");
+          sessionError.status = 401;
+          throw sessionError;
+        }
+        if (server.state === "unavailable" || server.is_manager == null) {
+          showUnavailable();
+          return null;
+        }
+        if (server.is_manager !== true) {
+          showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
+          return null;
+        }
+        return openWorkspace();
+      })
+      .catch(function (error) {
+        if (error && error.status === 403) showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
+        else if (error && error.status === 401) {
+          if (gate) gate.hidden = false;
+          if (workspace) workspace.hidden = true;
+          if (retryButton) retryButton.hidden = true;
+          var connect = gate && gate.querySelector("[data-manager-connect]");
+          if (connect) connect.hidden = false;
+          var title = gate && gate.querySelector("h2");
+          if (title) title.textContent = "Conecte o Discord para verificar seu cargo.";
+          setMessage(message, "Conecte uma conta Discord para continuar.", "pending");
+        }
+        else if (error && error.code === "EXAM_NOT_CONFIGURED") setMessage(message, "O gabarito protegido ainda não está configurado neste ambiente.", "error");
+        else showUnavailable(error && error.message);
+      });
+  }
+
+  if (retryButton) retryButton.addEventListener("click", loadManager);
   cleanStatus();
-  request("/api/auth/discord/session")
-    .then(function (session) {
-      if (!session || !session.server || session.server.is_manager !== true) {
-        showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
-        return null;
-      }
-      return openWorkspace();
-    })
-    .catch(function (error) {
-      if (error && error.status === 403) showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
-      else if (error && error.status === 401) {
-        if (gate) gate.hidden = false;
-        if (workspace) workspace.hidden = true;
-        setMessage(message, "Conecte uma conta Discord para continuar.", "pending");
-      }
-      else if (error && error.code === "EXAM_NOT_CONFIGURED") setMessage(message, "O gabarito protegido ainda não está configurado neste ambiente.", "error");
-      else setMessage(message, error.message || "Não consegui verificar a gerência agora.", "error");
-    });
+  loadManager();
 })();

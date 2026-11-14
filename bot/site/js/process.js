@@ -17,6 +17,7 @@
   var scoreValueNode = document.querySelector("[data-process-score-value]");
   var scoreCopyNode = document.querySelector("[data-process-score-copy]");
   var logoutButton = document.querySelector("[data-discord-logout]");
+  var retryButton = document.querySelector("[data-process-retry]");
   var resultsPanel = document.querySelector("[data-process-results]");
   var assignmentList = document.querySelector("[data-process-assignment-list]");
   var stepNodes = {
@@ -146,7 +147,28 @@
     if (scorePanel) scorePanel.hidden = true;
     if (logoutButton) logoutButton.hidden = true;
     if (resultsPanel) resultsPanel.hidden = true;
+    if (retryButton) retryButton.hidden = true;
     showStatus(message || "Conecte sua conta Discord para continuar.", "pending");
+  }
+
+  function showUnavailable(message) {
+    setText(kickerNode, "Verificação temporariamente indisponível");
+    setText(titleNode, "O processo continua protegido.");
+    setText(copyNode, "Não foi possível validar sua sessão ou consultar o processo agora. Tente novamente sem iniciar outro login.");
+    setText(idNode, "Aguardando nova validação.");
+    setText(usernameNode, "A identidade não foi liberada.");
+    setText(membershipNode, "Confirmação pendente.");
+    if (membershipNoteNode) {
+      membershipNoteNode.textContent = "O painel permanece fechado até o Discord e o Peace Tools responderem com dados completos.";
+      membershipNoteNode.hidden = false;
+      membershipNoteNode.dataset.state = "unavailable";
+    }
+    if (setLink) setLink.hidden = true;
+    if (retryButton) { retryButton.hidden = false; retryButton.disabled = false; }
+    if (scorePanel) scorePanel.hidden = true;
+    if (logoutButton) logoutButton.hidden = true;
+    if (resultsPanel) resultsPanel.hidden = true;
+    showStatus(message || "A conexão está temporariamente indisponível. Tente validar novamente em instantes.", "error");
   }
 
   function cleanOAuthStatus() {
@@ -171,18 +193,35 @@
     });
   }
 
-  cleanOAuthStatus();
-  request("/api/auth/discord/session")
-    .then(function (session) {
-      return request("/api/exams/process").then(function (process) {
-        renderProcess(process);
+  function loadProcess() {
+    if (retryButton) { retryButton.disabled = true; retryButton.hidden = true; }
+    showStatus("Validando sessão e processo…", "pending");
+    request("/api/auth/discord/session")
+      .then(function (session) {
+        if (!session || session.ok !== true || !session.identity) {
+          var sessionError = new Error("Sessão Discord inválida.");
+          sessionError.status = 401;
+          throw sessionError;
+        }
+        return request("/api/exams/process").then(function (process) {
+          if (!process || process.ok !== true || !process.identity || !Array.isArray(process.assignments)) {
+            var processError = new Error("Processo indisponível.");
+            processError.status = 503;
+            throw processError;
+          }
+          renderProcess(process);
+        });
+      })
+      .catch(function (error) {
+        if (error && error.status === 401) {
+          showDisconnected();
+          return;
+        }
+        showUnavailable("A consulta do processo está temporariamente indisponível. Tente validar novamente em instantes.");
       });
-    })
-    .catch(function (error) {
-      if (error && error.status === 401) {
-        showDisconnected();
-        return;
-      }
-      showDisconnected("A consulta do processo está temporariamente indisponível. Tente novamente em instantes.");
-    });
+  }
+
+  if (retryButton) retryButton.addEventListener("click", loadProcess);
+  cleanOAuthStatus();
+  loadProcess();
 })();

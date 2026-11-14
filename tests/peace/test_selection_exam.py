@@ -67,6 +67,13 @@ def test_oauth_return_to_rejects_header_injection_and_external_paths():
     assert PeaceBot.public_oauth_return_to("/prova/") == "/prova/"
 
 
+def test_oauth_redirect_keeps_query_before_fragment():
+    assert PeaceBot.public_oauth_redirect("/#momentos", "connected").location == "/?oauth=connected#momentos"
+    assert PeaceBot.public_oauth_redirect("/meu-processo/?view=history#reader-page-7", "unavailable").location == (
+        "/meu-processo/?view=history&oauth=unavailable#reader-page-7"
+    )
+
+
 def test_oauth_local_callback_is_allowlisted_and_avatar_is_safe():
     config = {
         "client_id": "12345678901234567",

@@ -1621,8 +1621,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261114-01"' in opening_html
-    assert 'src="/script.js?v=20261114-01"' in opening_html
+    assert 'href="/styles.css?v=20261114-02"' in opening_html
+    assert 'src="/script.js?v=20261114-02"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1661,9 +1661,12 @@ def test_public_site_files_are_complete():
     civil_reader_html = (site_root / "estudos" / "civil" / "leitor" / "index.html").read_text(encoding="utf-8")
     peace_reader_html = (site_root / "estudos" / "peace" / "leitor" / "index.html").read_text(encoding="utf-8")
     process_html = (site_root / "meu-processo" / "index.html").read_text(encoding="utf-8")
+    process_script = (site_root / "js" / "process.js").read_text(encoding="utf-8")
+    manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
+    manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261114-01"' in html
-        assert 'src="/script.js?v=20261114-01"' in html
+        assert 'href="/styles.css?v=20261114-02"' in html
+        assert 'src="/script.js?v=20261114-02"' in html
         assert 'aria-label="Páginas públicas"' in html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
     assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
@@ -1674,6 +1677,8 @@ def test_public_site_files_are_complete():
     assert "O download do PDF original não é oferecido." in peace_html
     assert 'src="/assets/studies/civil/civil-cover-01.png"' in civil_html
     assert 'src="/assets/studies/peace/a-peace-cover-1.png"' in peace_html
+    assert 'href="/estudos/civil/" aria-label="Abrir a Apostila Civil"' in studies_html
+    assert 'href="/estudos/peace/" aria-label="Abrir o Manual da Peace"' in studies_html
     for cover_html in (studies_html, civil_html, peace_html, civil_reader_html, peace_reader_html):
         assert 'data-material-cover' in cover_html
         assert 'class="material-cover-overlay"' in cover_html
@@ -1692,6 +1697,10 @@ def test_public_site_files_are_complete():
         assert 'class="reader-page"' not in reader_html.split("<body", 1)[1].split(">", 1)[0]
         assert 'data-material-cover' not in reader_html.split('class="reader-pages"', 1)[1]
     assert "Conecte o Discord para abrir seu processo." in process_html
+    assert "data-process-retry" in process_html
+    assert "showUnavailable" in process_script
+    assert "data-manager-retry" in manager_html
+    assert "showUnavailable" in manager_script
     assert 'aria-current="location">Estudos</a>' in civil_html
     assert 'aria-current="location">Estudos</a>' in peace_html
     assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
@@ -1712,9 +1721,9 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261114-01" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
     reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
     assert 'page.matches("figure.reader-page")' in reader_script
     civil_notes = reader_script.split("civil: [", 1)[1].split("peace: [", 1)[0]
@@ -1757,6 +1766,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     script = (site_root / "script.js").read_text(encoding="utf-8")
     member_script = (site_root / "js" / "member-area.js").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
+    studies_stylesheet = (site_root / "css" / "studies.css").read_text(encoding="utf-8")
     member_stylesheet = (site_root / "css" / "member.css").read_text(encoding="utf-8")
 
     assert 'data-page="member"' in member_html
@@ -1796,7 +1806,9 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "showConnectedNonMember" in member_script
     assert "showUnavailable" in member_script
     assert "showWorkspaceLoading" in member_script
+    assert "processIsReady" in member_script
     assert "/api/peace/process" in member_script
+    assert 'aria-busy="true"' in member_html
     assert ".member-welcome { grid-template-columns: auto minmax(0, 1fr);" in member_stylesheet
     assert ".member-overview-grid { grid-template-columns: 1fr; }" in member_stylesheet
     public_media_script = (site_root / "js" / "public-media.js").read_text(encoding="utf-8")
@@ -1805,6 +1817,8 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "thumbnail.width = 320" in public_media_script
     assert "avatarImage.width = 32" in public_media_script
     assert "Última leitura · uma fonte está desatualizada" in public_media_script
+    assert ".material-cover.is-loading .material-cover-overlay" in studies_stylesheet
+    assert 'cover.querySelectorAll(".status-tag")' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
 
 
 def test_netlify_redirects_keep_the_short_discord_route():

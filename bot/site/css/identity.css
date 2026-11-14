@@ -9,6 +9,9 @@
 .discord-identity { position: relative; z-index: 40; }
 .discord-identity-trigger { display: inline-flex; min-height: 2.65rem; max-width: min(17rem, 42vw); align-items: center; gap: 0.55rem; padding: 0.25rem 0.35rem 0.25rem 0.85rem; border: 1px solid rgba(185, 202, 211, 0.2); border-radius: 999px; background: rgba(11, 15, 17, 0.82); color: var(--text); cursor: pointer; font: inherit; transition: border-color 180ms var(--ease-fast), background 180ms var(--ease-fast), transform 180ms var(--ease-fast); }
 .discord-identity-trigger:hover, .discord-identity-trigger:focus-visible, .discord-identity.is-open .discord-identity-trigger { border-color: rgba(123, 201, 166, 0.72); background: rgba(19, 35, 31, 0.92); outline: none; }
+.discord-identity-retry { min-height: 2.45rem; padding: 0.55rem 0.75rem; border: 1px solid rgba(223, 190, 125, 0.48); border-radius: 999px; background: rgba(53, 42, 22, 0.42); color: var(--text); cursor: pointer; font: inherit; font-size: 0.62rem; font-weight: 700; white-space: nowrap; }
+.discord-identity-retry:hover, .discord-identity-retry:focus-visible { border-color: var(--warning); background: rgba(53, 42, 22, 0.72); outline: none; }
+.discord-identity-retry:disabled { cursor: wait; opacity: 0.65; }
 .discord-identity-trigger:focus-visible { box-shadow: 0 0 0 3px rgba(123, 201, 166, 0.16); }
 .discord-identity-name { max-width: 10rem; overflow: hidden; color: var(--text); font-size: 0.7rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .discord-identity-avatar, .discord-identity-fallback { display: inline-grid; width: 2rem; height: 2rem; flex: 0 0 2rem; place-items: center; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #5a9ed7); color: #071014; font-size: 0.62rem; font-weight: 800; object-fit: cover; }

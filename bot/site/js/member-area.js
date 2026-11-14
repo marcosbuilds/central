@@ -67,6 +67,29 @@
       memberAvatar.hidden = false;
     }
 
+    function identityIsReady(identity) {
+      return Boolean(
+        identity
+        && /^[0-9]{15,25}$/.test(String(identity.discord_id || ""))
+        && identity.avatar_url
+      );
+    }
+
+    function processIsReady(payload) {
+      var server = payload && payload.server ? payload.server : null;
+      return Boolean(
+        payload && payload.ok === true
+        && identityIsReady(payload.identity)
+        && payload.profile
+        && Array.isArray(payload.assignments)
+        && server
+        && server.state
+        && server.state !== "unavailable"
+        && server.is_peace_member === true
+        && typeof server.is_manager === "boolean"
+      );
+    }
+
     function renderOverview(session, process) {
       if (!overview) return;
       var data = process || {};
@@ -129,8 +152,43 @@
       var materials = document.createElement("section");
       materials.className = "member-data-block member-data-block--wide member-materials-card";
       materials.id = "member-materials";
-      materials.innerHTML = "<p class=\"eyebrow\">Materiais públicos</p><h3>Continue sua preparação.</h3><p>As duas apostilas estão abertas para leitura, sem depender do painel.</p><div class=\"member-material-links\"><a href=\"/estudos/civil/\">Apostila Civil <span>↗</span></a><a href=\"/estudos/peace/\">Manual da Peace <span>↗</span></a></div>";
+      materials.innerHTML = "<p class=\"eyebrow\">Materiais públicos</p><h3>Continue sua preparação.</h3><p>As duas apostilas estão abertas para leitura, sem depender do painel.</p>";
+      var materialCovers = document.createElement("div");
+      materialCovers.className = "member-material-covers";
+      [
+        { href: "/estudos/civil/", src: "/assets/studies/civil/civil-cover-01.png", alt: "Capa da Apostila Civil", kicker: "01 / Civil", title: "Apostila Civil", description: "Investigação, patrulhamento e preparação.", meta: "18 páginas · leitura pública" },
+        { href: "/estudos/peace/", src: "/assets/studies/peace/a-peace-cover-1.png", alt: "Capa do manual A Peace", kicker: "02 / Convivência", title: "Manual da Peace", description: "Paz, respeito e responsabilidade.", meta: "8 páginas · leitura pública" }
+      ].forEach(function (item) {
+        var link = document.createElement("a");
+        link.className = "member-material-card";
+        link.href = item.href;
+        link.setAttribute("aria-label", "Abrir " + item.title);
+        var cover = document.createElement("div");
+        cover.className = "material-cover material-cover--member";
+        cover.setAttribute("data-material-cover", "");
+        cover.setAttribute("aria-busy", "true");
+        var image = document.createElement("img");
+        image.className = "material-cover-image";
+        image.src = item.src;
+        image.alt = item.alt;
+        image.width = 1240;
+        image.height = 1754;
+        image.loading = "lazy";
+        var overlay = document.createElement("div");
+        overlay.className = "material-cover-overlay";
+        overlay.innerHTML = "<span class=\"material-cover-kicker\"></span><h4></h4><p></p><span class=\"material-cover-meta\"></span>";
+        overlay.querySelector(".material-cover-kicker").textContent = item.kicker;
+        overlay.querySelector("h4").textContent = item.title;
+        overlay.querySelector("p").textContent = item.description;
+        overlay.querySelector(".material-cover-meta").textContent = item.meta;
+        cover.appendChild(image);
+        cover.appendChild(overlay);
+        link.appendChild(cover);
+        materialCovers.appendChild(link);
+      });
+      materials.appendChild(materialCovers);
       overview.appendChild(materials);
+      if (typeof site.initMaterialCovers === "function") site.initMaterialCovers(materials);
 
       if (nextAction) {
         nextAction.textContent = "";
@@ -179,14 +237,14 @@
     }
     function showWorkspaceLoading() {
       if (gate) gate.hidden = true;
-      if (workspace) workspace.hidden = false;
+      if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "true"); }
       if (skeleton) skeleton.hidden = false;
       if (content) content.hidden = true;
       setConnection("Validando sessão, cargo Peace e processo…", "pending");
     }
     function showWorkspace() {
       if (gate) gate.hidden = true;
-      if (workspace) workspace.hidden = false;
+      if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "false"); }
       if (skeleton) skeleton.hidden = true;
       if (content) content.hidden = false;
     }
@@ -214,12 +272,12 @@
           }
           return request("/api/peace/process").then(function (process) {
             var processServer = process && process.server ? process.server : {};
-            if (processServer.state === "unavailable" || processServer.is_peace_member == null) {
-              showUnavailable();
-              return;
-            }
-            if (processServer.is_peace_member !== true) {
-              showConnectedNonMember();
+            if (!processIsReady(process)) {
+              if (processServer.state === "member" || processServer.state === "not_member" || processServer.is_peace_member === false) {
+                showConnectedNonMember();
+              } else {
+                showUnavailable();
+              }
               return;
             }
             renderOverview(session, process);

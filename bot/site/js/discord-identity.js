@@ -259,10 +259,29 @@
     document.body.dataset.manager = "false";
   }
 
+  function renderRetry(host) {
+    host.textContent = "";
+    host.removeAttribute("aria-busy");
+    var retry = createElement("button", "discord-identity-retry", "Tentar validar");
+    retry.type = "button";
+    retry.setAttribute("aria-label", "Tentar validar a conexão com Discord novamente");
+    retry.addEventListener("click", function () {
+      retry.disabled = true;
+      retry.textContent = "Validando…";
+      if (typeof site.refreshDiscordSession === "function") site.refreshDiscordSession();
+    });
+    host.appendChild(retry);
+    setConnectionState("retry");
+    document.body.dataset.discordConnected = "retry";
+    document.body.dataset.discordId = "";
+    document.body.dataset.peaceMember = "unknown";
+    document.body.dataset.manager = "unknown";
+  }
+
   function hideConnectedDuplicates(connected, state) {
     document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
-      node.hidden = connected || state === "loading";
+      node.hidden = connected || state === "loading" || state === "retry";
     });
   }
 
@@ -283,6 +302,23 @@
     document.body.dataset.manager = "pending";
     allHeaderHosts().forEach(renderLoading);
     hideConnectedDuplicates(false, "loading");
+  }
+
+  function sessionIsReady(payload) {
+    var identity = payload && payload.identity ? payload.identity : null;
+    var server = payload && payload.server ? payload.server : null;
+    return Boolean(
+      payload && payload.ok === true
+      && identity
+      && /^[0-9]{15,25}$/.test(String(identity.discord_id || ""))
+      && identity.avatar_url
+      && payload.profile
+      && server
+      && server.state
+      && server.state !== "unavailable"
+      && typeof server.is_peace_member === "boolean"
+      && typeof server.is_manager === "boolean"
+    );
   }
 
   document.addEventListener("click", function (event) {
@@ -320,11 +356,25 @@
     }, 9000).then(function (response) {
       return response.json();
     }).then(function (payload) {
-      render(payload && payload.ok ? payload : null);
-      return payload && payload.ok ? payload : null;
+      if (!sessionIsReady(payload)) {
+        var incomplete = new Error("O perfil do Discord ainda não está pronto para ser exibido.");
+        incomplete.code = "DISCORD_PROFILE_UNAVAILABLE";
+        incomplete.status = 503;
+        site.discordSessionError = incomplete;
+        allHeaderHosts().forEach(renderRetry);
+        hideConnectedDuplicates(false, "retry");
+        return null;
+      }
+      render(payload);
+      return payload;
     }).catch(function (error) {
       site.discordSessionError = error;
-      render(null);
+      if (error && error.status === 401) {
+        render(null);
+      } else {
+        allHeaderHosts().forEach(renderRetry);
+        hideConnectedDuplicates(false, "retry");
+      }
       return null;
     });
   }

@@ -4876,8 +4876,9 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def public_oauth_redirect(return_to: str, status: str) -> web.HTTPFound:
-        separator = "&" if "?" in return_to else "?"
-        return web.HTTPFound(f"{return_to}{separator}{urlencode({'oauth': status})}")
+        parsed = urlsplit(return_to)
+        query = f"{parsed.query}&{urlencode({'oauth': status})}" if parsed.query else urlencode({'oauth': status})
+        return web.HTTPFound(parsed._replace(query=query).geturl())
 
     def public_oauth_cookie_secure(self, redirect_uri: str | None = None) -> bool:
         if redirect_uri:
