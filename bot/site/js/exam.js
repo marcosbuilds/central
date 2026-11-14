@@ -51,6 +51,16 @@
     if (submitMessageNode) submitMessageNode.dataset.state = tone || "pending";
   }
 
+  function showConnectedAwaitingAssignment() {
+    var title = document.querySelector("#exam-auth-title");
+    var copy = authPanel && authPanel.querySelector("p:not(.eyebrow):not(.form-status)");
+    var connect = authPanel && authPanel.querySelector("[data-discord-connect]");
+    if (title) title.textContent = "Discord identificado.";
+    if (copy) copy.textContent = "Sua conta está conectada. Abra o link individual enviado pela Gerência para consultar a prova atribuída.";
+    if (connect) connect.hidden = true;
+    showMessage("Nenhuma atribuição foi aberta nesta página. Use o link individual da Gerência.", "success");
+  }
+
   function cleanOAuthStatus() {
     var url = new URL(window.location.href);
     var status = url.searchParams.get("oauth");
@@ -227,7 +237,7 @@
   request("/api/auth/discord/session")
     .then(function () {
       if (!accessToken) {
-        showMessage("Abra o link individual enviado pela Gerência para iniciar a prova.", "pending");
+        showConnectedAwaitingAssignment();
         return null;
       }
       return request("/api/exams/access", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ access_token: accessToken }) });

@@ -20,6 +20,15 @@
       .then(function (response) { return response.json(); });
   }
   function setMessage(node, text, tone) { setText(node, text || ""); if (node) node.dataset.state = tone || "pending"; }
+  function showGate(message) {
+    if (gate) gate.hidden = false;
+    if (workspace) workspace.hidden = true;
+    setMessage(messageNode, message, "error");
+    var connect = gate && gate.querySelector("[data-manager-connect]");
+    if (connect) connect.hidden = true;
+    var title = gate && gate.querySelector("h2");
+    if (title) title.textContent = "Discord conectado; cargo de Gerência necessário.";
+  }
   function date(value) {
     try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value || "—"; }
   }
@@ -112,10 +121,20 @@
   }
   cleanStatus();
   request("/api/auth/discord/session")
-    .then(openWorkspace)
+    .then(function (session) {
+      if (!session || !session.server || session.server.is_manager !== true) {
+        showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
+        return null;
+      }
+      return openWorkspace();
+    })
     .catch(function (error) {
-      if (error && error.status === 403) setMessage(message, "Sua conta está conectada, mas não possui o cargo de Gerência.", "error");
-      else if (error && error.status === 401) setMessage(message, "Conecte uma conta Discord para continuar.", "pending");
+      if (error && error.status === 403) showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
+      else if (error && error.status === 401) {
+        if (gate) gate.hidden = false;
+        if (workspace) workspace.hidden = true;
+        setMessage(message, "Conecte uma conta Discord para continuar.", "pending");
+      }
       else if (error && error.code === "EXAM_NOT_CONFIGURED") setMessage(message, "O gabarito protegido ainda não está configurado neste ambiente.", "error");
       else setMessage(message, error.message || "Não consegui verificar a gerência agora.", "error");
     });

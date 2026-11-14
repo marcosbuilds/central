@@ -860,13 +860,39 @@
     manualEntryIdentity = readManualEntry();
     setManualEntryFields(manualEntryIdentity);
 
-    if (readEntryToken()) {
-      startEntrySession().then(maybeRecoverEntrySession).catch(function () {
-        if (sessionNote) sessionNote.textContent = "Não consegui retomar o convite agora. Tente abrir um novo link.";
-      });
-    } else if (manualEntryIdentity) {
-      identifyExistingMember(false, manualEntryIdentity).catch(function () { /* draft remains available for a manual retry */ });
+    function resumeConnectedFlow(session) {
+      var server = session && session.server ? session.server : {};
+      if (!session) return false;
+      if (server.is_peace_member === true) {
+        if (sessionNote) sessionNote.textContent = "Sua conta já possui o cargo Peace. Abrindo o painel para acompanhar o próximo passo.";
+        window.location.replace("/area/");
+        return true;
+      }
+      if (server.is_member === true) {
+        var identity = session.identity || {};
+        if (connectButton) connectButton.hidden = true;
+        if (existingToggle) existingToggle.hidden = true;
+        setEntryUser({ mention: "@" + (identity.username || "usuário") });
+        if (memberResult) memberResult.textContent = "Sua entrada no servidor foi confirmada pela conta Discord conectada. A entrevista é o próximo passo.";
+        if (manualEntryNote) manualEntryNote.textContent = "Não é necessário conectar novamente nem informar username ou ID. Esta conta já foi identificada pelo Discord.";
+        if (sessionNote) sessionNote.textContent = "Conta identificada no servidor. Continue pela etapa de entrevista.";
+        setStage(3, false);
+        updateWizard(wizardStep, false);
+        return true;
+      }
+      return false;
     }
+
+    site.getDiscordSession().then(function (session) {
+      if (resumeConnectedFlow(session)) return;
+      if (readEntryToken()) {
+        startEntrySession().then(maybeRecoverEntrySession).catch(function () {
+          if (sessionNote) sessionNote.textContent = "Não consegui retomar o convite agora. Tente abrir um novo link.";
+        });
+      } else if (manualEntryIdentity) {
+        identifyExistingMember(false, manualEntryIdentity).catch(function () { /* draft remains available for a manual retry */ });
+      }
+    });
 
     function refreshEntryAfterReturn() {
       if (document.visibilityState && document.visibilityState !== "visible") return;

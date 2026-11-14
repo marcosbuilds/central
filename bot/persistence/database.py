@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS candidate_profiles (
     passed INTEGER,
     last_assignment_id INTEGER,
     last_submitted_at TEXT,
+    avatar_hash TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -313,6 +314,7 @@ CREATE TABLE IF NOT EXISTS discord_oauth_states (
     state_hash TEXT NOT NULL UNIQUE,
     code_verifier TEXT NOT NULL,
     return_to TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     consumed_at TEXT
@@ -330,6 +332,7 @@ CREATE TABLE IF NOT EXISTS discord_oauth_sessions (
     username TEXT NOT NULL,
     global_name TEXT,
     display_name TEXT,
+    avatar_hash TEXT,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     revoked_at TEXT
@@ -458,6 +461,15 @@ class PeaceDatabase:
             session_columns = {row["name"] for row in connection.execute("PRAGMA table_info(central_login_sessions)")}
             if session_columns and "token_selector" not in session_columns:
                 connection.execute("ALTER TABLE central_login_sessions ADD COLUMN token_selector TEXT")
+            oauth_state_columns = {row["name"] for row in connection.execute("PRAGMA table_info(discord_oauth_states)")}
+            if oauth_state_columns and "redirect_uri" not in oauth_state_columns:
+                connection.execute("ALTER TABLE discord_oauth_states ADD COLUMN redirect_uri TEXT NOT NULL DEFAULT ''")
+            oauth_session_columns = {row["name"] for row in connection.execute("PRAGMA table_info(discord_oauth_sessions)")}
+            if oauth_session_columns and "avatar_hash" not in oauth_session_columns:
+                connection.execute("ALTER TABLE discord_oauth_sessions ADD COLUMN avatar_hash TEXT")
+            profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(candidate_profiles)")}
+            if profile_columns and "avatar_hash" not in profile_columns:
+                connection.execute("ALTER TABLE candidate_profiles ADD COLUMN avatar_hash TEXT")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_central_login_challenges_token "
                 "ON central_login_challenges(client_id, challenge_token_hash)"
@@ -651,6 +663,7 @@ class PeaceDatabase:
         code_verifier: str,
         return_to: str,
         expires_at: str,
+        redirect_uri: str = "",
     ) -> None:
         """Persist one short-lived PKCE state without retaining the raw nonce."""
         self.initialize()
@@ -658,13 +671,14 @@ class PeaceDatabase:
             connection.execute(
                 """
                 INSERT INTO discord_oauth_states (
-                    state_hash, code_verifier, return_to, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    state_hash, code_verifier, return_to, redirect_uri, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _oauth_state_hash(state),
                     code_verifier,
                     return_to,
+                    str(redirect_uri or "")[:300],
                     now_iso(),
                     expires_at,
                 ),
@@ -714,6 +728,7 @@ class PeaceDatabase:
         global_name: str | None,
         display_name: str | None,
         expires_at: str,
+        avatar_hash: str | None = None,
     ) -> str:
         """Create a browser session and return the raw token exactly once."""
         self.initialize()
@@ -725,8 +740,8 @@ class PeaceDatabase:
                 """
                 INSERT INTO discord_oauth_sessions (
                     session_selector, token_hash, token_salt, discord_user_id,
-                    username, global_name, display_name, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    username, global_name, display_name, avatar_hash, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     selector,
@@ -736,6 +751,7 @@ class PeaceDatabase:
                     str(username)[:80],
                     str(global_name)[:80] if global_name else None,
                     str(display_name)[:80] if display_name else None,
+                    str(avatar_hash)[:128] if avatar_hash else None,
                     now_iso(),
                     expires_at,
                 ),
@@ -800,6 +816,7 @@ class PeaceDatabase:
         username: str,
         global_name: str | None = None,
         display_name: str | None = None,
+        avatar_hash: str | None = None,
     ) -> sqlite3.Row:
         """Keep a current Discord identity snapshot without changing its score."""
         self.initialize()
@@ -808,12 +825,13 @@ class PeaceDatabase:
             connection.execute(
                 """
                 INSERT INTO candidate_profiles (
-                    discord_user_id, username, global_name, display_name, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    discord_user_id, username, global_name, display_name, avatar_hash, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(discord_user_id) DO UPDATE SET
                     username=excluded.username,
                     global_name=excluded.global_name,
                     display_name=excluded.display_name,
+                    avatar_hash=excluded.avatar_hash,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -821,6 +839,7 @@ class PeaceDatabase:
                     str(username)[:80],
                     str(global_name)[:80] if global_name else None,
                     str(display_name)[:80] if display_name else None,
+                    str(avatar_hash)[:128] if avatar_hash else None,
                     timestamp,
                     timestamp,
                 ),

@@ -12,6 +12,20 @@
 .member-header .brand-mark img { width: 2.2rem; height: 2.2rem; }
 .member-header .brand-lockup strong { font-size: 0.9rem; }
 .member-header .brand-lockup small { font-size: 0.4rem; }
+.member-progress-card h3, .member-data-block h3 { margin: 0.35rem 0 0; color: var(--text); font-size: 1.15rem; letter-spacing: -0.04em; }
+.member-progress-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin-top: 1.2rem; }
+.member-progress-grid > div { min-width: 0; padding: 0.85rem; border: 1px solid var(--border); border-radius: 0.65rem; background: rgba(10, 14, 18, 0.48); }
+.member-progress-grid small { display: block; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.55rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.member-progress-grid strong { display: block; margin-top: 0.4rem; color: var(--text); font-size: 1rem; overflow-wrap: anywhere; }
+.member-progress-copy, .member-data-block > p:not(.eyebrow) { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.65; }
+.member-assignment-list { display: grid; gap: 0.6rem; margin-top: 1rem; }
+.member-assignment-row { padding: 0.8rem 0; border-top: 1px solid var(--border); }
+.member-assignment-row:last-child { border-bottom: 1px solid var(--border); }
+.member-assignment-row strong { color: var(--text); font-size: 0.82rem; }
+.member-assignment-row p { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.7rem; line-height: 1.55; }
+.member-material-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; margin-top: 1rem; }
+.member-material-links a { display: flex; min-height: 3rem; align-items: center; justify-content: space-between; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.6rem; color: var(--text); font-size: 0.75rem; text-decoration: none; }
+.member-material-links a:hover, .member-material-links a:focus-visible { border-color: var(--accent); outline: none; }
 .member-intro { display: grid; min-height: auto; grid-template-columns: minmax(0, 1.1fr) minmax(14rem, 0.9fr); align-items: end; gap: 4rem; width: min(100%, var(--content)); margin: 0 auto; padding: clamp(6rem, 13vh, 10rem) 1.25rem clamp(4rem, 9vh, 6rem); }
 .member-intro h1 { max-width: 52rem; margin: 0 0 1.4rem; font-size: clamp(3.4rem, 7vw, 7rem); letter-spacing: -0.075em; line-height: 0.9; }
 .member-intro .hero-lede { max-width: 37rem; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.75; }
@@ -211,6 +225,7 @@
   .discord-copy .copy-button { justify-self: start; }
   .member-header { grid-template-columns: 1fr auto; }
   .member-header-context { display: none; }
+  .member-progress-grid, .member-material-links { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

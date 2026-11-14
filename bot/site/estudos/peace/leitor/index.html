@@ -7,15 +7,16 @@
     <meta name="description" content="Leitor visual do manual A Peace da Peace.">
     <title>Leitor · A Peace — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261113-03">
-    <script defer src="/script.js?v=20261113-03"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261113-04">
+    <script defer src="/script.js?v=20261113-05"></script>
   </head>
-  <body class="reader-page" data-reader-shell>
+  <body class="reader-shell" data-page="reader" data-reader-shell>
     <a class="skip-link" href="#paginas">Pular para as páginas</a>
     <div class="site-shell flow-page">
       <header class="flow-header" aria-label="Leitor do manual A Peace">
         <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
-        <nav class="flow-header-nav" aria-label="Páginas públicas"><a href="/estudos/" aria-current="location">Estudos</a><a href="/estudos/peace/" aria-current="page">Manual da Peace</a><a href="/meu-processo/">Meu processo</a><a href="/#sobre">A Peace</a></nav>
+        <nav class="flow-header-nav" id="flow-site-nav" aria-label="Páginas públicas"><a href="/estudos/" aria-current="location">Estudos</a><a href="/estudos/peace/" aria-current="page">Manual da Peace</a><a href="/meu-processo/">Meu processo</a><a href="/#sobre">A Peace</a></nav>
+        <button class="menu-toggle flow-menu-toggle" type="button" aria-expanded="false" aria-controls="flow-site-nav"><span class="menu-toggle-label">menu</span><span class="menu-toggle-arrow" aria-hidden="true"><i></i><i></i></span></button>
         <a class="button button--outline flow-header-cta" href="/estudos/peace/">Voltar ao manual</a>
       </header>
 
@@ -33,7 +34,9 @@
 
         <section class="reader-notice" aria-label="Limites do leitor"><span class="reader-notice-mark" aria-hidden="true">i</span><div><strong>Leitor visual, sem download do original.</strong><p>O site não oferece o arquivo PDF nem um botão de baixar. Isso reduz cópias acidentais, mas nenhum navegador consegue impedir capturas de tela, OCR, ferramentas de desenvolvedor ou o envio manual de conteúdo visível.</p></div></section>
 
-        <article id="paginas" class="reader-pages" aria-label="Páginas do manual A Peace" tabindex="-1">
+        <div id="paginas" class="reader-layout" aria-label="Leitor do manual A Peace" tabindex="-1">
+          <nav class="reader-toc" aria-label="Sumário do manual A Peace"><p class="eyebrow">Sumário</p><h2>Leia por página.</h2><ol data-reader-toc></ol></nav>
+          <div class="reader-page-column"><div class="reader-page-toolbar"><span class="eyebrow">Página atual</span><strong data-reader-current>01 / 08</strong></div><article class="reader-pages" aria-label="Páginas do manual A Peace" tabindex="-1">
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-1.png" alt="Manual A Peace — página 1" width="1240" height="1754" loading="eager" draggable="false"><figcaption>01 / 08</figcaption></figure>
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-2.png" alt="Manual A Peace — página 2" width="1240" height="1754" loading="lazy" draggable="false"><figcaption>02 / 08</figcaption></figure>
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-3.png" alt="Manual A Peace — página 3" width="1240" height="1754" loading="lazy" draggable="false"><figcaption>03 / 08</figcaption></figure>
@@ -42,7 +45,9 @@
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-6.png" alt="Manual A Peace — página 6" width="1240" height="1754" loading="lazy" draggable="false"><figcaption>06 / 08</figcaption></figure>
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-7.png" alt="Manual A Peace — página 7" width="1240" height="1754" loading="lazy" draggable="false"><figcaption>07 / 08</figcaption></figure>
           <figure class="reader-page"><img src="/assets/studies/peace/a-peace-8.png" alt="Manual A Peace — página 8" width="1240" height="1754" loading="lazy" draggable="false"><figcaption>08 / 08</figcaption></figure>
-        </article>
+          </article></div>
+          <aside class="reader-explainer" aria-live="polite"><p class="eyebrow">Contexto da página</p><h2 data-reader-note-title>Visão geral</h2><p data-reader-note-copy>Selecione uma página no sumário para acompanhar a explicação.</p><span data-reader-note-progress>01 / 08</span></aside>
+        </div>
       </main>
       <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Conheça o contexto da Peace.</p><a class="footer-link" href="/estudos/civil/">Apostila Civil <span aria-hidden="true">↗</span></a></footer>
     </div>

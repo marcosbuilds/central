@@ -209,3 +209,76 @@ html {
 .entry-help-panel {
   min-width: 0;
 }
+
+/* Keep every public flow on the same compact header as the home page. */
+.flow-menu-toggle { display: none; }
+.flow-header .flow-menu-toggle { min-width: 4rem; }
+
+@media (max-width: 840px) {
+  .flow-header {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.75rem;
+    padding-inline: 1.1rem;
+  }
+
+  .flow-header .brand { grid-column: 1; grid-row: 1; }
+  .flow-header .flow-menu-toggle { display: grid; grid-column: 2; grid-row: 1; justify-self: center; }
+  .flow-header .flow-header-actions { grid-column: 3; grid-row: 1; width: 100%; min-width: 0; justify-self: end; }
+  .flow-header .flow-header-login { display: none; }
+  .flow-header .flow-header-cta { min-width: 0; max-width: 100%; }
+  .flow-header .discord-identity { max-width: 100%; }
+  .flow-header .discord-identity-trigger { width: 100%; min-width: 0; justify-content: flex-end; }
+  .flow-header .flow-header-actions > .flow-header-cta { display: none; }
+  .flow-header .flow-header-actions > .discord-identity-host { width: 100%; justify-content: flex-end; }
+
+  .flow-header .flow-header-nav {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 0.8rem);
+    right: 1rem;
+    left: 1rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    padding: 0.65rem;
+    border: 1px solid var(--container-border);
+    border-radius: var(--container-radius);
+    background: var(--surface-raised);
+    box-shadow: var(--container-shadow);
+    backdrop-filter: var(--container-blur);
+    -webkit-backdrop-filter: var(--container-blur);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-0.65rem) scale(0.98);
+    transform-origin: top center;
+    transition: opacity 180ms var(--ease-fast), transform 220ms var(--ease), visibility 0s linear 220ms;
+    visibility: hidden;
+  }
+
+  .flow-header .flow-header-nav::before,
+  .flow-header .flow-header-nav::after {
+    position: absolute;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-right: 0.5rem solid transparent;
+    border-left: 0.5rem solid transparent;
+    content: "";
+    transform: translateX(-50%);
+  }
+
+  .flow-header .flow-header-nav::before { top: -0.55rem; border-bottom: 0.55rem solid var(--border); }
+  .flow-header .flow-header-nav::after { top: -0.42rem; border-right-width: 0.38rem; border-bottom: 0.42rem solid var(--surface-raised); border-left-width: 0.38rem; }
+  .flow-header.menu-open .flow-header-nav { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); transition-delay: 0s; visibility: visible; }
+  .flow-header .flow-header-nav a { display: flex; min-width: 0; min-height: 3rem; align-items: center; padding: 0.72rem 0.78rem; overflow-wrap: anywhere; border: 1px solid rgba(185, 202, 211, 0.12); border-radius: 0.78rem; background: rgba(5, 6, 7, 0.28); }
+  .flow-header .flow-header-nav a:hover,
+  .flow-header .flow-header-nav a:focus-visible { border-color: rgba(185, 202, 211, 0.34); background: rgba(185, 202, 211, 0.09); }
+  .flow-header .flow-header-nav a[aria-current="page"]::after,
+  .flow-header .flow-header-nav a[aria-current="location"]::after { right: auto; bottom: 0.55rem; left: 0.78rem; width: 1.35rem; }
+}
+
+@media (max-width: 560px) {
+  .flow-header { padding-inline: 1rem; }
+  .flow-header .flow-header-cta { gap: 0.45rem; padding-inline: 0.58rem; font-size: 0.68rem; }
+}

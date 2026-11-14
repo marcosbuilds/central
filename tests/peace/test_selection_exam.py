@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from bot.persistence.database import ExamAssignmentExistsError, PeaceDatabase
@@ -63,6 +65,41 @@ def test_oauth_return_to_rejects_header_injection_and_external_paths():
     assert PeaceBot.public_oauth_return_to("/\r\nLocation: https://evil.example") == "/meu-processo/"
     assert PeaceBot.public_oauth_return_to("//evil.example") == "/meu-processo/"
     assert PeaceBot.public_oauth_return_to("/prova/") == "/prova/"
+
+
+def test_oauth_local_callback_is_allowlisted_and_avatar_is_safe():
+    config = {
+        "client_id": "12345678901234567",
+        "client_secret": "test-secret",
+        "redirect_uri": "https://peacegg.com.br/api/auth/discord/callback",
+    }
+    local_request = SimpleNamespace(headers={"X-Peace-Frontend-Origin": "http://localhost:4175"})
+    forged_request = SimpleNamespace(headers={"X-Peace-Frontend-Origin": "https://evil.example"})
+
+    assert PeaceBot.public_discord_redirect_uri_for_request(local_request, config) == (
+        "http://localhost:4175/api/auth/discord/callback"
+    )
+    assert PeaceBot.public_discord_redirect_uri_for_request(forged_request, config) == config["redirect_uri"]
+    assert PeaceBot.public_discord_avatar_url("12345678901234567", "a_abc123") == (
+        "https://cdn.discordapp.com/avatars/12345678901234567/a_abc123.gif?size=128"
+    )
+    assert PeaceBot.public_discord_avatar_url("123", "unsafe/hash") is None
+
+
+def test_oauth_session_persists_avatar_hash(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    token = database.create_discord_oauth_session(
+        discord_user_id="12345678901234567",
+        username="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        avatar_hash="abc123",
+        expires_at="2030-01-01T00:00:00+00:00",
+    )
+
+    row = database.validate_discord_oauth_session(token, now="2029-01-01T00:00:00+00:00")
+    assert row is not None
+    assert row["avatar_hash"] == "abc123"
 
 
 def test_exam_attempt_and_submission_are_single_use(tmp_path):

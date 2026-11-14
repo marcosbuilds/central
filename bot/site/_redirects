@@ -25,6 +25,7 @@
 /api/auth/discord/callback https://peace-tools-8be02694.aclclouds.online/api/auth/discord/callback 200!
 /api/auth/discord/session https://peace-tools-8be02694.aclclouds.online/api/auth/discord/session 200!
 /api/auth/discord/logout https://peace-tools-8be02694.aclclouds.online/api/auth/discord/logout 200!
+/api/notices https://peace-tools-8be02694.aclclouds.online/api/notices 200!
 /api/exams/process https://peace-tools-8be02694.aclclouds.online/api/exams/process 200!
 /api/exams/access https://peace-tools-8be02694.aclclouds.online/api/exams/access 200!
 /api/exams/start https://peace-tools-8be02694.aclclouds.online/api/exams/start 200!

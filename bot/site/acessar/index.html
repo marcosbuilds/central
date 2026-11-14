@@ -4,11 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#050607">
-    <meta name="description" content="Acesso de membro da Peace com ID e código enviado no Discord.">
+    <meta name="description" content="Acesso seguro da Peace por conexão oficial com o Discord.">
     <title>Acessar — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261113-01">
-    <script defer src="/script.js?v=20261113-01"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261113-04">
+    <script defer src="/script.js?v=20261113-05"></script>
   </head>
   <body data-page="login">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -24,26 +24,12 @@
       <main id="conteudo" class="flow-main flow-main--login" tabindex="-1">
         <section class="login-layout login-layout--focused" aria-labelledby="login-title">
           <section class="login-card" aria-label="Acesso de membro">
-            <p class="eyebrow">Área do membro</p>
+            <p class="eyebrow">Identidade oficial</p>
             <h1 id="login-title">Acessar a <em>Peace.</em></h1>
-            <p class="login-lede">Informe seu ID Peace. Enviaremos um código de uso único para o Discord vinculado.</p>
-            <form class="auth-form" data-login-request novalidate>
-              <label class="field field--id"><span>ID Peace</span><span class="field-control"><img class="field-icon" src="/assets/id-card.svg" alt="" aria-hidden="true" width="24" height="24"><input name="peace-id" type="text" required autocomplete="username" inputmode="numeric" maxlength="19" pattern="[0-9]{1,19}" autocapitalize="off" spellcheck="false" placeholder="Somente números" aria-describedby="peace-id-help"></span><small id="peace-id-help">Somente números · até 19 dígitos. O ID 0 também é válido.</small></label>
-              <label class="check-field auth-keep-connected"><input name="keep-connected" type="checkbox" value="1"><span>Manter conectado neste dispositivo</span></label>
-              <button class="button button--light button--large" type="submit"><span data-button-label>Enviar código no Discord</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
-            </form>
-
-            <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong></strong><p></p><button class="status-action" data-login-retry type="button" hidden>Tentar novamente</button></div></div>
-
-            <form class="auth-form code-form" data-login-verify hidden novalidate>
-              <div class="code-heading"><h2>Código recebido</h2></div>
-              <label class="field code-field"><span>Código do Discord</span><div class="otp-shell"><input class="otp-input" name="access-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de acesso de 6 dígitos"><div class="otp-cells" aria-hidden="true"><span data-code-cell="0"></span><span data-code-cell="1"></span><span data-code-cell="2"></span><span data-code-cell="3"></span><span data-code-cell="4"></span><span data-code-cell="5"></span></div></div></label>
-              <button class="button button--light button--large" type="submit"><span data-button-label>Entrar</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
-              <button class="button button--ghost button--large code-resend" data-login-resend type="button" hidden>Não recebi o código</button>
-              <p class="form-status" data-login-result role="status" aria-live="polite"></p>
-            </form>
-
-            <p class="login-switch">Ainda não é membro? <a href="/entrar/">Fazer parte da Peace</a></p>
+            <p class="login-lede">Conecte a sua conta Discord. A Peace confirma quem você é pelo Discord ID e encaminha cada pessoa para o caminho correto.</p>
+            <a class="button button--light button--large" href="/api/auth/discord/start?return_to=%2Facessar%2F" data-login-discord><img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span data-button-label>Conectar Discord</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">↗</span></a>
+            <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong>Uma conta, um processo.</strong><p>Depois da conexão, você verá o painel Peace se já for membro ou o próximo passo de entrada se ainda não for.</p></div></div>
+            <p class="login-switch">Ainda não conhece o caminho? <a href="/estudos/">Ver estudos públicos</a></p>
           </section>
         </section>
       </main>

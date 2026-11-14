@@ -2,9 +2,9 @@
   "use strict";
 
   var body = document.body;
-  var header = document.querySelector(".site-header");
-  var menuButton = document.querySelector(".menu-toggle");
-  var navigation = document.querySelector("#site-nav");
+  var header = document.querySelector(".site-header, .flow-header");
+  var menuButton = header && header.querySelector(".menu-toggle");
+  var navigation = header && header.querySelector(".site-nav, .flow-header-nav");
   var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var mobileNavigation = window.matchMedia("(max-width: 840px)");

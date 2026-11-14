@@ -3,252 +3,173 @@
 
   var site = global.PeaceSite;
   if (!site) return;
-  var body = site.body;
-  var readMemberSessionToken = site.readMemberSessionToken;
-  var clearMemberSessionToken = site.clearMemberSessionToken;
-  var attemptEndpoint = site.attemptEndpoint;
-  var friendlyError = site.friendlyError;
 
   function initMemberArea() {
-    if (body.dataset.page !== "member") return;
-
+    if (site.body.dataset.page !== "member") return;
     var gate = document.querySelector("[data-member-gate]");
     var workspace = document.querySelector("[data-member-workspace]");
-    var workspaceSkeleton = workspace && workspace.querySelector("[data-member-workspace-skeleton]");
-    var workspaceContent = workspace && workspace.querySelector("[data-member-workspace-content]");
+    var content = workspace && workspace.querySelector("[data-member-workspace-content]");
+    var skeleton = workspace && workspace.querySelector("[data-member-workspace-skeleton]");
+    var overview = workspace && workspace.querySelector("[data-member-overview]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
-    var logoutButton = workspace && workspace.querySelector("[data-member-logout]");
     var connection = workspace && workspace.querySelector("[data-member-connection]");
-    var overview = workspace && workspace.querySelector("[data-member-overview]");
     var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
-    var refreshButton = workspace && workspace.querySelector("[data-member-refresh]");
+    var logout = workspace && workspace.querySelector("[data-member-logout]");
+    var refresh = workspace && workspace.querySelector("[data-member-refresh]");
+    var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
-    var memberPollTimer = null;
-    var hasAuthenticatedWorkspace = false;
-    var logoutPending = false;
 
-    function formatMemberTimestamp(value) {
-      var date = new Date(value || "");
-      if (Number.isNaN(date.getTime())) return "horário indisponível";
-      try {
-        return new Intl.DateTimeFormat("pt-BR", {
-          dateStyle: "short",
-          timeStyle: "short"
-        }).format(date);
-      } catch (error) {
-        return date.toLocaleString("pt-BR");
-      }
+    function request(url, options) {
+      return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 15000).then(function (response) { return response.json(); });
+    }
+    function setConnection(message, tone) {
+      if (connection) { connection.textContent = message; connection.dataset.state = tone || "ready"; }
+    }
+    function date(value) {
+      if (!value) return "—";
+      try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value; }
+    }
+    function statusLabel(item) {
+      if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
+      if (item.status === "in_progress") return "Em andamento";
+      if (item.status === "expired") return "Prazo encerrado";
+      return "Aguardando início";
     }
 
-    function freshnessLabel(block) {
-      if (!block || block.stale) return "Desatualizado · tentando atualizar";
-      return "Atualizado em " + formatMemberTimestamp(block.updated_at);
-    }
+    function renderOverview(session, process) {
+      if (!overview) return;
+      var identity = session.identity || {};
+      var data = process || {};
+      var profile = data.profile || {};
+      var updatedAt = data.updated_at || null;
+      var assignments = Array.isArray(data.assignments) ? data.assignments : [];
+      overview.textContent = "";
 
-    function renderMemberBlock(container, block, title) {
-      if (!container || !block) return;
-      container.textContent = "";
-      var heading = document.createElement("h3");
-      heading.textContent = title;
-      container.appendChild(heading);
-      if (block.items && block.items.length) {
-        var list = document.createElement("ul");
-        list.className = "member-block-list";
-        block.items.forEach(function (item) {
-          var row = document.createElement("li");
-          var copy = document.createElement("div");
-          copy.className = "member-block-copy";
-          var label = document.createElement("strong");
-          label.textContent = item.author || item.title || "Atualização";
-          copy.appendChild(label);
-          if (item.text) {
-            var text = document.createElement("p");
-            text.textContent = item.text;
-            copy.appendChild(text);
-          }
-          if (item.published_at || item.started_at) {
-            var date = document.createElement("small");
-            date.textContent = new Date(item.published_at || item.started_at).toLocaleString("pt-BR");
-            copy.appendChild(date);
-          }
-          if (item.url) {
-            var link = document.createElement("a");
-            link.href = item.url;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.textContent = "Abrir no Discord ↗";
-            copy.appendChild(link);
-          }
-          row.appendChild(copy);
-          list.appendChild(row);
-        });
-        container.appendChild(list);
-      } else {
+      var progress = document.createElement("section");
+      progress.className = "member-progress-card member-data-block--wide";
+      progress.id = "member-progress";
+      progress.innerHTML = "<p class=\"eyebrow\">Meu progresso</p><h3>Seu processo, em um só lugar.</h3>";
+      var summary = document.createElement("div");
+      summary.className = "member-progress-grid";
+      [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Identidade", "Discord confirmado"]].forEach(function (entry) {
+        var item = document.createElement("div");
+        var label = document.createElement("small");
+        label.textContent = entry[0];
+        var value = document.createElement("strong");
+        value.textContent = entry[1];
+        item.appendChild(label);
+        item.appendChild(value);
+        summary.appendChild(item);
+      });
+      progress.appendChild(summary);
+      var copy = document.createElement("p");
+      copy.className = "member-progress-copy";
+      copy.textContent = assignments.length ? "Abaixo estão as atribuições vinculadas ao seu Discord ID." : "Nenhuma prova foi atribuída ainda. Continue estudando pelos materiais públicos.";
+      progress.appendChild(copy);
+      overview.appendChild(progress);
+
+      var assignmentsBlock = document.createElement("section");
+      assignmentsBlock.className = "member-data-block member-data-block--wide";
+      assignmentsBlock.id = "member-results";
+      assignmentsBlock.innerHTML = "<p class=\"eyebrow\">Provas e resultados</p><h3>Histórico do processo.</h3>";
+      if (!assignments.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
-        empty.textContent = block.message || "Sem dados disponíveis agora.";
-        container.appendChild(empty);
+        empty.textContent = "A Gerência ainda não criou uma atribuição para esta conta.";
+        assignmentsBlock.appendChild(empty);
+      } else {
+        var list = document.createElement("div");
+        list.className = "member-assignment-list";
+        assignments.forEach(function (assignment) {
+          var row = document.createElement("article");
+          row.className = "member-assignment-row";
+          var title = document.createElement("strong");
+          title.textContent = "Apostila Civil · atribuição #" + assignment.id;
+          var detail = document.createElement("p");
+          detail.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at) + " · " + (assignment.score == null ? "nota pendente" : "nota " + assignment.score + "/100");
+          row.appendChild(title);
+          row.appendChild(detail);
+          list.appendChild(row);
+        });
+        assignmentsBlock.appendChild(list);
       }
-      var freshness = document.createElement("small");
-      freshness.className = "member-block-freshness";
-      freshness.textContent = freshnessLabel(block) + " · fonte: " + (block.source || "Peace");
-      freshness.dataset.state = block.stale ? "stale" : "ready";
-      container.appendChild(freshness);
-    }
+      overview.appendChild(assignmentsBlock);
 
-    function renderOverview(payload) {
-      var data = payload && payload.overview;
-      if (!data || !overview) return;
-      if (nextAction && data.next_action) {
+      var materials = document.createElement("section");
+      materials.className = "member-data-block member-data-block--wide member-materials-card";
+      materials.id = "member-materials";
+      materials.innerHTML = "<p class=\"eyebrow\">Materiais públicos</p><h3>Continue sua preparação.</h3><p>As duas apostilas estão abertas para leitura, sem depender do painel.</p><div class=\"member-material-links\"><a href=\"/estudos/civil/\">Apostila Civil <span>↗</span></a><a href=\"/estudos/peace/\">Manual da Peace <span>↗</span></a></div>";
+      overview.appendChild(materials);
+
+      if (nextAction) {
         nextAction.textContent = "";
         var nextTitle = document.createElement("strong");
-        nextTitle.textContent = data.next_action.title || "Próximo passo";
+        nextTitle.textContent = profile.passed ? "Você pode pedir a setagem." : "Próximo passo";
         var nextText = document.createElement("p");
-        nextText.textContent = data.next_action.message || "Consulte o Discord para continuar.";
+        nextText.textContent = profile.passed ? "Use o Discord conectado para falar com a equipe e solicitar a entrada como aluno." : assignments.length ? "Conclua a prova atribuída e acompanhe o resultado aqui." : "Aguarde uma atribuição da Gerência ou continue estudando.";
         nextAction.appendChild(nextTitle);
         nextAction.appendChild(nextText);
       }
-      overview.querySelectorAll("[data-member-block]").forEach(function (node) {
-        var key = node.getAttribute("data-member-block");
-        var capability = node.getAttribute("data-member-capability");
-        if (capability && (!data.capabilities || data.capabilities[capability] !== true)) {
-          node.hidden = true;
-          return;
-        }
-        node.hidden = false;
-        renderMemberBlock(node, data[key], node.dataset.memberTitle || key);
-      });
-      document.querySelectorAll("[data-member-capability]").forEach(function (node) {
-        var capability = node.getAttribute("data-member-capability");
-        node.hidden = !data.capabilities || data.capabilities[capability] !== true;
-      });
-      if (connection) {
-        connection.textContent = data.stale
-          ? "Dados parcialmente desatualizados · sessão validada pelo Discord"
-          : "Atualizado em " + formatMemberTimestamp(data.updated_at) + " · sessão validada pelo Discord";
-        connection.dataset.state = data.stale ? "stale" : "ready";
+      var managerLink = document.querySelector("[data-member-manager]");
+      if (managerLink) managerLink.hidden = !(session.server && session.server.is_manager === true);
+      if (memberName) memberName.textContent = identity.global_name || identity.username || "membro";
+      if (memberAvatar && identity.avatar_url) { memberAvatar.src = identity.avatar_url; memberAvatar.alt = "Avatar de @" + (identity.username || "membro"); memberAvatar.hidden = false; }
+    }
+
+    function showGate(message) {
+      if (workspace) workspace.hidden = true;
+      if (gate) gate.hidden = false;
+      var gateText = gate && gate.querySelector("[data-member-gate-message]");
+      if (gateText && message) gateText.textContent = message;
+    }
+
+    function showConnectedNonMember() {
+      showGate("Discord conectado, mas esta conta ainda não tem cargo Peace. Continue pelo processo público para solicitar a setagem.");
+      if (gateAction) {
+        gateAction.hidden = false;
+        gateAction.href = "../entrar/";
+        gateAction.innerHTML = "Solicitar setagem <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
+        gateAction.removeAttribute("data-member-discord-connect");
       }
     }
 
-    function parseOverviewResponse(response) {
-      return response.text().then(function (raw) {
-        var payload = null;
-        try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
-        if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível atualizar a área.");
-        return payload;
-      });
-    }
-
-    function loadMemberSession(options) {
-      options = options || {};
-      var silent = options.silent === true;
-      var token = readMemberSessionToken();
-      if (!workspace || loading) return;
-
+    function load() {
+      if (loading) return;
       loading = true;
-      // Keep the authenticated workspace out of the document while the
-      // cookie is being checked. A loading shell is useful after a valid
-      // session is already established, but it must not look like a public
-      // preview when the browser has no verified member session.
-      if (hasAuthenticatedWorkspace) workspace.hidden = false;
-      else workspace.hidden = true;
-      if (!silent && hasAuthenticatedWorkspace) {
-        if (workspaceSkeleton) workspaceSkeleton.hidden = false;
-        if (workspaceContent) workspaceContent.hidden = true;
-      }
-      if (silent && connection) connection.textContent = "Atualizando…";
-      var sessionHeaders = { Accept: "application/json", "Content-Type": "application/json" };
-      if (token) sessionHeaders.Authorization = "Bearer " + token;
-      attemptEndpoint("/api/member/auth/session", {
-        method: "POST",
-        headers: sessionHeaders,
-        body: "{}"
-      }, 60000)
-        .then(function (response) {
-          return response.text().then(function (raw) {
-            var payload = null;
-            try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
-            if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível validar sua sessão.");
-            return payload;
+      if (workspace) workspace.hidden = false;
+      if (skeleton) skeleton.hidden = false;
+      if (content) content.hidden = true;
+      request("/api/auth/discord/session")
+        .then(function (session) {
+          if (!session || !session.server || session.server.is_peace_member !== true) {
+            if (session && session.server) showConnectedNonMember();
+            else showGate("Conecte uma conta Discord com cargo Peace para abrir o painel. Se você ainda não tem o cargo, siga para Meu processo.");
+            return null;
+          }
+          if (gate) gate.hidden = true;
+          if (skeleton) skeleton.hidden = true;
+          if (content) content.hidden = false;
+          return request("/api/exams/process").then(function (process) {
+            setConnection(process.updated_at ? "Atualizado em " + date(process.updated_at) : "Sessão validada pelo Discord", "ready");
+            renderOverview(session, process);
           });
         })
-        .then(function (payload) {
-          hasAuthenticatedWorkspace = true;
-          if (gate) gate.hidden = true;
-          if (workspaceSkeleton) workspaceSkeleton.hidden = true;
-          if (workspaceContent) workspaceContent.hidden = false;
-          if (memberName) memberName.textContent = payload.session.member_name || "membro";
-          if (memberAvatar && payload.session.avatar_url) {
-            memberAvatar.src = payload.session.avatar_url;
-            memberAvatar.hidden = false;
-          }
-          var overviewHeaders = { Accept: "application/json" };
-          if (token) overviewHeaders.Authorization = "Bearer " + token;
-          return attemptEndpoint("/api/member/overview", {
-            method: "GET",
-            headers: overviewHeaders,
-          }, 30000).then(parseOverviewResponse).then(renderOverview);
-        })
         .catch(function (error) {
-          if ((token || hasAuthenticatedWorkspace) && error && (error.status === 401 || error.status === 403)) {
-            clearMemberSessionToken();
-            window.location.replace("/acessar/?status=session-expired");
-            return;
-          }
-          if (!token && error && (error.status === 401 || error.status === 403)) {
-            if (workspace) workspace.hidden = true;
-            if (gate) gate.hidden = false;
-            return;
-          }
-          if (!hasAuthenticatedWorkspace) {
-            if (workspace) workspace.hidden = true;
-            if (gate) gate.hidden = false;
-            return;
-          }
-          if (connection) connection.textContent = "Não foi possível atualizar · tente novamente";
-          if (!silent) {
-            if (workspaceSkeleton) workspaceSkeleton.hidden = true;
-            if (workspaceContent) workspaceContent.hidden = false;
-          }
+          if (error && error.status === 401) showGate();
+          else showGate("Não foi possível confirmar o cargo Peace agora. Tente novamente em instantes.");
         })
-        .finally(function () {
-          loading = false;
-        });
+        .finally(function () { loading = false; });
     }
 
-    if (logoutButton) logoutButton.addEventListener("click", function () {
-      if (logoutPending) return;
-      logoutPending = true;
-      logoutButton.disabled = true;
-      logoutButton.setAttribute("aria-busy", "true");
-      var token = readMemberSessionToken();
-      var headers = { Accept: "application/json", "Content-Type": "application/json" };
-      if (token) headers.Authorization = "Bearer " + token;
-      attemptEndpoint("/api/member/auth/revoke", {
-        method: "POST",
-        headers: headers,
-        body: "{}",
-      }, 10000)
-        .then(function () {
-          clearMemberSessionToken();
-          window.location.replace("/acessar/?status=logged-out");
-        })
-        .catch(function (error) {
-          logoutPending = false;
-          logoutButton.disabled = false;
-          logoutButton.removeAttribute("aria-busy");
-          if (connection) connection.textContent = (error && error.message) || "Não foi possível encerrar a sessão. Tente novamente.";
-        });
+    if (refresh) refresh.addEventListener("click", load);
+    if (logout) logout.addEventListener("click", function () {
+      logout.disabled = true;
+      request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
+        .then(function () { window.location.replace("/acessar/?status=logged-out"); })
+        .catch(function () { logout.disabled = false; });
     });
-    if (refreshButton) refreshButton.addEventListener("click", function () { loadMemberSession({ silent: false }); });
-    document.addEventListener("visibilitychange", function () {
-      if (document.visibilityState === "visible" && (readMemberSessionToken() || hasAuthenticatedWorkspace)) loadMemberSession({ silent: true });
-    });
-    loadMemberSession({ silent: false });
-    memberPollTimer = window.setInterval(function () {
-      if (document.visibilityState === "visible" && hasAuthenticatedWorkspace) loadMemberSession({ silent: true });
-    }, 45000);
+    load();
   }
 
   site.initMemberArea = initMemberArea;

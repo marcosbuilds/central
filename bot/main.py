@@ -108,6 +108,10 @@ PUBLIC_API_ORIGINS = frozenset(
         "http://localhost:4175",
     }
 )
+PUBLIC_LOCAL_PROXY_ORIGINS = frozenset(
+    origin for origin in PUBLIC_API_ORIGINS if origin.startswith("http://")
+)
+DISCORD_AVATAR_HASH_PATTERN = re.compile(r"(?:a_)?[A-Za-z0-9_]{2,128}")
 PUBLIC_API_NO_STORE_ROUTES = frozenset(
     {
         "/api/entry/start",
@@ -4819,6 +4823,32 @@ class PeaceBot(commands.Bot):
         }
 
     @staticmethod
+    def public_discord_redirect_uri_for_request(
+        request: web.Request,
+        config: dict[str, str],
+    ) -> str:
+        """Select a registered loopback callback only for the local proxy.
+
+        The production callback remains the configured default. The local
+        static preview adds a trusted-by-allowlist origin header because a
+        top-level browser navigation does not reliably send ``Origin``.
+        The value is never accepted as an arbitrary URL.
+        """
+        frontend_origin = str(request.headers.get("X-Peace-Frontend-Origin", "") or "").strip().rstrip("/")
+        if frontend_origin in PUBLIC_LOCAL_PROXY_ORIGINS:
+            return frontend_origin + "/api/auth/discord/callback"
+        return config["redirect_uri"]
+
+    @staticmethod
+    def public_discord_avatar_url(discord_user_id: object, avatar_hash: object) -> str | None:
+        user_id = str(discord_user_id or "").strip()
+        hash_value = str(avatar_hash or "").strip()
+        if not re.fullmatch(r"[0-9]{15,25}", user_id) or not DISCORD_AVATAR_HASH_PATTERN.fullmatch(hash_value):
+            return None
+        extension = "gif" if hash_value.startswith("a_") else "png"
+        return f"https://cdn.discordapp.com/avatars/{user_id}/{hash_value}.{extension}?size=128"
+
+    @staticmethod
     def public_oauth_return_to(value: object) -> str:
         candidate = str(value or "").strip()
         if (
@@ -4837,7 +4867,9 @@ class PeaceBot(commands.Bot):
         separator = "&" if "?" in return_to else "?"
         return web.HTTPFound(f"{return_to}{separator}{urlencode({'oauth': status})}")
 
-    def public_oauth_cookie_secure(self) -> bool:
+    def public_oauth_cookie_secure(self, redirect_uri: str | None = None) -> bool:
+        if redirect_uri:
+            return str(redirect_uri).startswith("https://")
         config = self.public_discord_oauth_config(self.settings)
         return bool(config and config["redirect_uri"].startswith("https://"))
 
@@ -4965,12 +4997,14 @@ class PeaceBot(commands.Bot):
         ).rstrip(b"=").decode("ascii")
         ttl = self.public_oauth_state_ttl()
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        redirect_uri = self.public_discord_redirect_uri_for_request(request, config)
         try:
             self.database.create_discord_oauth_state(
                 state=state,
                 code_verifier=code_verifier,
                 return_to=return_to,
                 expires_at=expires_at.isoformat(),
+                redirect_uri=redirect_uri,
             )
         except (sqlite3.Error, OSError):
             log.warning("Não consegui persistir o estado OAuth do Discord", exc_info=True)
@@ -4987,7 +5021,7 @@ class PeaceBot(commands.Bot):
             'client_id': config['client_id'],
             'scope': DISCORD_OAUTH_SCOPE,
             'state': state,
-            'redirect_uri': config['redirect_uri'],
+            'redirect_uri': redirect_uri,
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256',
         })}"
@@ -4997,7 +5031,7 @@ class PeaceBot(commands.Bot):
             state,
             max_age=ttl,
             httponly=True,
-            secure=self.public_oauth_cookie_secure(),
+            secure=self.public_oauth_cookie_secure(redirect_uri),
             samesite="Lax",
             path="/api/auth/discord",
         )
@@ -5066,11 +5100,20 @@ class PeaceBot(commands.Bot):
         config = self.public_discord_oauth_config(self.settings)
         if not code or len(code) > 512 or config is None:
             return self.public_oauth_redirect(return_to, "unavailable")
+        stored_redirect_uri = str(state_row["redirect_uri"] or "").strip()
+        if stored_redirect_uri in {
+            origin + "/api/auth/discord/callback" for origin in PUBLIC_LOCAL_PROXY_ORIGINS
+        }:
+            callback_redirect_uri = stored_redirect_uri
+        else:
+            callback_redirect_uri = config["redirect_uri"]
+        exchange_config = dict(config)
+        exchange_config["redirect_uri"] = callback_redirect_uri
         try:
             user_payload = await self.discord_oauth_user(
                 code=code,
                 code_verifier=str(state_row["code_verifier"]),
-                config=config,
+                config=exchange_config,
             )
             if user_payload is None:
                 return self.public_oauth_redirect(return_to, "unavailable")
@@ -5080,17 +5123,22 @@ class PeaceBot(commands.Bot):
             username = str(user_payload.get("username", "") or "").strip()[:80] or "Discord"
             global_name = str(user_payload.get("global_name", "") or "").strip()[:80] or None
             display_name = global_name or username
+            avatar_hash = str(user_payload.get("avatar", "") or "").strip()
+            if not DISCORD_AVATAR_HASH_PATTERN.fullmatch(avatar_hash):
+                avatar_hash = None
             self.database.upsert_candidate_profile(
                 discord_user_id=discord_user_id,
                 username=username,
                 global_name=global_name,
                 display_name=display_name,
+                avatar_hash=avatar_hash,
             )
             session_token = self.database.create_discord_oauth_session(
                 discord_user_id=discord_user_id,
                 username=username,
                 global_name=global_name,
                 display_name=display_name,
+                avatar_hash=avatar_hash,
                 expires_at=(datetime.now(timezone.utc) + timedelta(seconds=self.public_oauth_session_ttl())).isoformat(),
             )
         except (ClientError, asyncio.TimeoutError, OSError, ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
@@ -5102,7 +5150,7 @@ class PeaceBot(commands.Bot):
             session_token,
             max_age=self.public_oauth_session_ttl(),
             httponly=True,
-            secure=self.public_oauth_cookie_secure(),
+            secure=self.public_oauth_cookie_secure(callback_redirect_uri),
             samesite="Lax",
             path="/",
         )
@@ -5136,6 +5184,7 @@ class PeaceBot(commands.Bot):
                     "username": str(row["username"]),
                     "global_name": row["global_name"],
                     "display_name": row["display_name"] or row["username"],
+                    "avatar_url": self.public_discord_avatar_url(row["discord_user_id"], row["avatar_hash"]),
                 },
                 "profile": {
                     "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
@@ -5246,6 +5295,7 @@ class PeaceBot(commands.Bot):
                     "username": str(session["username"]),
                     "global_name": session["global_name"],
                     "display_name": session["display_name"] or session["username"],
+                    "avatar_url": self.public_discord_avatar_url(session["discord_user_id"], session["avatar_hash"]),
                 },
                 "profile": {
                     "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,

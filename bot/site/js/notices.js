@@ -3,11 +3,16 @@
 
   var site = window.PeaceSite;
   var list = document.querySelector("[data-notices-list]");
-  var status = document.querySelector("[data-notices-status]");
   var source = document.querySelector("[data-notices-source]");
   if (!site || !list) return;
 
   function setText(node, value) { if (node) node.textContent = value; }
+
+  function setStatus(value) {
+    document.querySelectorAll("[data-notices-status]").forEach(function (node) {
+      setText(node, value);
+    });
+  }
 
   function formatDate(value) {
     try {
@@ -17,12 +22,14 @@
     }
   }
 
-  function render(items) {
+  function render(items, sourceState) {
     list.textContent = "";
     if (!items.length) {
       var empty = document.createElement("p");
       empty.className = "notice-live-empty";
-      empty.textContent = "Nenhum comunicado público foi publicado no canal configurado.";
+      empty.textContent = sourceState === "unavailable"
+        ? "A fonte pública está temporariamente indisponível. Tente novamente em instantes."
+        : "Nenhum comunicado público foi publicado no canal configurado.";
       list.appendChild(empty);
       return;
     }
@@ -53,14 +60,18 @@
     .then(function (response) { return response.json(); })
     .then(function (payload) {
       var items = Array.isArray(payload.notices) ? payload.notices : [];
-      render(items);
       var sourceState = payload.source && payload.source.state;
-      setText(status, items.length ? "Comunicados públicos da Peace." : "Sem comunicados para exibir.");
+      render(items, sourceState);
+      setStatus(items.length
+        ? "Comunicados públicos da Peace."
+        : sourceState === "unavailable"
+          ? "Fonte pública indisponível."
+          : "Sem comunicados para exibir.");
       setText(source, sourceState === "unavailable" ? "Fonte pública não disponível" : "Fonte pública conectada");
     })
     .catch(function (error) {
-      render([]);
-      setText(status, error.message || "Não consegui consultar os avisos agora.");
+      render([], "unavailable");
+      setStatus("Fonte pública indisponível. Tente novamente em instantes.");
       setText(source, "Fonte pública indisponível");
     });
 })();

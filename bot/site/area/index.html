@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Área da Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261113-01">
-    <script defer src="../script.js?v=20261113-01"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261113-04">
+    <script defer src="../script.js?v=20261113-05"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -31,8 +31,8 @@
           <div class="gate-copy">
             <p class="eyebrow">Área da comunidade</p>
             <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
-            <p>Entre com seu ID Peace para acompanhar informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
-            <div class="gate-actions"><a class="button button--light button--large" href="../acessar/">Acessar a área <span class="button-icon" aria-hidden="true">→</span></a><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
+            <p data-member-gate-message>Conecte seu Discord para acompanhar progresso, materiais e informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
+            <div class="gate-actions"><a class="button button--light button--large" href="../acessar/" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
           </div>
           <aside class="gate-note" aria-label="Limite da área web">
             <p class="eyebrow">Fonte de autoridade</p>
@@ -52,13 +52,11 @@
             </div>
 
             <nav class="member-nav" aria-label="Navegação da área">
-              <a aria-current="page" href="#overview">Visão geral</a>
-              <a href="../avisos/">Avisos</a>
-              <a href="#media">Mídias</a>
-              <a href="../parceiros/">Parceiros</a>
-              <a href="#investigation" data-member-capability="investigator" hidden>Investigação</a>
-              <a href="../discord" data-member-capability="scan_only" target="_blank" rel="noopener noreferrer">Gestão no Discord</a>
-              <a href="../discord" data-member-capability="logs" target="_blank" rel="noopener noreferrer">Logs no Discord</a>
+              <a aria-current="page" href="#overview">Meu progresso</a>
+              <a href="#member-materials">Materiais</a>
+              <a href="#member-results">Provas e resultados</a>
+              <a href="../discord">Discord</a>
+              <a href="../gerencia/provas/" data-member-manager hidden>Gerenciar provas</a>
             </nav>
 
             <div class="member-welcome" id="overview">

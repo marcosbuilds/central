@@ -1441,6 +1441,7 @@ def test_public_site_files_are_complete():
                     site_root / "js" / "candidature.js",
                     site_root / "js" / "login.js",
                     site_root / "js" / "member-area.js",
+                        site_root / "js" / "discord-identity.js",
                 )
             ],
         ]
@@ -1457,6 +1458,7 @@ def test_public_site_files_are_complete():
                     site_root / "css" / "media.css",
                     site_root / "css" / "responsive.css",
                     site_root / "css" / "studies.css",
+                        site_root / "css" / "identity.css",
                 )
             ],
         ]
@@ -1498,26 +1500,24 @@ def test_public_site_files_are_complete():
     assert "auth-note" not in login_html
     assert "Seu ID não é uma senha." not in login_html
     assert 'data-login-status role="status" aria-live="polite" hidden' in login_html
-    assert 'maxlength="19"' in login_html
-    assert 'inputmode="numeric"' in login_html
-    assert 'src="/assets/id-card.svg"' in login_html
-    assert 'name="keep-connected"' in login_html
-    assert "Manter conectado neste dispositivo" in login_html
-    assert "Enviar código no Discord" in login_html
-    code_form = login_html.split('data-login-verify', 1)[1].split('</form>', 1)[0]
-    assert 'name="peace-id"' not in code_form
-    assert 'Enviar código no Discord' not in code_form
-    assert 'name="access-code"' in code_form
+    assert 'data-login-discord' in login_html
+    assert '/api/auth/discord/start' in login_html
+    assert 'src="/assets/discord.svg"' in login_html
+    assert "Conectar Discord" in login_html
+    assert 'name="peace-id"' not in login_html
+    assert 'name="access-code"' not in login_html
     assert "Login indisponível" not in login_html
     assert "Conexão indisponível" not in candidature_html
-    assert "/api/member/auth/request" in script
-    assert "/api/member/auth/verify" in script
+    assert "/api/member/auth/request" not in script
+    assert "/api/member/auth/verify" not in script
     assert "/api/media?seed=" in script
     assert 'data-media-list="moments"' in homepage
     assert 'data-media-list="clips"' in homepage
     assert "media-skeleton" in homepage
     assert "/api/media" in (site_root / "_redirects").read_text(encoding="utf-8")
     assert "Acesso web em preparação" not in script
+    assert "discord-identity-menu" in script
+    assert "avatar_url" in script
     assert "status unavailable" not in script
     assert "fetch unavailable" not in script
     assert "request timeout" not in script
@@ -1557,8 +1557,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261113-01"' in opening_html
-    assert 'src="/script.js?v=20261113-01"' in opening_html
+    assert 'href="/styles.css?v=20261113-04"' in opening_html
+    assert 'src="/script.js?v=20261113-05"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1591,8 +1591,8 @@ def test_public_site_files_are_complete():
     peace_reader_html = (site_root / "estudos" / "peace" / "leitor" / "index.html").read_text(encoding="utf-8")
     process_html = (site_root / "meu-processo" / "index.html").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261113-02"' in html
-        assert 'src="/script.js?v=20261113-01"' in html
+        assert 'href="/styles.css?v=20261113-04"' in html
+        assert 'src="/script.js?v=20261113-05"' in html
         assert 'aria-label="Páginas públicas"' in html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
     assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
@@ -1614,6 +1614,8 @@ def test_public_site_files_are_complete():
         assert reader_label in reader_html
         assert "Leitor visual, sem download do original." in reader_html
         assert "PDF original não é publicado nesta página." in reader_html
+        assert 'class="reader-shell"' in reader_html
+        assert 'class="reader-page"' not in reader_html.split("<body", 1)[1].split(">", 1)[0]
     assert "Conecte o Discord para abrir seu processo." in process_html
     assert 'aria-current="location">Estudos</a>' in civil_html
     assert 'aria-current="location">Estudos</a>' in peace_html
@@ -1636,7 +1638,35 @@ def test_public_site_files_are_complete():
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
     assert "flows.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261113-03" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261113-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261113-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
+    assert 'page.matches("figure.reader-page")' in reader_script
+    civil_notes = reader_script.split("civil: [", 1)[1].split("peace: [", 1)[0]
+    civil_topics = [
+        "Capa e propósito",
+        "Apresentação do caderno",
+        "Formação e progressão",
+        "Base comum",
+        "Conduta e postura",
+        "Radiocomunicação",
+        "Código Q",
+        "Códigos 0 a 7",
+        "Direitos e garantias",
+        "Como uma investigação avança",
+        "Entrevista investigativa",
+        "Evidências e registros",
+        "Fluxo de patrulhamento",
+        "Atendimento de ocorrências",
+        "Duas áreas, um integrante",
+        "Como se preparar",
+        "Simulado de revisão",
+        "Gabarito e encerramento",
+    ]
+    topic_positions = [civil_notes.index('["' + topic + '"') for topic in civil_topics]
+    assert topic_positions == sorted(topic_positions)
+    assert civil_notes.index('["Código Q"') > civil_notes.index('["Radiocomunicação"')
+    assert "O sumário aponta para esta página específica." in civil_notes
     assert 'html.js-ready body { animation: none !important; }' in stylesheet
     for flow_html in (entry_html, candidature_html, login_html):
         assert "flow-header-context" not in flow_html

@@ -36,6 +36,7 @@ ACL_API_ROUTES = {
     "/api/auth/discord/callback",
     "/api/auth/discord/session",
     "/api/auth/discord/logout",
+    "/api/notices",
     "/api/exams/process",
     "/api/exams/access",
     "/api/exams/start",
@@ -87,7 +88,7 @@ def filtered_member_proxy_headers(cookie_header: str, authorization: str) -> dic
     return headers
 
 
-def filtered_oauth_proxy_headers(cookie_header: str, origin: str) -> dict[str, str]:
+def filtered_oauth_proxy_headers(cookie_header: str, frontend_origin: str) -> dict[str, str]:
     """Forward only the two cookies used by the Discord OAuth contract."""
     cookies = []
     for name, pattern in OAUTH_COOKIE_PATTERNS.items():
@@ -97,8 +98,9 @@ def filtered_oauth_proxy_headers(cookie_header: str, origin: str) -> dict[str, s
     headers: dict[str, str] = {}
     if cookies:
         headers["Cookie"] = "; ".join(cookies)
-    if origin in LOCAL_PROXY_ORIGINS:
-        headers["Origin"] = origin
+    if frontend_origin in LOCAL_PROXY_ORIGINS:
+        headers["Origin"] = frontend_origin
+        headers["X-Peace-Frontend-Origin"] = frontend_origin
     return headers
 
 
@@ -179,6 +181,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/member/auth/session",
             "/api/member/auth/revoke",
             "/api/auth/discord/logout",
+            "/api/notices",
             "/api/exams/access",
             "/api/exams/start",
             "/api/exams/submit",
@@ -203,6 +206,8 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
         target = ACL_ORIGIN + target_path
         body = None
         headers = {"Accept": "application/json", "User-Agent": "PeaceSiteLocal/1.0"}
+        host = str(self.headers.get("Host", "") or "").strip()
+        frontend_origin = "http://" + host if "http://" + host in LOCAL_PROXY_ORIGINS else ""
         if route.startswith("/api/member/"):
             headers.update(
                 filtered_member_proxy_headers(
@@ -210,14 +215,13 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                     self.headers.get("Authorization", ""),
                 )
             )
-            origin = self.headers.get("Origin", "")
-            if origin in LOCAL_PROXY_ORIGINS:
-                headers["Origin"] = origin
+            if frontend_origin:
+                headers["Origin"] = frontend_origin
         elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/"):
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),
-                    self.headers.get("Origin", ""),
+                    frontend_origin,
                 )
             )
         if method == "POST":
