@@ -51,6 +51,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
     private SyncthingRuntimeHandle? _syncthing;
     private Guid _organizationId;
     private Guid _projectId;
+    private CentralAccessSession? _centralAccessSession;
     private string _folderId = string.Empty;
     private string _folderPath = string.Empty;
     private string _syncMode = "send-receive";
@@ -128,6 +129,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
         Guid projectId,
         string folderPath,
         string syncMode,
+        CentralAccessSession centralAccessSession,
         CancellationToken cancellationToken = default)
     {
         await _connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -141,6 +143,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
                 projectId,
                 folderPath,
                 syncMode,
+                centralAccessSession,
                 cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -157,6 +160,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
         Guid projectId,
         string folderPath,
         string syncMode,
+        CentralAccessSession centralAccessSession,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -168,6 +172,12 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(syncMode));
         }
+        if (centralAccessSession.ExpiresAt <= DateTimeOffset.UtcNow
+            || !centralAccessSession.Scope.Contains("central:sync", StringComparer.Ordinal)
+            || centralAccessSession.ProjectId != projectId)
+        {
+            throw new InvalidOperationException("A sessão da Central não autoriza este projeto ou expirou.");
+        }
 
         await StopAsync().ConfigureAwait(false);
         _organizationId = organizationId;
@@ -175,6 +185,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
         _folderPath = Path.GetFullPath(folderPath);
         _folderId = $"central-{projectId:N}";
         _syncMode = syncMode;
+        _centralAccessSession = centralAccessSession;
 
         SetStatus(new CentralSyncStatus(
             CentralSyncConnectionState.Authenticating,
@@ -310,6 +321,7 @@ public sealed class CentralSyncRuntime : IAsyncDisposable
             CentralSyncConnectionState.Paused,
             "SINCRONIZAÇÃO · PAUSADA",
             "A integração foi pausada. Arquivos e conflitos foram preservados."));
+        _centralAccessSession = null;
     }
 
     private async Task RunRealtimeAsync(CancellationToken cancellationToken)

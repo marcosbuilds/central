@@ -7,7 +7,7 @@ The general rules are in the root `AGENTS.md`.
 
 The bot files live in these focused locations in the tree:
 
-- `bot/`: package code;
+- `bot/`: package code; its contents are flattened into the provider runtime;
 - `assets/bot/`: versioned images and other resources used by the bot;
 - `docs/bot/`: bot architecture, operations, and decisions;
 - `tests/peace/`: automated tests;
@@ -46,11 +46,10 @@ project.
   evolution.
 - Do not change the schema or move SQLite without preserving the data and
   recording the migration.
-- `bot/main.py` must remain a compatibility entry point during the refactor.
-  Extract new functionality gradually into modules under `bot/features/`,
-  `bot/ui/`, `bot/integrations/`, or `bot/persistence/` instead of growing the
-  monolithic file.
-- Server settings come from `.env` and `bot/cfg.py`; do not hardcode tokens,
+- `bot/main.py` is the repository entry point. The provider runs the copied
+  root-level `main.py`; supporting code belongs in responsibility-specific
+  subdirectories below `bot/`.
+- Server settings come from `.env` and `bot/config/settings.py`; do not hardcode tokens,
   IDs, or permissions in new features.
 - Classify every role as `access` or `visual`. A visual role must have all global
   permissions cleared, must not appear in authorization guards, and must never

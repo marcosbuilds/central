@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR" data-page="exam">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Prova Civil da Peace, vinculada ao Discord e a uma única tentativa.">
+    <title>Prova Civil — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261114-02">
+    <script defer src="/script.js?v=20261114-02"></script>
+  </head>
+  <body data-page="exam">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page study-page exam-page">
+      <header class="flow-header" aria-label="Prova Civil">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
+        <nav class="flow-header-nav" id="flow-site-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/">Meu processo</a><a href="/estudos/civil/" aria-current="location">Apostila Civil</a><a href="/#sobre">A Peace</a></nav>
+        <button class="menu-toggle flow-menu-toggle" type="button" aria-expanded="false" aria-controls="flow-site-nav"><span class="menu-toggle-label">menu</span><span class="menu-toggle-arrow" aria-hidden="true"><i></i><i></i></span></button>
+        <a class="button button--outline flow-header-cta" href="/estudos/civil/">Material Civil</a>
+      </header>
+
+      <main id="conteudo" class="exam-main" tabindex="-1">
+        <div class="study-breadcrumb"><a href="/estudos/">Estudos</a><span aria-hidden="true">/</span><a href="/meu-processo/">Meu processo</a><span aria-hidden="true">/</span><span aria-current="page">Prova Civil</span></div>
+        <section class="exam-hero" data-reveal aria-labelledby="exam-title">
+          <div><p class="eyebrow">Processo seletivo · Civil</p><h1 id="exam-title">Uma prova.<br><em>Uma tentativa.</em></h1><p class="flow-lede">A prova é teórica, baseada no Material Civil e no manual A Peace. As questões e alternativas são embaralhadas pelo servidor; o conjunto é o mesmo para todos.</p></div>
+          <aside class="exam-hero-aside"><span class="status-mark" aria-hidden="true"></span><p class="eyebrow">Regra da etapa</p><strong>Nota mínima configurada pela equipe.</strong><p>A identidade é confirmada pelo Discord. O resultado é registrado no seu processo e enviado uma única vez ao gerente que criou a atribuição.</p></aside>
+        </section>
+
+        <section class="exam-panel" data-exam-auth aria-labelledby="exam-auth-title">
+          <p class="eyebrow">Identidade necessária</p><h2 id="exam-auth-title">Conecte o Discord para continuar.</h2><p>O site não usa username digitado para autorizar a prova. Você pode ser candidato mesmo sem ser membro da Peace.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fprova%2F" data-discord-connect><span data-discord-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><p class="form-status" data-exam-message role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="exam-panel" data-exam-assignment hidden aria-labelledby="assignment-title">
+          <div class="exam-panel-heading"><div><p class="eyebrow">Atribuição encontrada</p><h2 id="assignment-title">A sua prova está pronta.</h2></div><span class="status-tag status-tag--planned" data-exam-status>Aguardando início</span></div>
+          <dl class="exam-meta-grid"><div><dt>Versão</dt><dd data-exam-version>—</dd></div><div><dt>Nota mínima</dt><dd data-exam-passing>—</dd></div><div><dt>Prazo final</dt><dd data-exam-deadline>—</dd></div></dl>
+          <div class="exam-warning"><strong>Antes de iniciar</strong><p>Você terá uma única tentativa. Ao começar, responda tudo e envie apenas quando tiver revisado. Depois do envio não há refazer.</p></div>
+          <button class="button button--light" type="button" data-exam-start>Iniciar prova <span class="button-icon" aria-hidden="true">→</span></button>
+        </section>
+
+        <section class="exam-panel exam-panel--questions" data-exam-form-panel hidden aria-labelledby="questions-title">
+          <div class="exam-panel-heading"><div><p class="eyebrow">Tentativa única</p><h2 id="questions-title">Responda com atenção.</h2></div><div class="exam-clock" data-exam-clock aria-live="polite">Prazo: —</div></div>
+          <p class="exam-question-note">As perguntas abaixo foram ordenadas para esta tentativa. A nota é corrigida no servidor conforme a versão oficial do banco.</p>
+          <form data-exam-form novalidate><div class="exam-questions" data-exam-questions></div><div class="exam-submit-bar"><p class="form-status" data-exam-submit-message role="status" aria-live="polite"></p><button class="button button--light button--large" type="submit" data-exam-submit>Enviar resultado definitivamente <span class="button-icon" aria-hidden="true">→</span></button></div></form>
+        </section>
+
+        <section class="exam-result" data-exam-result hidden aria-labelledby="result-title">
+          <p class="eyebrow">Resultado registrado</p><h2 id="result-title">Sua nota foi enviada.</h2><div class="exam-score" data-exam-score>—</div><p data-exam-result-copy></p><div class="exam-result-actions"><a class="button button--outline" href="/meu-processo/">Ver meu processo <span class="button-icon" aria-hidden="true">↗</span></a><a class="flow-secondary-action" href="/estudos/civil/">Revisar material <span class="button-icon" aria-hidden="true">↗</span></a></div></section>
+      </main>
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Processo com identidade e registro.</p><a class="footer-link" href="/meu-processo/">Meu processo <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

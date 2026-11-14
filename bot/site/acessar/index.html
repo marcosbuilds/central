@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR" data-page="login">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Acesso seguro da Peace por conexão oficial com o Discord.">
+    <title>Acessar — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261114-02">
+    <script defer src="/script.js?v=20261114-02"></script>
+  </head>
+  <body data-page="login">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page flow-page--focused">
+      <header class="flow-header flow-header--minimal" aria-label="Acesso de membro">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início">
+          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
+        </a>
+        <a class="flow-header-link" href="/entrar/">Fazer parte <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <main id="conteudo" class="flow-main flow-main--login" tabindex="-1">
+        <section class="login-layout login-layout--focused" aria-labelledby="login-title">
+          <section class="login-card" aria-label="Acesso de membro">
+            <p class="eyebrow">Identidade oficial</p>
+            <h1 id="login-title">Acessar a <em>Peace.</em></h1>
+            <p class="login-lede">Conecte a sua conta Discord. A Peace confirma quem você é pelo Discord ID e encaminha cada pessoa para o caminho correto.</p>
+            <a class="button button--light button--large" href="/api/auth/discord/start?return_to=%2Facessar%2F" data-login-discord><img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16"><span data-button-label>Conectar Discord</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">↗</span></a>
+            <div class="integration-banner" data-login-status role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><div><strong>Uma conta, um processo.</strong><p>Depois da conexão, você verá o painel Peace se já for membro ou o próximo passo de entrada se ainda não for.</p></div></div>
+            <p class="login-switch">Ainda não conhece o caminho? <a href="/estudos/">Ver estudos públicos</a></p>
+          </section>
+        </section>
+      </main>
+
+      <footer class="site-footer flow-footer flow-footer--minimal"><a class="footer-link" href="/">Voltar ao site <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

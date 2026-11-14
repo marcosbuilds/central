@@ -8,15 +8,16 @@ credentials are intentionally omitted.
 
 | File | Responsibility | State |
 | --- | --- | --- |
-| `bot/main.py` | gateway, views, panels, tickets, onboarding, and support | active |
-| `bot/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
-| `bot/db.py` | SQLite access, tickets, events, onboarding, and requests | active |
-| `bot/cfg.py` | environment configuration | active |
-| `bot/ai.py` | local support adapter and prompts | available; configuration-controlled |
-| `bot/context.py` | redaction, limits, and sanitization | active |
-| `bot/api.py` | REST used by utilities | active |
-| `bot/snap.py` | read-only snapshot utility | active |
-| `bot/nick.py` | reviewed nickname utility | restricted |
+| `bot/main.py` | repository entry point; provider receives it as `main.py` | active |
+| `bot/operations/maintenance.py` | idempotent structural migration and explicit cleanup | operational utility |
+| `bot/persistence/database.py` | SQLite access, tickets, events, onboarding, and requests | active |
+| `bot/config/settings.py` | environment configuration | active |
+| `bot/core/identity.py` | shared access/visual nickname prefix policy | active |
+| `bot/integrations/iris.py` | local support adapter and prompts | available; configuration-controlled |
+| `bot/core/context.py` | redaction, limits, and sanitization | active |
+| `bot/integrations/discord_api.py` | REST used by utilities | active |
+| `bot/commands/snapshot.py` | read-only snapshot utility | active |
+| `bot/commands/nick.py` | reviewed nickname utility | restricted |
 
 ## Applied behavior
 
@@ -26,7 +27,28 @@ credentials are intentionally omitted.
 - closed tickets remain hidden from ordinary members;
 - structural changes are idempotent and require a recoverable snapshot;
 - visual roles do not participate in authorization;
+- Human members receive `Not Verified` on join; `Visitante` is granted only by
+  the verification CAPTCHA and is never granted on member join;
+- approved sets receive `Peace` and the visual `Estagiário` label, which has no
+  permission authority;
+- role migration snapshots affected members before deleting obsolete roles;
+- the maintained technical roles are `Developer` and `Dev`; obsolete
+  `Frontend`, `Backend`, and `Documentation` roles are removed, as is the
+  obsolete `Superintendente` role;
+- `request-set` is not a Discord surface; applications start at the official
+  site candidature route;
+- `logs` and `scan-only` reject human message sending and are written by the
+  bot;
 - provider credentials remain in protected environment configuration.
+- `/start` is a DM-only operational menu with separate Founder deletion and
+  Management announcement guards;
+- Request set is site-owned; Discord does not recreate a public set panel;
+- Peace-ID loss records preserve a reservation reason and optional actor, and
+  returning members are routed directly to `scan-only`;
+- the nickname prefix policy is centralized so access roles cannot acquire
+  presentation prefixes accidentally.
+- the Central bridge stores only challenge and session hashes; the Discord
+  access role is rechecked before issuing or validating a session.
 
 ## Data boundary
 

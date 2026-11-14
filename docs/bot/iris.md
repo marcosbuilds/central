@@ -45,12 +45,12 @@ only after manual approval by an authorized recruiter.
 Reports are organized without declaring guilt. Projects, ideas, and proposals
 are developed as conversation rather than turning the interaction into a form.
 
-## Development
+## Technical operations
 
-In the development area, staff mention Iris and describe the idea in normal
-language. Iris prepares a plan, impact analysis, permissions, risks, and
+In an internal staff surface, staff mention Iris and describe the idea in
+normal language. Iris prepares a plan, impact analysis, permissions, risks, and
 validation. If information is missing, it mentions the author and asks what it
-needs to know.
+needs to know. The removed Developers category is not recreated by Iris.
 
 Before suggesting creation, Iris checks existing categories, channels, and
 roles. State queries such as "what is the state of this category?" return the
@@ -65,18 +65,19 @@ external objects, it asks the creator or last editor to request the change. Iris
 never treats a suggestion as execution.
 
 Member, role, channel, and permission queries use current Discord state and do
-not rely on model guesses. Development-area punishments require a target by ID
+not rely on model guesses. Internal moderation actions require a target by ID
 or exact mention, a reason, and confirmation. Timeouts and warnings require
 staff; kicks and bans require the founder, an administrator, or `Manage Server`,
 along with a compatible hierarchy. Iris records the action and never punishes
 the founder, the bot, the requester, or a member above the bot's hierarchy.
 
-Requests for a developer, streamer, recruiter, or another role go through a
-strict ticket interview and never receive a role through that flow. In the
-development area, only an authorized developer may apply a role with an exact
-target and confirmation; historical score and risk signals block operations
-when confidence is insufficient. Peace tags follow the pattern
-`N/D/S/R/G/F ⎰ name id`, according to the primary function.
+Requests for `Developer`, `Streamer`, recruiter, or another role go through a
+strict review and never receive a role through an unreviewed Player set flow.
+Only an authorized reviewer may apply `Developer` with an exact target and
+confirmation; historical score and risk signals block operations when
+confidence is insufficient. Peace tags use `F` for Founder and otherwise
+follow the explicit visual-role policy (`DEL`, `D`, `S`, or `R` followed by
+`⎰ name id`). Access roles never acquire a nickname prefix.
 
 Boosters automatically receive a role and a configured private call. A booster
 may add or remove people according to the server's current permissions; Iris

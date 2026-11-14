@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR" data-page="candidatura">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Fluxo de candidatura para fazer parte da Peace.">
+    <title>Entrar na Peace — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261114-02">
+    <script defer src="/script.js?v=20261114-02"></script>
+  </head>
+  <body data-page="candidatura">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page flow-page--focused">
+      <header class="flow-header flow-header--minimal" aria-label="Entrada da Peace">
+        <a class="brand" href="/" aria-label="Peace — voltar ao início">
+          <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
+          <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
+        </a>
+        <a class="flow-header-link" href="/entrar/"><span aria-hidden="true">←</span> Entrada</a>
+      </header>
+
+      <main id="conteudo" class="flow-main flow-main--application" tabindex="-1">
+        <div class="application-shell">
+          <div class="application-context" aria-live="polite"><span data-entry-stage-context>Entrada</span><span class="application-context-dot" aria-hidden="true"></span><span>Peace</span></div>
+          <section class="application-card" aria-labelledby="application-stage-title">
+            <section class="application-stage is-active" data-entry-stage="1" aria-labelledby="application-stage-title">
+              <p class="eyebrow">Primeiro passo</p>
+              <h1 id="application-stage-title">Conecte seu Discord.</h1>
+              <p class="stage-lede">Geramos um convite individual. Abra uma única vez e volte para esta página: ela confirma quando sua entrada acontecer.</p>
+              <div class="stage-actions">
+                <button class="button button--light button--large" type="button" data-entry-connect data-entry-invite-open>
+                  <img class="discord-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="20" height="16">
+                  <span data-button-label>Conectar no Discord</span>
+                  <span class="button-spinner" aria-hidden="true"></span>
+                  <span class="button-icon" aria-hidden="true">↗</span>
+                </button>
+                <button class="text-button" type="button" data-entry-existing-toggle aria-expanded="false" aria-controls="entry-existing-panel">Já estou no servidor</button>
+              </div>
+              <p class="stage-note" data-entry-session-note role="status" aria-live="polite">O Discord abre em outra guia; esta continua acompanhando sua entrada.</p>
+
+              <section class="entry-invite-panel" data-entry-invite-panel hidden aria-labelledby="entry-invite-title">
+                <div class="entry-invite-heading">
+                  <img class="entry-invite-icon" src="/assets/discord.svg" alt="" aria-hidden="true" width="28" height="22">
+                  <div>
+                    <p class="eyebrow">Convite individual</p>
+                    <p id="entry-invite-title">Use o mesmo botão acima para reabrir o convite enquanto ele estiver válido.</p>
+                  </div>
+                </div>
+                <div class="entry-invite-actions"><a class="entry-invite-url" data-entry-invite-link href="#" target="peace-discord-invite" hidden aria-label="Abrir o convite do Discord"></a></div>
+                <div class="verification-state entry-invite-waiting" data-entry-invite-waiting data-state="pending" hidden>
+                  <span class="status-mark" aria-hidden="true"></span>
+                  <div><strong data-entry-invite-status-title>Aguardando sua entrada</strong><small data-entry-invite-status-message>Entre no servidor pelo convite e volte quando terminar.</small></div>
+                </div>
+              </section>
+
+              <details class="entry-guide">
+                <summary>Como funciona</summary>
+                <ul class="connection-guide" aria-label="Como a conexão funciona">
+                  <li><img src="/assets/discord.svg" alt="" aria-hidden="true" width="22" height="17"><div><strong>Convite individual</strong><small>Válido por 30 minutos e reutilizado nesta mesma tela.</small></div></li>
+                  <li><img src="/assets/shield-check.svg" alt="" aria-hidden="true" width="22" height="22"><div><strong>Sem senha ou token</strong><small>O link serve apenas para entrar no servidor Peace.</small></div></li>
+                  <li><img src="/assets/id-card.svg" alt="" aria-hidden="true" width="22" height="22"><div><strong>Confirmação automática</strong><small>Quando a entrada for identificada, este bloco muda de estado.</small></div></li>
+                </ul>
+              </details>
+              <p class="stage-note" data-entry-result role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="application-stage" data-entry-stage="2" aria-labelledby="verification-stage-title" hidden>
+              <p class="eyebrow">Entrada confirmada</p>
+              <h2 id="verification-stage-title" tabindex="-1">Agora, verifique no Discord.</h2>
+              <p class="stage-lede">A entrada de <strong data-entry-user>@usuário</strong> já foi encontrada. Falta concluir a verificação humana no canal <code>#verify</code>.</p>
+              <p class="stage-note" data-entry-manual-note role="status" aria-live="polite"></p>
+              <div class="verification-state" data-entry-verification-state data-state="pending"><span class="status-mark" aria-hidden="true"></span><div><strong data-entry-status-title>Verificação pendente</strong><small data-entry-status-message>Abra o #verify e conclua o desafio mostrado pelo bot.</small></div></div>
+              <details class="entry-guide verification-details">
+                <summary>Ver o passo a passo</summary>
+                <ol class="verification-steps" aria-label="Passo a passo da verificação">
+                  <li><span>01</span><div><strong>Abra o Discord</strong><small>Use a guia que já foi aberta.</small></div></li>
+                  <li><span>02</span><div><strong>Abra <code>#verify</code></strong><small>Clique em <strong>Iniciar verificação</strong>.</small></div></li>
+                  <li><span>03</span><div><strong>Responda ao CAPTCHA</strong><small>O bot libera o próximo passo quando confirmar.</small></div></li>
+                </ol>
+              </details>
+              <div class="stage-actions stage-actions--compact">
+                <button class="button button--outline" type="button" data-entry-refresh><span data-button-label>Atualizar status</span><span class="button-spinner" aria-hidden="true"></span></button>
+                <button class="text-button" type="button" data-entry-help-toggle aria-expanded="false" aria-controls="entry-help-panel">Estou com problemas</button>
+              </div>
+              <p class="stage-note" data-entry-refresh-result role="status" aria-live="polite"></p>
+
+              <section class="entry-help-panel" id="entry-help-panel" data-entry-help hidden aria-labelledby="entry-help-title">
+                <button class="dialog-close" type="button" data-entry-help-close aria-label="Fechar diagnóstico">×</button>
+                <p class="eyebrow">Exceção</p>
+                <h3 id="entry-help-title">Corrigir vínculo</h3>
+                <p>Informe o que souber para compararmos com a conta que entrou pelo convite. Isso não libera acesso de Peace.</p>
+                <form data-entry-repair>
+                  <div class="form-grid form-grid--two">
+                    <label class="field"><span>Username do Discord <em>(opcional)</em></span><input name="discord_username" type="text" maxlength="80" autocomplete="username" placeholder="ex.: peaceiro"></label>
+                    <label class="field"><span>ID do Discord <em>(opcional)</em></span><input name="discord_id" type="text" inputmode="numeric" maxlength="22" pattern="[0-9]{15,22}" placeholder="somente números"></label>
+                  </div>
+                  <label class="field"><span>Link do perfil <em>(opcional)</em></span><input name="discord_profile_url" type="url" maxlength="300" placeholder="https://discord.com/users/..."></label>
+                  <button class="button button--light" type="submit" data-entry-repair-submit><span data-button-label>Tentar resolver</span><span class="button-spinner" aria-hidden="true"></span></button>
+                  <p class="stage-note" data-entry-repair-result role="status" aria-live="polite"></p>
+                </form>
+              </section>
+            </section>
+
+            <section class="application-stage" data-entry-stage="3" aria-labelledby="set-stage-title" hidden>
+              <p class="eyebrow">Verificação concluída</p>
+              <h2 id="set-stage-title" tabindex="-1">Conte o necessário.</h2>
+              <p class="stage-note" data-entry-member-result role="status" aria-live="polite"></p>
+
+              <div class="wizard" data-wizard>
+                <div class="wizard-topline"><span data-wizard-label>Passo 1 de 4</span><span class="wizard-progress-text" data-wizard-progress>25%</span></div>
+                <section class="wizard-panel is-active" data-wizard-panel="1" aria-labelledby="wizard-profile-title">
+                  <p class="eyebrow">Seu apelido</p>
+                  <h3 id="wizard-profile-title" tabindex="-1">Como devemos chamar você?</h3>
+                  <label class="field"><span>Apelido</span><input name="nickname" type="text" minlength="3" maxlength="32" autocomplete="nickname" placeholder="3 a 32 caracteres" required><small>Entre 3 e 32 caracteres.</small></label>
+                </section>
+                <section class="wizard-panel" data-wizard-panel="2" aria-labelledby="wizard-discovery-title" hidden>
+                  <p class="eyebrow">Sua chegada</p>
+                  <h3 id="wizard-discovery-title" tabindex="-1">Como você conheceu a Peace?</h3>
+                  <label class="field"><span>Conte em poucas palavras</span><textarea name="discovery" minlength="20" maxlength="240" rows="6" placeholder="De 20 a 240 caracteres." required></textarea><small><span data-character-count-for="discovery">0</span>/240 caracteres · mínimo de 20.</small></label>
+                </section>
+                <section class="wizard-panel" data-wizard-panel="3" aria-labelledby="wizard-motivation-title" hidden>
+                  <p class="eyebrow">Sua intenção</p>
+                  <h3 id="wizard-motivation-title" tabindex="-1">Por que devemos aceitar você?</h3>
+                  <label class="field"><span>Sua resposta</span><textarea name="motivation" minlength="60" maxlength="500" rows="7" placeholder="De 60 a 500 caracteres." required></textarea><small><span data-character-count-for="motivation">0</span>/500 caracteres · mínimo de 60.</small></label>
+                  <p class="field-note">Não inclua dados pessoais.</p>
+                </section>
+                <section class="wizard-panel" data-wizard-panel="4" aria-labelledby="wizard-review-title" hidden>
+                  <p class="eyebrow">Revisão</p>
+                  <h3 id="wizard-review-title" tabindex="-1">Tudo certo para enviar?</h3>
+                  <dl class="review-list"><div><dt>Apelido</dt><dd data-review-nickname>Ainda não preenchido.</dd></div><div><dt>Como conheceu</dt><dd data-review-discovery>Ainda não preenchido.</dd></div><div><dt>Por que você</dt><dd data-review-motivation>Ainda não preenchido.</dd></div></dl>
+                  <div class="terms-list" aria-label="Termos da candidatura">
+                    <label class="check-field"><input type="checkbox" name="terms-city" required><span>Li e aceito os termos da cidade parceira.</span></label>
+                    <label class="check-field"><input type="checkbox" name="terms-discord" required><span>Li e aceito os <a href="https://discord.com/terms" target="_blank" rel="noreferrer">Termos do Discord</a>.</span></label>
+                    <label class="check-field"><input type="checkbox" name="terms-conduct" required><span>Comprometo-me com a boa conduta na Peace.</span></label>
+                  </div>
+                  <button class="button button--light" type="button" data-application-submit>Enviar candidatura</button>
+                  <p class="stage-note" data-application-result role="status" aria-live="polite"></p>
+                </section>
+                <div class="wizard-actions"><button class="button button--outline" type="button" data-wizard-back><span aria-hidden="true">←</span><span>Voltar</span></button><button class="button button--light" type="button" data-wizard-next><span data-button-label>Continuar</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button></div>
+              </div>
+            </section>
+
+            <section class="application-stage" data-entry-stage="4" aria-labelledby="review-stage-title" hidden>
+              <p class="eyebrow">Candidatura enviada</p>
+              <h2 id="review-stage-title" tabindex="-1">A equipe revisa.</h2>
+              <div class="review-state"><span class="status-mark" aria-hidden="true"></span><div><strong>Aguardando análise</strong><small>Se houver novidade, a equipe falará com você no Discord.</small></div></div>
+            </section>
+          </section>
+        </div>
+      </main>
+
+      <div class="site-toast" data-candidature-toast role="status" aria-live="polite" hidden></div>
+
+      <section class="entry-existing-panel" id="entry-existing-panel" data-entry-existing-panel hidden role="dialog" aria-modal="true" aria-labelledby="entry-existing-title">
+        <div class="entry-existing-dialog">
+          <button class="dialog-close" type="button" data-entry-existing-close aria-label="Fechar">×</button>
+          <p class="eyebrow">Exceção</p>
+          <h2 id="entry-existing-title">Já entrou na Peace?</h2>
+          <p>Encontre sua conta sem gerar outro convite. O username é obrigatório; o ID ou o link do perfil ajudam quando existem nomes iguais.</p>
+          <form data-entry-existing>
+            <div class="form-grid form-grid--two">
+              <label class="field"><span>Username do Discord</span><input name="discord_username" type="text" required maxlength="80" autocomplete="username" placeholder="ex.: peaceiro"></label>
+              <label class="field"><span>ID do Discord <em>(opcional)</em></span><input name="discord_id" type="text" inputmode="numeric" maxlength="22" pattern="[0-9]{15,22}" placeholder="somente números"></label>
+            </div>
+            <label class="field"><span>Link do perfil <em>(opcional)</em></span><input name="discord_profile_url" type="url" maxlength="300" placeholder="https://discord.com/users/..."></label>
+            <button class="button button--light" type="submit" data-entry-existing-submit><span data-button-label>Encontrar minha conta</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
+            <p class="stage-note" data-entry-existing-result role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </section>
+
+      <footer class="site-footer flow-footer flow-footer--minimal"><a class="footer-link" href="/">Voltar ao site <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

@@ -1,27 +1,147 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import html
 import logging
+import json
 import re
 import asyncio
+import io
+import random
+import secrets
+import sqlite3
+import struct
 import time
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+import zlib
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, is_dataclass, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
+from aiohttp import ClientError, ClientSession, ClientTimeout, web
 from discord import app_commands
 from discord.ext import commands
 
-from .cfg import Settings
-from .db import PeaceDatabase
-from .ai import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
-from .context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
-from .error_handling import configure_logging, exception_details
+if __package__ == "bot":
+    from .config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
+    from .persistence.database import ExamAssignmentExistsError, PeaceDatabase
+    from .selection import (
+        CIVIL_BANK_VERSION,
+        CIVIL_DEFAULT_PASSING_SCORE,
+        grade_exam,
+        materialize_exam,
+        parse_answer_key,
+        public_exam_payload,
+    )
+    from .core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
+    from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
+    from .core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
+    from .core.error_handling import configure_logging, exception_details
+else:
+    from config.settings import Settings, is_valid_central_bridge_key, parse_central_bridge_url
+    from persistence.database import ExamAssignmentExistsError, PeaceDatabase
+    from selection import (
+        CIVIL_BANK_VERSION,
+        CIVIL_DEFAULT_PASSING_SCORE,
+        grade_exam,
+        materialize_exam,
+        parse_answer_key,
+        public_exam_payload,
+    )
+    from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
+    from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
+    from core.context import bounded_context, concise_assistant_output, message_lines, redact, sanitize_assistant_output
+    from core.error_handling import configure_logging, exception_details
 
 
 log = logging.getLogger("peace")
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent if __package__ == "bot" else Path(__file__).resolve().parent
+CENTRAL_AUTH_DENIAL = "Não foi possível autenticar o acesso à Central."
+CENTRAL_AUTH_THROTTLED = "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
+PUBLIC_MEMBER_AUTH_CLIENT_ID = "peacegg-web"
+PUBLIC_MEMBER_SESSION_COOKIE = "peace_member_session"
+PUBLIC_MEMBER_CHALLENGE_COOKIE = "peace_member_challenge"
+PUBLIC_MEMBER_CHALLENGE_PATH = "/api/member/auth"
+PUBLIC_MEMBER_AUTH_DENIAL = "Não foi possível validar esse ID Peace."
+PUBLIC_MEMBER_AUTH_THROTTLED = "Aguarde alguns minutos antes de solicitar outro código."
+PUBLIC_MEMBER_SESSION_EXPIRED = "Sua sessão expirou. Entre novamente para continuar."
+PUBLIC_MEMBER_AUTH_UNAVAILABLE = "A autenticação está temporariamente indisponível. Tente novamente em instantes."
+PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a área."
+PUBLIC_API_RATE_LIMITS = {
+    "/api/status": (120, 60),
+    "/api/media": (12, 60),
+    "/api/notices": (30, 60),
+    "/api/entry/start": (12, 60),
+    "/api/entry/status": (60, 60),
+    "/api/entry/repair": (24, 60),
+    "/api/entry/identify": (24, 60),
+    "/api/member/auth/request": (12, 600),
+    "/api/member/auth/verify": (24, 600),
+    "/api/member/auth/session": (120, 60),
+    "/api/member/auth/revoke": (24, 60),
+    "/api/member/overview": (60, 60),
+    "/api/auth/discord/start": (12, 60),
+    "/api/auth/discord/callback": (24, 60),
+    "/api/auth/discord/session": (120, 60),
+    "/api/auth/discord/logout": (24, 60),
+    "/api/exams/process": (60, 60),
+    "/api/peace/process": (60, 60),
+    "/api/exams/access": (24, 60),
+    "/api/exams/start": (12, 60),
+    "/api/exams/submit": (3, 60),
+    "/api/exams/assignments": (30, 60),
+}
+PUBLIC_API_ORIGINS = frozenset(
+    {
+        "https://peacegg.com.br",
+        "https://www.peacegg.com.br",
+        # The localhost preview is a development-only same-site proxy. It
+        # never receives production cookies because Secure cookies are not
+        # sent over plain HTTP outside the local preview.
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4175",
+        "http://localhost:4175",
+    }
+)
+PUBLIC_LOCAL_PROXY_ORIGINS = frozenset(
+    origin for origin in PUBLIC_API_ORIGINS if origin.startswith("http://")
+)
+DISCORD_AVATAR_HASH_PATTERN = re.compile(r"(?:a_)?[A-Za-z0-9_]{2,128}")
+PUBLIC_API_NO_STORE_ROUTES = frozenset(
+    {
+        "/api/entry/start",
+        "/api/entry/status",
+        "/api/entry/repair",
+        "/api/entry/identify",
+        "/api/member/auth/request",
+        "/api/member/auth/verify",
+        "/api/member/auth/session",
+        "/api/member/auth/revoke",
+        "/api/member/overview",
+        "/api/auth/discord/start",
+        "/api/auth/discord/callback",
+        "/api/auth/discord/session",
+        "/api/auth/discord/logout",
+        "/api/exams/process",
+        "/api/peace/process",
+        "/api/exams/access",
+        "/api/exams/start",
+        "/api/exams/submit",
+        "/api/exams/assignments",
+    }
+)
+ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
+ENTRY_INVITE_MAX_USES = 2
+ENTRY_INVITE_PROPAGATION_GRACE_SECONDS = 30
+ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+AUTH_SESSION_MAX_TTL_SECONDS = 7 * 24 * 60 * 60
+MAX_SQLITE_INTEGER = 2**63 - 1
 TICKET_IDS = {
     "peace_support_poke_ticket",
     "peace_support_poke_staff",
@@ -35,14 +155,194 @@ TICKET_CONTROL_PREFIXES = (
     "peace_ticket_owner_",
 )
 AUTOMOD_ASSET = "automod.png"
-WELCOME_ASSET = "welcome-halloween.png"
-SET_PANEL_ASSET = "set-halloween.png"
-TICKET_PANEL_ASSET = "ticket-halloween.png"
-OPERATIONS_PANEL_ASSET = "ops-halloween.png"
+WELCOME_ASSET = "welcome.png"
+WELCOME_LEGACY_ASSET = "welcome-halloween.png"
+SET_PANEL_ASSET = "set.png"
+TICKET_PANEL_ASSET = "support.png"
+OPERATIONS_PANEL_ASSET = "ops.png"
+VERIFICATION_CHANNEL_NAME = "verify"
+VERIFICATION_PANEL_MARKER = "verification:panel"
+VERIFICATION_ASSET = "verification.png"
+VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+NOT_VERIFIED_ROLE_NAME = "Not Verified"
+INTERN_ROLE_NAME = "Estagiário"
+VISITOR_ROLE_NAME = "Visitante"
+INVESTIGATOR_ROLE_NAME = "Investigador"
+LEAD_INVESTIGATOR_ROLE_NAME = "Investigador Chefe"
+FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
+MANAGEMENT_ROLE_NAMES = ("Gerência", "Management", "Gerencia")
+ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
+PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
+PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
+PUBLIC_DISCORD_SESSION_COOKIE = "peace_discord_session"
+PUBLIC_DISCORD_OAUTH_STATE_COOKIE = "peace_discord_oauth_state"
+DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
+DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token"
+DISCORD_API_USER_URL = "https://discord.com/api/users/@me"
+DISCORD_OAUTH_SCOPE = "identify"
+DISCORD_OAUTH_ISSUER = "https://discord.com"
+OAUTH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+MAX_ANNOUNCEMENT_ATTACHMENTS = 10
+MAX_ANNOUNCEMENT_ATTACHMENT_BYTES = 25 * 1024 * 1024
+PUBLIC_MEDIA_HISTORY_LIMIT = 200
+PUBLIC_MEDIA_SELECTION_LIMIT = 12
+PUBLIC_MEDIA_MEDAL_RESOLUTION_LIMIT = 36
+PUBLIC_MEDIA_MEDAL_REQUEST_TIMEOUT_SECONDS = 6
+PUBLIC_MEDIA_MEDAL_MAX_REDIRECTS = 3
+PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES = 1_000_000
+PUBLIC_MEDIA_CDN_HOSTS = frozenset(
+    {
+        "cdn.discordapp.com",
+        "media.discordapp.net",
+        "images-ext-1.discordapp.net",
+    }
+)
+PUBLIC_MEDIA_PROVIDER_CDN_HOSTS = frozenset({"cdn.medal.tv"})
+PUBLIC_MEDIA_LINK_HOSTS = frozenset(
+    {
+        "medal.tv",
+        "streamable.com",
+        "youtube.com",
+        "youtu.be",
+        "youtube-nocookie.com",
+        "twitch.tv",
+        "clips.twitch.tv",
+        "gyazo.com",
+        "imgur.com",
+        "i.imgur.com",
+        "outplayed.tv",
+        "tiktok.com",
+        "vt.tiktok.com",
+        "vm.tiktok.com",
+    }
+)
+PUBLIC_MEDIA_LINK_PATTERN = re.compile(r"https://[^\s<>\[\]()]+", re.IGNORECASE)
+PUBLIC_MEDIA_TIKTOK_ID_PATTERN = re.compile(r"/(?:video|photo)/(\d+)(?:[/?#]|$)", re.IGNORECASE)
+PUBLIC_MEDIA_IMAGE_EXTENSIONS = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+PUBLIC_MEDIA_VIDEO_EXTENSIONS = {".m4v", ".mov", ".mp4", ".webm"}
+PUBLIC_MEDIA_MEDAL_VIDEO_PATTERN = re.compile(
+    r"https://cdn\.medal\.tv/mediac/(?:[^/\"'\s<>]+/)?[^\"'\s<>]+\.mp4\?auth=[^\"'\s<>]+",
+    re.IGNORECASE,
+)
+PUBLIC_MEDIA_MEDAL_THUMBNAIL_PATTERN = re.compile(
+    r"https://cdn\.medal\.tv/ugcc/content-thumbnail/[^\"'\s<>]+\.(?:avif|gif|jpe?g|png|webp)(?:\?[^\"'\s<>]+)?",
+    re.IGNORECASE,
+)
+CAPTCHA_FONT = {
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
+    "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "J": ("00111", "00010", "00010", "00010", "10010", "10010", "01100"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "V": ("10001", "10001", "10001", "10001", "01010", "01010", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "11011", "10001"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+    "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+    "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
+}
 
 
 def asset(name: str) -> discord.File:
     return discord.File(ROOT / "assets" / "bot" / name, filename=name)
+
+
+def _png_chunk(chunk_type: bytes, payload: bytes) -> bytes:
+    body = chunk_type + payload
+    return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+
+def render_captcha_png(code: str) -> bytes:
+    """Render a short CAPTCHA as a self-contained PNG without exposing its text."""
+    width, height, scale = 300, 100, 8
+    background = (247, 249, 252)
+    rows = [bytearray(background * width) for _ in range(height)]
+
+    def pixel(x: int, y: int, colour: tuple[int, int, int]) -> None:
+        if 0 <= x < width and 0 <= y < height:
+            offset = x * 3
+            rows[y][offset : offset + 3] = bytes(colour)
+
+    def line(x1: int, y1: int, x2: int, y2: int, colour: tuple[int, int, int]) -> None:
+        dx = abs(x2 - x1)
+        sx = 1 if x1 < x2 else -1
+        dy = -abs(y2 - y1)
+        sy = 1 if y1 < y2 else -1
+        error = dx + dy
+        while True:
+            pixel(x1, y1, colour)
+            if x1 == x2 and y1 == y2:
+                return
+            twice = 2 * error
+            if twice >= dy:
+                error += dy
+                x1 += sx
+            if twice <= dx:
+                error += dx
+                y1 += sy
+
+    for _ in range(220):
+        shade = 180 + secrets.randbelow(45)
+        pixel(secrets.randbelow(width), secrets.randbelow(height), (shade, shade, shade))
+    for _ in range(5):
+        line(
+            secrets.randbelow(width // 3),
+            secrets.randbelow(height),
+            width - secrets.randbelow(width // 3) - 1,
+            secrets.randbelow(height),
+            (165, 180, 198),
+        )
+
+    colours = ((25, 73, 110), (120, 55, 104), (37, 104, 91), (135, 73, 35))
+    start_x = 18
+    for index, character in enumerate(code):
+        glyph = CAPTCHA_FONT.get(character, CAPTCHA_FONT["A"])
+        x = start_x + index * 45 + secrets.randbelow(5)
+        y = 18 + secrets.randbelow(9)
+        colour = colours[index % len(colours)]
+        for row_index, row in enumerate(glyph):
+            for column_index, filled in enumerate(row):
+                if filled == "1":
+                    for dy in range(scale):
+                        for dx in range(scale):
+                            pixel(x + column_index * scale + dx, y + row_index * scale + dy, colour)
+
+    border = (120, 135, 150)
+    for x in range(width):
+        pixel(x, 0, border)
+        pixel(x, height - 1, border)
+    for y in range(height):
+        pixel(0, y, border)
+        pixel(width - 1, y, border)
+    raw = b"".join(b"\x00" + bytes(row) for row in rows)
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(raw, level=9))
+        + _png_chunk(b"IEND", b"")
+    )
 
 
 def now_unix() -> int:
@@ -68,9 +368,102 @@ def role_member(member: discord.Member, role_id: int | None) -> bool:
     return role_id is not None and any(role.id == role_id for role in member.roles)
 
 
-def needs_visitor(member: discord.Member, peace_role_id: int | None) -> bool:
-    """Return whether a human member needs the automatic Visitor role."""
-    return not member.bot and not role_member(member, peace_role_id)
+def role_position_map(roles) -> dict[str, int]:
+    """Return live Discord role positions for the identity policy."""
+    return {
+        str(role.name): int(getattr(role, "position", 0))
+        for role in roles
+        if getattr(role, "name", None) is not None
+    }
+
+
+def role_hoist_map(roles) -> dict[str, bool]:
+    """Return Discord's live "display separately" flag by role name."""
+    return {
+        str(role.name): bool(getattr(role, "hoist", False))
+        for role in roles
+        if getattr(role, "name", None) is not None
+    }
+
+
+def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
+    """Resolve configured roles while keeping local development configuration optional."""
+    if role_id is not None:
+        role = guild.get_role(role_id)
+        if role is not None:
+            return role
+    normalized = {name.casefold() for name in names if name}
+    if not normalized:
+        return None
+    return discord.utils.find(
+        lambda role: role.name.casefold() in normalized,
+        getattr(guild, "roles", ()),
+    )
+
+
+def unique_role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
+    """Resolve an authorization role without guessing among duplicate names."""
+    if role_id is not None:
+        role = guild.get_role(role_id)
+        if role is not None:
+            return role
+    normalized = {name.casefold() for name in names if name}
+    matches = [
+        role
+        for role in getattr(guild, "roles", ())
+        if role.name.casefold() in normalized
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def canonical_role_id(role_key: str) -> int | None:
+    """Reuse a structural role ID instead of introducing another environment key."""
+    try:
+        if __package__ == "bot":
+            from .operations.maintenance import ROLE_IDS
+        else:
+            from operations.maintenance import ROLE_IDS
+        return int(ROLE_IDS[role_key])
+    except (ImportError, KeyError, TypeError, ValueError):
+        return None
+
+
+def canonical_founder_role_id() -> int | None:
+    """Reuse the structural migration's Founder role ID; do not add another env key."""
+    return canonical_role_id("founder")
+
+
+def canonical_management_role_id() -> int | None:
+    """Reuse the structural migration's Management role ID when env is absent/stale."""
+    return canonical_role_id("manager")
+
+
+def role_is_manageable(role: discord.Role, bot_member: discord.Member | None) -> bool:
+    is_default = getattr(role, "is_default", None)
+    if (is_default() if callable(is_default) else bool(is_default)) or getattr(role, "managed", False):
+        return False
+    if bot_member is None:
+        return False
+    bot_top = getattr(bot_member, "top_role", None)
+    if bot_top is None:
+        return False
+    try:
+        return role < bot_top
+    except TypeError:
+        return int(getattr(role, "position", 0)) < int(getattr(bot_top, "position", 0))
+
+
+def needs_visitor(
+    member: discord.Member,
+    peace_role_id: int | None,
+    visitor_role_id: int | None = None,
+) -> bool:
+    """Return whether a human member needs to complete Visitor verification."""
+    return (
+        not member.bot
+        and not role_member(member, peace_role_id)
+        and (visitor_role_id is None or not role_member(member, visitor_role_id))
+    )
 
 
 def staff_member(member: discord.Member, settings: Settings) -> bool:
@@ -80,14 +473,126 @@ def staff_member(member: discord.Member, settings: Settings) -> bool:
     )
 
 
-async def respond(interaction: discord.Interaction, content: str, *, ephemeral: bool = True, view: discord.ui.View | None = None) -> None:
+def reviewer_member(member: discord.Member, settings: Settings) -> bool:
+    """Return whether a member may review an application or return request."""
+    return (
+        staff_member(member, settings)
+        or role_member(member, settings.manager_role_id)
+    )
+
+
+def configured_role_member(
+    member: discord.Member,
+    guild: discord.Guild,
+    role_id: int | None,
+    *names: str,
+) -> bool:
+    role = unique_role_named(guild, role_id, *names)
+    return role is not None and role_member(member, role.id)
+
+
+def founder_role_member(member: discord.Member, settings: Settings) -> bool:
+    role_id = getattr(settings, "founder_role_id", None) or canonical_founder_role_id()
+    return configured_role_member(
+        member,
+        member.guild,
+        role_id,
+        *FOUNDER_ROLE_NAMES,
+    )
+
+
+def management_role_member(member: discord.Member, settings: Settings) -> bool:
+    role_id = canonical_management_role_id() or getattr(settings, "manager_role_id", None)
+    return configured_role_member(
+        member,
+        member.guild,
+        role_id,
+        *MANAGEMENT_ROLE_NAMES,
+    )
+
+
+def application_path_open(path: str, settings: Settings) -> bool:
+    """Keep vacancy gates explicit and testable for the three entry paths."""
+    return {
+        "player": bool(getattr(settings, "set_vagas_abertas", False)),
+        "developer": bool(getattr(settings, "developer_vagas_abertas", False)),
+        "staff": bool(getattr(settings, "staff_vagas_abertas", False)),
+    }.get(path, False)
+
+
+def verification_eligible(
+    member: discord.Member,
+    peace_role_id: int | None,
+    visitor_role_id: int | None,
+    not_verified_role_id: int | None = None,
+) -> bool:
+    """Return whether this member may start the Visitor CAPTCHA."""
+    return (
+        needs_visitor(member, peace_role_id, visitor_role_id)
+        and (
+            not_verified_role_id is None
+            or role_member(member, not_verified_role_id)
+        )
+    )
+
+
+def outcome_embed(
+    title: str,
+    description: str,
+    *,
+    color: int,
+    footer: str = "Peace · resultado",
+) -> discord.Embed:
+    """Build the compact embed used for actionable success and failure feedback."""
+    embed = discord.Embed(title=title, description=description, color=color)
+    embed.set_footer(text=footer)
+    return embed
+
+
+async def respond(
+    interaction: discord.Interaction,
+    content: str | None = None,
+    *,
+    embed: discord.Embed | None = None,
+    ephemeral: bool = True,
+    view: discord.ui.View | None = None,
+) -> None:
     kwargs: dict[str, object] = {"ephemeral": ephemeral}
+    if content is not None:
+        kwargs["content"] = content
+    if embed is not None:
+        kwargs["embed"] = embed
     if view is not None:
         kwargs["view"] = view
     if interaction.response.is_done():
-        await interaction.followup.send(content, **kwargs)
+        await interaction.followup.send(**kwargs)
     else:
-        await interaction.response.send_message(content, **kwargs)
+        await interaction.response.send_message(**kwargs)
+
+
+async def ignore_interaction(interaction: discord.Interaction) -> None:
+    """Acknowledge an ignored slash command without exposing a denial message."""
+    if interaction.response.is_done():
+        return
+    try:
+        await interaction.response.defer(ephemeral=True)
+        await interaction.delete_original_response()
+    except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+        log.debug("Não consegui limpar a confirmação silenciosa da interação", exc_info=True)
+
+
+async def dismiss_component_message(interaction: discord.Interaction) -> None:
+    """Remove an ephemeral interview step after the member advances."""
+    message = interaction.message
+    if message is None:
+        return
+    try:
+        await message.delete()
+    except discord.HTTPException:
+        try:
+            await message.edit(content="", embed=None, view=None)
+        except discord.HTTPException:
+            log.debug("Não consegui limpar a etapa efêmera da entrevista", exc_info=True)
 
 
 @dataclass
@@ -103,6 +608,258 @@ class DeveloperDraft:
     nickname: str
     motivation: str
     area: str = ""
+
+
+@dataclass
+class EntryInviteSession:
+    """Short-lived public entry state bound to one single-use Discord invite."""
+
+    session_token: str
+    invite_code: str
+    invite_url: str
+    expires_at: datetime
+    created_at: datetime | None = None
+    initial_uses: int = 0
+    discord_user_id: int | None = None
+    discord_username: str = ""
+    status: str = "waiting_invite"
+    last_repair_at: float = 0.0
+    last_invite_check_at: float = 0.0
+    join_observed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class PublicMediaCache:
+    """Short-lived cache for the intentionally public Discord media feed."""
+
+    refreshed_at: float
+    items: tuple[dict[str, object], ...]
+    available: bool
+
+
+class VerificationCaptchaView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", member_id: int, options: list[str]):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.member_id = member_id
+        self.add_item(VerificationCaptchaSelect(bot, member_id, options))
+
+    async def on_timeout(self) -> None:
+        self.bot.verification_challenges.pop(self.member_id, None)
+
+
+class VerificationCaptchaSelect(discord.ui.Select):
+    def __init__(self, bot: "PeaceBot", member_id: int, options: list[str]):
+        self.bot = bot
+        self.member_id = member_id
+        super().__init__(
+            placeholder="Selecione o CAPTCHA que eu mostrei",
+            custom_id="peace_verification_captcha",
+            options=[
+                discord.SelectOption(label=value, value=value)
+                for value in options
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        if interaction.user.id != self.member_id:
+            await interaction.edit_original_response(
+                content="Eu gerei este CAPTCHA para outro membro.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
+            return
+        challenge = self.bot.verification_challenges.get(self.member_id)
+        selected = self.values[0]
+        if challenge is None or challenge[1] <= time.monotonic():
+            self.bot.verification_challenges.pop(self.member_id, None)
+            await interaction.edit_original_response(
+                content="Eu encerrei este CAPTCHA por tempo limite. Volte ao canal #verify e inicie uma nova verificação.",
+                embed=None,
+                attachments=[],
+                view=VerificationStartView(self.bot),
+            )
+            return
+        answer, _ = challenge
+        if selected != answer:
+            self.bot.verification_challenges.pop(self.member_id, None)
+            await interaction.edit_original_response(
+                content="Código incorreto. O cargo Visitante não foi liberado. Clique em **Iniciar verificação** para tentar novamente.",
+                embed=None,
+                attachments=[],
+                view=VerificationStartView(self.bot),
+            )
+            return
+
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        visitor = (
+            role_named(
+                interaction.guild,
+                getattr(self.bot.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
+                "Visitor",
+            )
+            if interaction.guild
+            else None
+        )
+        not_verified = (
+            role_named(
+                interaction.guild,
+                getattr(self.bot.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            if interaction.guild
+            else None
+        )
+        self.bot.verification_challenges.pop(self.member_id, None)
+        if member is None or member.bot or visitor is None:
+            await interaction.edit_original_response(
+                content="Eu não consegui liberar o cargo Visitante. Procure a staff.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
+            return
+        if role_member(member, self.bot.settings.peace_role_id):
+            await interaction.edit_original_response(
+                content="Eu confirmei sua conta, mas não apliquei Visitante porque você já possui o cargo Peace.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
+            return
+        if visitor in member.roles:
+            if not_verified is not None and not_verified in member.roles:
+                try:
+                    await member.remove_roles(not_verified, reason="Visitante já verificado pelo CAPTCHA")
+                except (discord.Forbidden, discord.HTTPException):
+                    await interaction.edit_original_response(
+                        content="Eu confirmei sua conta, mas não consegui remover o cargo Not Verified. A staff precisa corrigir isso.",
+                        embed=None,
+                        attachments=[],
+                        view=None,
+                    )
+                    return
+            await interaction.edit_original_response(
+                content="Eu já confirmei sua conta e o cargo Visitante já está liberado.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
+            return
+        bot_member = getattr(interaction.guild, "me", None)
+        if (
+            bot_member is None
+            or visitor.managed
+            or visitor >= bot_member.top_role
+            or (
+                not_verified is not None
+                and (not_verified.managed or not_verified >= bot_member.top_role)
+            )
+        ):
+            await interaction.edit_original_response(
+                content="Eu confirmei sua conta, mas minha hierarquia não permite aplicar Visitante. A staff precisa corrigir isso.",
+                embed=None,
+                attachments=[],
+                view=None,
+            )
+            return
+        added_visitor = False
+        try:
+            await member.add_roles(visitor, reason="CAPTCHA de verificação concluído")
+            added_visitor = True
+            if not_verified is not None and not_verified in member.roles:
+                await member.remove_roles(not_verified, reason="CAPTCHA de verificação concluído")
+        except (discord.Forbidden, discord.HTTPException):
+            if added_visitor:
+                try:
+                    await member.remove_roles(visitor, reason="Rollback de verificação incompleta")
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception("Falha ao reverter Visitante após falha na remoção de Not Verified")
+            log.exception("Falha ao aplicar Visitante após verificação para %s", member.id)
+            await interaction.edit_original_response(
+                content="Não consegui concluir a verificação. Nenhum acesso foi liberado; clique em **Iniciar verificação** para tentar novamente.",
+                embed=None,
+                attachments=[],
+                view=VerificationStartView(self.bot),
+            )
+            return
+        await interaction.edit_original_response(
+            content="Eu confirmei que você não é um bot e liberei o cargo Visitante. Agora você pode acessar as áreas de visitante.",
+            embed=None,
+            attachments=[],
+            view=None,
+        )
+
+
+class VerificationStartView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot"):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(
+        label="Iniciar verificação",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_verification_start",
+    )
+    async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        if member is None or member.bot:
+            await interaction.edit_original_response(
+                content="Eu não libero o cargo Visitante para contas de bot.",
+                view=None,
+            )
+            return
+        visitor = role_named(
+            member.guild,
+            getattr(self.bot.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        if visitor is not None and visitor in member.roles:
+            await interaction.edit_original_response(
+                content="Eu já confirmei sua conta e o cargo Visitante já está liberado.",
+                view=None,
+            )
+            return
+        if role_member(member, self.bot.settings.peace_role_id):
+            await interaction.edit_original_response(
+                content="Eu não preciso verificar novamente uma conta que já possui o cargo Peace.",
+                view=None,
+            )
+            return
+        if not verification_eligible(
+            member,
+            self.bot.settings.peace_role_id,
+            self.bot.settings.visitor_role_id,
+            self.bot.settings.not_verified_role_id,
+        ):
+            await interaction.edit_original_response(
+                content="Você precisa do cargo **Not Verified** para iniciar.",
+                view=None,
+            )
+            return
+        options = self.bot.create_verification_challenge(member.id)
+        answer = self.bot.verification_challenges[member.id][0]
+        image_file = discord.File(io.BytesIO(render_captcha_png(answer)), filename="captcha.png")
+        embed = discord.Embed(
+            title="CAPTCHA de verificação",
+            description="Leia o código na imagem e selecione a opção correspondente no menu abaixo.",
+            color=0x5865F2,
+        )
+        embed.set_image(url="attachment://captcha.png")
+        embed.set_footer(text="Esta tentativa expira em 3 minutos.")
+        await interaction.edit_original_response(
+            content="Selecione no menu o código mostrado na imagem.",
+            embed=embed,
+            attachments=[image_file],
+            view=VerificationCaptchaView(self.bot, member.id, options),
+        )
 
 
 class SetModal(discord.ui.Modal, title="Pedir set · entrevista inicial"):
@@ -162,11 +919,26 @@ class SetView(discord.ui.View):
 
     @discord.ui.button(label="◈ Iniciar entrevista", style=discord.ButtonStyle.secondary, custom_id="peace_pedir_set_open")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_message(
-            "Escolha o tipo de entrevista. A opção de staff está indisponível por enquanto.",
-            view=EntryTypeView(self.bot),
-            ephemeral=True,
-        )
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        if member is not None:
+            reservation = self.bot.database.reserved_peace_id_for_user(member.id)
+            if reservation is not None:
+                await self.bot.ensure_return_request(member)
+                await respond(
+                    interaction,
+                    "Seu ID Peace continua reservado. Eu encaminhei seu retorno diretamente ao **scan-only** para aprovação; não é necessário refazer a entrevista.",
+                )
+                return
+            if role_member(member, self.bot.settings.peace_role_id):
+                await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
+                return
+            if not application_path_open("player", self.bot.settings):
+                await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+                return
+        elif not application_path_open("player", self.bot.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+            return
+        await interaction.response.send_modal(SetModal(self.bot))
 
 
 class EntryTypeSelect(discord.ui.Select):
@@ -177,41 +949,23 @@ class EntryTypeSelect(discord.ui.Select):
             custom_id="peace_entry_type",
             options=[
                 discord.SelectOption(
-                    label="Sou player",
+                    label="Player set · vagas abertas",
                     value="player",
-                    description="Entrevista inicial para entrar na Peace",
-                ),
-                discord.SelectOption(
-                    label="Join Developers",
-                    value="developer",
-                    description="Entrevista real para entrar no time",
-                ),
-                discord.SelectOption(
-                    label="Staff (indisponível)",
-                    value="staff",
-                    description="Indisponível por hora",
+                    description="Player applications are open",
                 ),
             ],
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        if self.values[0] == "player":
-            if member is not None and role_member(member, self.bot.settings.peace_role_id):
-                await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
-                return
-            if not self.bot.settings.set_vagas_abertas:
-                await respond(interaction, "No momento não há vagas abertas para player. A entrevista de desenvolvimento continua disponível.")
-                return
-            await interaction.response.send_modal(SetModal(self.bot))
+        if member is not None and role_member(member, self.bot.settings.peace_role_id):
+            await respond(interaction, "Você já possui o cargo Peace e não precisa solicitar um novo set.")
             return
-        if self.values[0] == "developer":
-            if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
-                await respond(interaction, "Você já possui uma entrevista de desenvolvimento em análise ou integração.")
-                return
-            await interaction.response.send_modal(DeveloperIdentityModal(self.bot))
+        if not application_path_open("player", self.bot.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
             return
-        await respond(interaction, "A seleção para staff está indisponível por hora.")
+        await interaction.response.send_modal(SetModal(self.bot))
+        await dismiss_component_message(interaction)
 
 
 class EntryTypeView(discord.ui.View):
@@ -271,7 +1025,7 @@ class DeveloperAreaSelect(discord.ui.Select):
                 discord.SelectOption(label="Frontend", value="Frontend"),
                 discord.SelectOption(label="Backend", value="Backend"),
                 discord.SelectOption(label="Documentation", value="Documentation"),
-                discord.SelectOption(label="AI & Bots", value="AI & Bots"),
+                discord.SelectOption(label="AIs", value="AIs"),
             ],
         )
 
@@ -282,6 +1036,7 @@ class DeveloperAreaSelect(discord.ui.Select):
             return
         draft.area = self.values[0]
         await interaction.response.send_modal(DeveloperExperienceModal(self.bot))
+        await dismiss_component_message(interaction)
 
 
 class DeveloperAreaView(discord.ui.View):
@@ -323,7 +1078,7 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
             await respond(interaction, "Sua entrevista expirou; inicie novamente pelo painel.")
             return
         if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
-            await respond(interaction, "Você já possui uma entrevista de desenvolvimento em análise ou integração.")
+            await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
             return
         request_id = self.bot.database.save_developer_request(
             discord_user_id=interaction.user.id,
@@ -347,7 +1102,7 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
         )
         await respond(
             interaction,
-            "Entrevista enviada ao scan-only. A integração depende de análise manual; não há cargo automático.",
+            "Currículo enviado ao scan-only. A entrevista manual será feita na call de suporte; depois da avaliação, a equipe avisará se você foi aprovado para entrar no time.",
         )
 
 
@@ -356,13 +1111,19 @@ class DeveloperApprovalView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.request_id = request_id
+        request = bot.database.developer_request(request_id)
+        self.phase = "interview" if request is None or request["status"] == "pending" else "member"
         approve = discord.ui.Button(
-            label="✓ Aprovar integração",
+            label=(
+                "✓ Aprovar entrevista"
+                if self.phase == "interview"
+                else "✓ Aprovar como integrante"
+            ),
             style=discord.ButtonStyle.secondary,
             custom_id=f"peace_dev_approve_{request_id}",
         )
         reject = discord.ui.Button(
-            label="× Recusar",
+            label="× Recusar candidatura",
             style=discord.ButtonStyle.secondary,
             custom_id=f"peace_dev_reject_{request_id}",
         )
@@ -377,13 +1138,13 @@ class DeveloperApprovalView(discord.ui.View):
 
     async def guard(self, interaction: discord.Interaction):
         request = self.bot.database.developer_request(self.request_id)
-        if request is None or request["status"] != "pending":
-            await respond(interaction, "Esta entrevista já foi processada.")
+        if request is None or request["status"] not in {"pending", "interview_scheduled"}:
+            await respond(interaction, "Esta candidatura já foi processada.")
             return None
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        allowed = member is not None and role_member(member, self.bot.settings.recruiter_role_id)
+        allowed = member is not None and reviewer_member(member, self.bot.settings)
         if not allowed:
-            await respond(interaction, "Somente um recrutador autorizado pode analisar integrações dev.")
+            await respond(interaction, "Somente Staff ou Management autorizado pode analisar candidaturas Dev.")
             return None
         return request
 
@@ -392,14 +1153,79 @@ class DeveloperApprovalView(discord.ui.View):
         if request is None:
             return
         await interaction.response.defer()
+        if request["status"] == "pending":
+            self.bot.database.update_developer_request(self.request_id, status="interview_scheduled")
+            sent = await self.bot.send_developer_interview_notice(request)
+            updated = self.bot.database.developer_request(self.request_id) or request
+            next_view = DeveloperApprovalView(self.bot, self.request_id)
+            self.bot.developer_approval_views[self.request_id] = next_view
+            if interaction.message is not None:
+                text = (
+                    "✅ Entrevista aprovada. O candidato foi avisado para fazer a entrevista manual na call de suporte. "
+                    "Após a call, use **Aprovar como integrante**."
+                    if sent else
+                    "✅ Entrevista aprovada, mas o PV está fechado. Faça a entrevista manual na call de suporte e depois use **Aprovar como integrante**."
+                )
+                await interaction.message.edit(
+                    content=text,
+                    embed=self.bot.developer_request_embed(updated),
+                    view=next_view,
+                )
+            return
+        guild = interaction.guild or self.bot.guild
+        member = await self.bot.member(guild, int(request["discord_user_id"])) if guild else None
+        central_access_role_id = self.bot.settings.central_access_role_id
+        developer_role = (
+            guild.get_role(central_access_role_id)
+            if guild is not None and central_access_role_id is not None
+            else None
+        )
+        if member is None or developer_role is None:
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content="⚠️ Não foi possível aprovar: o candidato ou o cargo Dev não foi encontrado. Nenhuma alteração foi aplicada.",
+                    embed=self.bot.developer_request_embed(request),
+                    view=self,
+                )
+            return
+        try:
+            if developer_role not in member.roles:
+                await member.add_roles(
+                    developer_role,
+                    reason=f"Candidatura Dev aprovada por Staff ou Management {interaction.user.id}",
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao aplicar o cargo Dev ao candidato %s", member.id)
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content="⚠️ Não foi possível aplicar o cargo Dev. Verifique a hierarquia e as permissões do bot; a candidatura continua pendente.",
+                    embed=self.bot.developer_request_embed(request),
+                    view=self,
+                )
+            return
+        member_roles = {role.id: role.name for role in member.roles}
+        member_roles[developer_role.id] = developer_role.name
+        member_role_objects = list(member.roles)
+        if developer_role not in member_role_objects:
+            member_role_objects.append(developer_role)
+        peace_id = self.bot.database.ensure_runtime_member(
+            discord_user_id=member.id,
+            username=member.name,
+            nickname=member.nick,
+            role_ids=list(member_roles),
+            role_names=list(member_roles.values()),
+            founder_id=self.bot.settings.founder_user_id,
+            role_positions=role_position_map(member_role_objects),
+            role_hoist=role_hoist_map(member_role_objects),
+        )
         self.bot.database.update_developer_request(self.request_id, status="approved")
-        sent = await self.bot.send_developer_meeting_invite(request)
+        sent = await self.bot.send_developer_decision_notice(request, peace_id=peace_id)
         self.disable_all()
         if interaction.message is not None:
             text = (
-                "✅ Integração aprovada. O candidato recebeu no PV as opções do próximo dia útil."
+                "✅ Candidato aprovado como integrante. Cargo Dev aplicado e DM de aceite enviada."
                 if sent else
-                "✅ Integração aprovada, mas o PV está fechado. O candidato deve abrir um ticket."
+                "✅ Candidato aprovado como integrante e cargo Dev aplicado, mas o PV está fechado."
             )
             await interaction.message.edit(content=text, embed=None, view=self)
 
@@ -408,66 +1234,20 @@ class DeveloperApprovalView(discord.ui.View):
         if request is None:
             return
         await interaction.response.defer()
+        after_interview = request["status"] == "interview_scheduled"
         self.bot.database.update_developer_request(self.request_id, status="rejected")
         member = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
+        sent = False
         if member is not None:
-            try:
-                await member.send("Sua entrevista de desenvolvimento não foi aprovada nesta análise. Se precisar, abra um ticket para receber orientação.")
-            except (discord.Forbidden, discord.HTTPException):
-                log.info("DM fechada para entrevista dev %s", request["id"])
+            sent = await self.bot.send_developer_rejection_notice(request, after_interview=after_interview)
         self.disable_all()
         if interaction.message is not None:
-            await interaction.message.edit(content=f"× Integração recusada por {interaction.user.mention}.", embed=None, view=self)
-
-
-class DeveloperMeetingSelect(discord.ui.Select):
-    def __init__(self, bot: "PeaceBot", request_id: int, meeting_day: date):
-        self.bot = bot
-        self.request_id = request_id
-        self.meeting_day = meeting_day
-        options = [
-            discord.SelectOption(label=f"{hour:02d}:00 BRT", value=f"{hour:02d}:00")
-            for hour in list(range(6, 14)) + list(range(14, 24)) + [0]
-        ]
-        super().__init__(
-            placeholder=f"Escolha um horário em {meeting_day.strftime('%d/%m/%Y')}",
-            custom_id=f"peace_dev_meeting_{request_id}",
-            options=options,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        request = self.bot.database.developer_request(self.request_id)
-        if request is None or request["status"] not in {"approved", "meeting_scheduled"}:
-            await respond(interaction, "Esta integração não está disponível para agendamento.")
-            return
-        hour = self.values[0]
-        meeting_at = f"{self.meeting_day.isoformat()} {hour}:00 America/Sao_Paulo"
-        self.bot.database.update_developer_request(
-            self.request_id,
-            status="meeting_scheduled",
-            meeting_at=meeting_at,
-        )
-        await respond(
-            interaction,
-            f"Reunião de integração marcada para **{self.meeting_day.strftime('%d/%m/%Y')} às {hour} BRT**. Se precisar trocar, abra um ticket.",
-        )
-        await self.bot.send_to_channel(
-            self.bot.settings.scan_channel_id,
-            content=f"Integração dev `#{self.request_id:04d}` agendada para {self.meeting_day.strftime('%d/%m/%Y')} às {hour} BRT.",
-        )
-
-
-class DeveloperMeetingView(discord.ui.View):
-    def __init__(self, bot: "PeaceBot", request_id: int, meeting_day: date):
-        super().__init__(timeout=86400)
-        self.add_item(DeveloperMeetingSelect(bot, request_id, meeting_day))
-        ticket_id = bot.settings.ticket_panel_channel_id
-        if ticket_id is not None:
-            self.add_item(discord.ui.Button(
-                label="Não consigo · abrir ticket",
-                style=discord.ButtonStyle.link,
-                url=f"https://discord.com/channels/{bot.settings.guild_id}/{ticket_id}",
-            ))
+            text = (
+                f"× {'Candidatura' if after_interview else 'Entrevista'} recusada por {interaction.user.mention}. O candidato foi avisado por DM."
+                if sent else
+                f"× {'Candidatura' if after_interview else 'Entrevista'} recusada por {interaction.user.mention}. O PV do candidato está fechado."
+            )
+            await interaction.message.edit(content=text, embed=None, view=self)
 
 
 class SourceSelect(discord.ui.Select):
@@ -490,12 +1270,16 @@ class SourceSelect(discord.ui.Select):
             return
         if self.values[0] == "recrutado":
             recruiters = await self.bot.recruiter_members()
-            await interaction.response.edit_message(
-                content="Selecione quem fez o recrutamento:",
+            await interaction.response.defer(ephemeral=True)
+            await dismiss_component_message(interaction)
+            await interaction.followup.send(
+                "Selecione quem fez o recrutamento:",
                 view=RecruiterView(self.bot, draft, recruiters),
+                ephemeral=True,
             )
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+        await dismiss_component_message(interaction)
         await self.bot.finish_set(interaction, draft, self.values[0], None)
 
 
@@ -520,7 +1304,8 @@ class RecruiterSelect(discord.ui.Select):
         super().__init__(placeholder="Quem fez seu recrutamento?", options=options, custom_id="peace_set_recruiter")
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+        await dismiss_component_message(interaction)
         await self.bot.finish_set(interaction, self.draft, "recrutado", int(self.values[0]))
 
 
@@ -531,7 +1316,7 @@ class RecruiterView(discord.ui.View):
             self.add_item(RecruiterSelect(bot, draft, recruiters))
         else:
             unavailable = discord.ui.Button(
-                label="Nenhum recrutador disponível agora",
+                label="Nenhum reviewer disponível agora",
                 style=discord.ButtonStyle.secondary,
                 disabled=True,
             )
@@ -562,13 +1347,82 @@ class SetApprovalView(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
+    async def remove_terminal_card(self, interaction: discord.Interaction) -> None:
+        """Remove a processed review card so scan-only stays actionable only."""
+        message = interaction.message
+        if message is None:
+            return
+        try:
+            try:
+                await message.delete(reason="Remover cartão de set já processado do scan-only")
+            except TypeError as error:
+                if "reason" not in str(error):
+                    raise
+                await message.delete()
+        except discord.NotFound:
+            return
+        except (discord.Forbidden, discord.HTTPException):
+            # The outcome is already recorded in logs. Keep a disabled status
+            # card only when Discord refuses the cleanup, and make the failure
+            # observable for the next operator review.
+            log.exception("Não consegui remover o cartão de set processado %s", getattr(message, "id", "?"))
+            try:
+                await message.edit(
+                    embed=outcome_embed(
+                        "Processado · cartão mantido",
+                        "O registro final está no canal logs, mas não consegui remover este cartão do scan-only. Ele não aceita mais ações.",
+                        color=0xF1C40F,
+                        footer="Peace · scan-only",
+                    ),
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                log.exception("Não consegui marcar o cartão de set processado %s", getattr(message, "id", "?"))
+
+    @staticmethod
+    async def terminal_feedback(
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+        *,
+        color: int,
+    ) -> None:
+        """Give the reviewer a private confirmation when the client supports it."""
+        followup = getattr(interaction, "followup", None)
+        send = getattr(followup, "send", None)
+        if callable(send):
+            try:
+                await send(
+                    embed=outcome_embed(title, description, color=color, footer="Peace · set"),
+                    ephemeral=True,
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                log.debug("Não consegui enviar a confirmação privada do set", exc_info=True)
+
     async def guard(self, interaction: discord.Interaction):
         request = self.bot.database.set_request(self.request_id)
         if request is None or request["status"] != "pending":
-            await respond(interaction, "Este pedido já foi processado.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Pedido já processado",
+                    "Este pedido não aceita novas ações.",
+                    color=0x95A5A6,
+                    footer="Peace · set",
+                ),
+            )
             return None
         if not isinstance(interaction.user, discord.Member) or not self.bot.can_approve_set_request(request, interaction.user):
-            await respond(interaction, "Somente um recrutador autorizado pode aprovar este pedido.")
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode aprovar este pedido.",
+                    color=0xED4245,
+                    footer="Peace · set",
+                ),
+            )
             return None
         return request
 
@@ -578,24 +1432,70 @@ class SetApprovalView(discord.ui.View):
             return
         await interaction.response.defer()
         result = await self.bot.approve_set_request(request, interaction.user)
+        current = self.bot.database.set_request(self.request_id)
+        if current is None or current["status"] != "approved":
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    embed=outcome_embed(
+                        "Set não concluído",
+                        result,
+                        color=0xED4245,
+                        footer="Peace · set",
+                    ),
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
+        if result.startswith("⚠️"):
+            self.disable_all()
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    embed=outcome_embed(
+                        "Set aplicado · log pendente",
+                        result,
+                        color=0xF1C40F,
+                        footer="Peace · set",
+                    ),
+                    view=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
         self.disable_all()
-        if interaction.message is not None:
-            await interaction.message.edit(content=f"✅ {result}", embed=None, view=self)
+        await self.remove_terminal_card(interaction)
+        await self.terminal_feedback(
+            interaction,
+            "Set aprovado",
+            "O set foi aplicado e o resultado foi registrado no canal logs.",
+            color=0x57F287,
+        )
 
     async def reject(self, interaction: discord.Interaction) -> None:
         request = await self.guard(interaction)
         if request is None:
             return
         await interaction.response.defer()
-        await self.bot.reject_set_request(request, interaction.user)
+        logged = await self.bot.reject_set_request(request, interaction.user)
         self.disable_all()
-        if interaction.message is not None:
-            await interaction.message.edit(
-                content=f"× Pedido de set recusado por {interaction.user.mention}.",
-                embed=None,
-                view=self,
-                allowed_mentions=discord.AllowedMentions(users=True),
-            )
+        if not logged:
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    embed=outcome_embed(
+                        "Recusa não registrada",
+                        "Não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                        color=0xED4245,
+                        footer="Peace · set",
+                    ),
+                    view=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return
+        await self.remove_terminal_card(interaction)
+        await self.terminal_feedback(
+            interaction,
+            "Set recusado",
+            "A candidatura foi recusada e o resultado foi registrado no canal logs.",
+            color=0xED4245,
+        )
 
 
 class ReturnApprovalView(discord.ui.View):
@@ -603,6 +1503,7 @@ class ReturnApprovalView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.request_id = request_id
+        self.processing = False
         release = discord.ui.Button(
             label="Liberar ID",
             style=discord.ButtonStyle.secondary,
@@ -610,60 +1511,759 @@ class ReturnApprovalView(discord.ui.View):
         )
         release.callback = self.release_id
         self.add_item(release)
+        reject = discord.ui.Button(
+            label="Recusar retorno",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"peace_return_reject_{request_id}",
+        )
+        reject.callback = self.reject_return
+        self.add_item(reject)
+
+    def disable_all(self) -> None:
+        for item in self.children:
+            item.disabled = True
+
+    def enable_all(self) -> None:
+        for item in self.children:
+            item.disabled = False
+
+    @staticmethod
+    async def terminal_feedback(
+        interaction: discord.Interaction,
+        title: str,
+        description: str,
+        *,
+        color: int,
+    ) -> None:
+        """Give the reviewer a private embed after a return decision."""
+        followup = getattr(interaction, "followup", None)
+        send = getattr(followup, "send", None)
+        if callable(send):
+            try:
+                await send(
+                    embed=outcome_embed(title, description, color=color, footer="Peace · retorno"),
+                    ephemeral=True,
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                log.debug("Não consegui enviar a confirmação privada do retorno", exc_info=True)
+
+    async def remove_terminal_card(self, interaction: discord.Interaction) -> bool:
+        """Delete a processed return card after its audit log is delivered."""
+
+        message = interaction.message
+        delete = getattr(message, "delete", None) if message is not None else None
+        if not callable(delete):
+            log.error("Cartão de retorno %s não expôs operação de remoção", self.request_id)
+            return False
+        try:
+            try:
+                await delete(reason="Remover cartão de retorno já processado do scan-only")
+            except TypeError as error:
+                if "reason" not in str(error):
+                    raise
+                await delete()
+            return True
+        except discord.NotFound:
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Não consegui remover o cartão de retorno processado %s", getattr(message, "id", "?"))
+            try:
+                await message.edit(
+                    embed=outcome_embed(
+                        "Processado · cartão mantido",
+                        "O resultado foi registrado no canal logs, mas não consegui remover este cartão do scan-only. Ele não aceita mais ações.",
+                        color=0xF1C40F,
+                        footer="Peace · retorno",
+                    ),
+                    view=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                log.exception("Não consegui marcar o cartão de retorno processado %s", getattr(message, "id", "?"))
+            return False
+
+    async def edit_source(self, interaction: discord.Interaction, **kwargs) -> None:
+        if interaction.response.is_done():
+            if interaction.message is not None:
+                await interaction.message.edit(**kwargs)
+            else:
+                await interaction.edit_original_response(**kwargs)
+            return
+        await interaction.response.edit_message(**kwargs)
 
     async def release_id(self, interaction: discord.Interaction) -> None:
         member = interaction.user if isinstance(interaction.user, discord.Member) else None
-        if member is None or not role_member(member, self.bot.settings.recruiter_role_id):
-            await respond(interaction, "Somente um recrutador autorizado pode liberar este retorno.")
-            return
-        request = self.bot.database.return_request(self.request_id)
-        if request is None or request["status"] != "pending":
-            await respond(interaction, "Este retorno já foi processado.")
-            return
-        target = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
-        if target is None:
-            await respond(interaction, "O membro não está disponível no servidor.")
-            return
-        await interaction.response.defer()
-        result = self.bot.database.approve_return_request(
-            self.request_id,
-            username=target.name,
-            nickname=target.nick,
-            role_ids=[role.id for role in target.roles],
-            role_names=[role.name for role in target.roles],
-            founder_id=self.bot.settings.founder_user_id,
-        )
-        if result is None:
-            await respond(interaction, "Não consegui localizar a reserva do ID. Verifique o banco e tente novamente.")
-            return
-        _, old_id, new_id = result
-        peace_role = target.guild.get_role(self.bot.settings.peace_role_id)
-        visitor_role = target.guild.get_role(self.bot.settings.visitor_role_id or 0)
-        try:
-            if peace_role is not None and peace_role not in target.roles:
-                await target.add_roles(peace_role, reason=f"Retorno Peace aprovado por {member.id}")
-            if visitor_role is not None and visitor_role in target.roles:
-                await target.remove_roles(visitor_role, reason="Retorno Peace aprovado")
-            await self.bot.sync_member_tag(target)
-            await target.send(
-                f"Seu retorno à Peace foi aprovado. O ID antigo `{old_id}` foi liberado e seu novo ID é `{new_id}`."
+        if member is None or not reviewer_member(member, self.bot.settings):
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode liberar este retorno.",
+                    color=0xED4245,
+                    footer="Peace · retorno",
+                ),
             )
-        except (discord.Forbidden, discord.HTTPException):
-            log.info("Não consegui finalizar a tag do retorno Peace %s", target.id)
+            return
+        if self.processing:
+            await interaction.response.defer()
+            return
+        self.processing = True
+        self.disable_all()
+        try:
+            async with self.bot.return_mutation_lock(self.request_id):
+                request = self.bot.database.return_request(self.request_id)
+                if request is None or request["status"] != "pending":
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno já processado",
+                            "Este retorno não aceita novas ações.",
+                            color=0x95A5A6,
+                            footer="Peace · retorno",
+                        ),
+                        view=None,
+                    )
+                    return
+                target = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
+                if target is None:
+                    self.enable_all()
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "O membro não está disponível no servidor. A solicitação continua pendente.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
+                    return
+                peace_role = target.guild.get_role(self.bot.settings.peace_role_id)
+                if peace_role is None:
+                    self.enable_all()
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "O cargo Peace não está configurado; o retorno continua pendente.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
+                    return
+                await self.edit_source(
+                    interaction,
+                    embed=outcome_embed(
+                        "Retorno em andamento",
+                        "Aplicando Peace, removendo os cargos de entrada e atualizando o apelido.",
+                        color=0x5865F2,
+                        footer="Peace · retorno",
+                    ),
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                visitor_role = role_named(
+                    target.guild,
+                    getattr(self.bot.settings, "visitor_role_id", None),
+                    VISITOR_ROLE_NAME,
+                    "Visitor",
+                )
+                not_verified_role = role_named(
+                    target.guild,
+                    getattr(self.bot.settings, "not_verified_role_id", None),
+                    NOT_VERIFIED_ROLE_NAME,
+                    "Não verificado",
+                    "Nao verificado",
+                )
+                return_roles = {
+                    role.id: role.name
+                    for role in target.roles
+                    if role.id not in {
+                        item.id
+                        for item in (visitor_role, not_verified_role)
+                        if item is not None
+                    }
+                }
+                return_roles[peace_role.id] = peace_role.name
+                try:
+                    result = self.bot.database.approve_return_request(
+                        self.request_id,
+                        username=target.name,
+                        nickname=target.nick,
+                        role_ids=list(return_roles),
+                        role_names=list(return_roles.values()),
+                        founder_id=self.bot.settings.founder_user_id,
+                        role_positions=role_position_map([*target.roles, peace_role]),
+                        role_hoist=role_hoist_map([*target.roles, peace_role]),
+                    )
+                except sqlite3.Error:
+                    log.exception("Falha ao registrar a aprovação do retorno Peace %s", self.request_id)
+                    self.enable_all()
+                    self.processing = False
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Liberação não registrada",
+                            "Não consegui registrar a liberação do ID. O retorno continua pendente; tente novamente após conferir o banco.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
+                    return
+                if result is None:
+                    current = self.bot.database.return_request(self.request_id)
+                    if current is not None and current["status"] == "pending":
+                        self.enable_all()
+                        self.processing = False
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Retorno não confirmado",
+                                "Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
+                                color=0xED4245,
+                                footer="Peace · retorno",
+                            ),
+                            view=self,
+                        )
+                    else:
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Retorno já processado",
+                                "Este retorno não aceita novas ações.",
+                                color=0x95A5A6,
+                                footer="Peace · retorno",
+                            ),
+                            view=None,
+                        )
+                    return
+                _, old_id, new_id = result
+                try:
+                    await self.bot.apply_return_member_state(
+                        target,
+                        peace_role=peace_role,
+                        peace_id=new_id,
+                        reason=f"Retorno Peace aprovado por {member.id}",
+                    )
+                except (discord.Forbidden, discord.HTTPException, RuntimeError):
+                    try:
+                        self.bot.database.rollback_return_approval(self.request_id)
+                    except sqlite3.Error:
+                        log.exception("Falha ao reverter aprovação do retorno Peace %s", self.request_id)
+                    log.info("Retorno Peace %s voltou a pendente após falha no Discord", self.request_id)
+                    self.enable_all()
+                    self.processing = False
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno não aplicado",
+                            "Não consegui aplicar os cargos do retorno. A solicitação continua pendente e o ID permanece reservado.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
+                    return
+                try:
+                    await target.send(
+                        f"Seu retorno à Peace foi aprovado. O ID antigo `{old_id}` foi liberado e seu novo ID é `{new_id}`."
+                    )
+                except (discord.Forbidden, discord.HTTPException):
+                    log.info("Não consegui enviar a confirmação do retorno Peace %s", target.id)
+                logged = await self.bot.send_log(
+                    "Retorno Peace aprovado",
+                    actor=member,
+                    subject=target,
+                    fields=(
+                        ("Usuário", target.mention),
+                        ("ID anterior", f"`{old_id}`"),
+                        ("Novo ID", f"`{new_id}`"),
+                        ("Aprovado por", member.mention),
+                        ("Horário", f"<t:{now_unix()}:F>"),
+                    ),
+                )
+                if not logged:
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno aplicado · log pendente",
+                            "O retorno foi aplicado, mas não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                            color=0xF1C40F,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    return
+                removed = await self.remove_terminal_card(interaction)
+                await self.terminal_feedback(
+                    interaction,
+                    "Retorno aprovado",
+                    (
+                        f"O ID antigo `{old_id}` foi liberado e o novo ID `{new_id}` foi aplicado. "
+                        + ("O resultado está no canal logs." if removed else "O resultado está no canal logs, mas o cartão permaneceu no scan-only para conferência.")
+                    ),
+                    color=0x57F287,
+                )
+        finally:
+            if self.processing:
+                self.processing = False
+
+    async def reject_return(self, interaction: discord.Interaction) -> None:
+        member = interaction.user if isinstance(interaction.user, discord.Member) else None
+        if member is None or not reviewer_member(member, self.bot.settings):
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação não autorizada",
+                    "Somente Staff ou Management autorizado pode recusar este retorno.",
+                    color=0xED4245,
+                    footer="Peace · retorno",
+                ),
+            )
+            return
+        if self.processing:
+            await interaction.response.defer()
+            return
+        self.processing = True
+        self.disable_all()
+        try:
+            async with self.bot.return_mutation_lock(self.request_id):
+                request = self.bot.database.return_request(self.request_id)
+                if request is None or request["status"] != "pending":
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Retorno já processado",
+                            "Este retorno não aceita novas ações.",
+                            color=0x95A5A6,
+                            footer="Peace · retorno",
+                        ),
+                        view=None,
+                    )
+                    return
+                await self.edit_source(
+                    interaction,
+                    embed=outcome_embed(
+                        "Recusa em andamento",
+                        "O retorno será recusado e o ID continuará reservado.",
+                        color=0x5865F2,
+                        footer="Peace · retorno",
+                    ),
+                    view=self,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                try:
+                    rejected = self.bot.database.reject_return_request(self.request_id)
+                except sqlite3.Error:
+                    log.exception("Falha ao registrar a recusa do retorno Peace %s", self.request_id)
+                    self.enable_all()
+                    self.processing = False
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Recusa não registrada",
+                            "Não consegui registrar a recusa. O retorno continua pendente e o ID permanece reservado.",
+                            color=0xED4245,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                    )
+                    return
+                if rejected is None:
+                    current = self.bot.database.return_request(self.request_id)
+                    if current is not None and current["status"] == "pending":
+                        self.enable_all()
+                        self.processing = False
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Recusa não confirmada",
+                                "Não consegui validar a reserva do ID. O retorno continua pendente; nada foi alterado.",
+                                color=0xED4245,
+                                footer="Peace · retorno",
+                            ),
+                            view=self,
+                        )
+                    else:
+                        await self.edit_source(
+                            interaction,
+                            embed=outcome_embed(
+                                "Retorno já processado",
+                                "Este retorno não aceita novas ações.",
+                                color=0x95A5A6,
+                                footer="Peace · retorno",
+                            ),
+                            view=None,
+                        )
+                    return
+                target = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
+                if target is not None:
+                    try:
+                        await target.send(
+                            "Seu retorno à Peace foi recusado. O ID anterior continua reservado e não foi liberado para outra pessoa."
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        log.info("Não consegui enviar a recusa do retorno Peace %s", target.id)
+                logged = await self.bot.send_log(
+                    "Retorno Peace recusado",
+                    actor=member,
+                    subject=target,
+                    fields=(
+                        ("Usuário", mention(request["discord_user_id"])),
+                        ("ID reservado", f"`{int(request['old_peace_id'])}`"),
+                        ("Ação", "Novo set de retorno recusado; o ID permanece reservado."),
+                        ("Quem recusou", member.mention),
+                        ("Horário", f"<t:{now_unix()}:F>"),
+                    ),
+                )
+                if not logged:
+                    await self.edit_source(
+                        interaction,
+                        embed=outcome_embed(
+                            "Recusa registrada · log pendente",
+                            "O retorno foi recusado, mas não consegui registrar o resultado no canal logs. O cartão foi mantido para conferência.",
+                            color=0xF1C40F,
+                            footer="Peace · retorno",
+                        ),
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    return
+                removed = await self.remove_terminal_card(interaction)
+                await self.terminal_feedback(
+                    interaction,
+                    "Retorno recusado",
+                    (
+                        f"O ID `{int(request['old_peace_id'])}` continua reservado. "
+                        + ("O resultado está no canal logs." if removed else "O resultado está no canal logs, mas o cartão permaneceu no scan-only para conferência.")
+                    ),
+                    color=0xED4245,
+                )
+        finally:
+            if self.processing:
+                self.processing = False
+
+
+class StartActionSelect(discord.ui.Select):
+    def __init__(self, bot: "PeaceBot", owner_id: int, actions: tuple[str, ...]):
+        self.bot = bot
+        self.owner_id = owner_id
+        options = []
+        if "delete_user" in actions:
+            options.append(
+                discord.SelectOption(
+                    label="Excluir usuário",
+                    value="delete_user",
+                    description="Remove o vínculo Peace e libera o ID com confirmação",
+                )
+            )
+        if "announcement" in actions:
+            options.append(
+                discord.SelectOption(
+                    label="Avisar",
+                    value="announcement",
+                    description="Publica um aviso com Markdown e anexos",
+                )
+            )
+        super().__init__(
+            placeholder="Escolha o que deseja fazer",
+            custom_id="peace_start_action",
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este menu só pode ser usado pelo responsável no PV do bot.")
+            return
+        action = self.values[0]
+        if action == "delete_user":
+            member = await self.bot.authorized_dm_member(self.owner_id, "founder")
+            if member is None:
+                await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
+                return
+            await interaction.response.defer()
+            candidates = await self.bot.delete_peace_candidates()
+            if not candidates:
+                await interaction.edit_original_response(
+                    content="Não encontrei membros com vínculo Peace disponível para revisão no servidor.",
+                    view=None,
+                )
+                return
+            view = DeleteUserSelectionView(self.bot, self.owner_id, candidates)
+            await interaction.edit_original_response(
+                content=view.prompt(),
+                view=view,
+            )
+            return
+        if action == "announcement":
+            member = await self.bot.authorized_dm_member(self.owner_id, "management")
+            if member is None:
+                await respond(interaction, "Apenas o cargo Management pode publicar avisos.")
+                return
+            await self.bot.collect_announcement(interaction, member)
+            return
+        await respond(interaction, "Ação desconhecida. Abra o `/start` novamente.")
+
+
+class StartActionView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", owner_id: int, actions: tuple[str, ...]):
+        super().__init__(timeout=300)
+        self.add_item(StartActionSelect(bot, owner_id, actions))
+
+
+class DeleteUserSelectionView(discord.ui.View):
+    PAGE_SIZE = 25
+
+    def __init__(self, bot: "PeaceBot", owner_id: int, candidates: list[discord.Member]):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.owner_id = owner_id
+        self.candidates = candidates
+        self.page = 0
+        self.select_item = self._build_select()
+        self.add_item(self.select_item)
+        self.previous_button: discord.ui.Button | None = None
+        self.next_button: discord.ui.Button | None = None
+        if self.total_pages > 1:
+            self.previous_button = discord.ui.Button(
+                label="← Anterior",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"peace_start_delete_prev_{owner_id}",
+                row=1,
+            )
+            self.next_button = discord.ui.Button(
+                label="Próxima →",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"peace_start_delete_next_{owner_id}",
+                row=1,
+            )
+            self.previous_button.callback = self.previous_page
+            self.next_button.callback = self.next_page
+            self.add_item(self.previous_button)
+            self.add_item(self.next_button)
+            self._refresh_navigation()
+
+    @property
+    def total_pages(self) -> int:
+        return max(1, (len(self.candidates) + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+
+    def prompt(self) -> str:
+        return (
+            "Selecione um ou mais membros do servidor Peace para revisar. "
+            "A remoção só acontece depois da confirmação final.\n\n"
+            f"Página **{self.page + 1}/{self.total_pages}** · "
+            f"{len(self.candidates)} membros com vínculo Peace encontrados."
+        )
+
+    def _page_candidates(self) -> list[discord.Member]:
+        start = self.page * self.PAGE_SIZE
+        return self.candidates[start : start + self.PAGE_SIZE]
+
+    def _build_select(self) -> "DeleteUserSelect":
+        return DeleteUserSelect(
+            self.bot,
+            self.owner_id,
+            self._page_candidates(),
+            page=self.page,
+            total_pages=self.total_pages,
+        )
+
+    def _refresh_navigation(self) -> None:
+        if self.previous_button is not None:
+            self.previous_button.disabled = self.page == 0
+        if self.next_button is not None:
+            self.next_button.disabled = self.page >= self.total_pages - 1
+
+    async def _change_page(self, interaction: discord.Interaction, delta: int) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este seletor só pode ser usado pelo responsável no PV do bot.")
+            return
+        self.page = min(max(self.page + delta, 0), self.total_pages - 1)
+        self.remove_item(self.select_item)
+        self.select_item = self._build_select()
+        self.add_item(self.select_item)
+        self._refresh_navigation()
+        await interaction.response.edit_message(content=self.prompt(), view=self)
+
+    async def previous_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, -1)
+
+    async def next_page(self, interaction: discord.Interaction) -> None:
+        await self._change_page(interaction, 1)
+
+
+class DeleteUserSelect(discord.ui.Select):
+    def __init__(
+        self,
+        bot: "PeaceBot",
+        owner_id: int,
+        candidates: list[discord.Member],
+        *,
+        page: int,
+        total_pages: int,
+    ):
+        self.bot = bot
+        self.owner_id = owner_id
+        options = [
+            discord.SelectOption(
+                label=(member.display_name or member.name or str(member.id))[:100],
+                value=str(member.id),
+                description=f"@{member.name} · Discord {member.id}"[:100],
+            )
+            for member in candidates
+        ]
+        super().__init__(
+            custom_id=f"peace_start_delete_users_{owner_id}_{page}",
+            placeholder=f"Selecione membros · página {page + 1}/{total_pages}",
+            min_values=1,
+            max_values=len(options),
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Este seletor só pode ser usado pelo responsável no PV do bot.")
+            return
+        if await self.bot.authorized_dm_member(self.owner_id, "founder") is None:
+            await respond(interaction, "Apenas o cargo Founder pode excluir vínculos Peace.")
+            return
+        target_ids = tuple(dict.fromkeys(int(user_id) for user_id in self.values))
+        targets = "\n".join(f"• {mention(user_id)}" for user_id in target_ids)
+        await interaction.response.edit_message(
+            content="**Confirmação real**\n"
+            "Vou remover os cargos gerenciáveis, manter ou aplicar `Not Verified`, conservar o membro no servidor e liberar o ID Peace somente para registros válidos.\n\n"
+            f"Usuários selecionados:\n{targets}\n\n"
+            "Confirme apenas depois de revisar a lista.",
+            view=DeleteUserConfirmationView(self.bot, self.owner_id, target_ids),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+
+class DeleteUserConfirmationView(discord.ui.View):
+    def __init__(self, bot: "PeaceBot", owner_id: int, target_ids: tuple[int, ...]):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.owner_id = owner_id
+        self.target_ids = target_ids
+        self.processing = False
+
+    def disable_all(self) -> None:
+        for item in self.children:
+            item.disabled = True
+
+    @staticmethod
+    def result_lines(results: tuple[str, ...]) -> str:
+        visible = [f"• {result[:150]}" for result in results[-10:]]
+        hidden = len(results) - len(visible)
+        if hidden > 0:
+            visible.insert(0, f"• … {hidden} resultado(s) anterior(es)")
+        return "\n".join(visible) or "Aguardando o primeiro usuário…"
+
+    @classmethod
+    def progress_content(cls, processed: int, total: int, results: tuple[str, ...]) -> str:
+        completed = max(0, min(processed, total)) if total else 0
+        ratio = completed / total if total else 0
+        filled = min(12, round(ratio * 12))
+        bar = "█" * filled + "░" * (12 - filled)
+        percentage = int(ratio * 100)
+        listing = cls.result_lines(results)
+        return (
+            "**Exclusão em andamento**\n"
+            f"`{bar}` **{completed}/{total}** · **{percentage}%**\n\n"
+            "**Usuários já processados**\n"
+            f"{listing}"
+        )
+
+    @discord.ui.button(
+        label="Confirmar exclusão",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_start_delete_confirm",
+    )
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id or interaction.guild is not None:
+            await respond(interaction, "Esta confirmação só pode ser usada pelo responsável no PV do bot.")
+            return
+        if self.processing:
+            await interaction.response.defer()
+            return
+        actor = await self.bot.authorized_dm_member(self.owner_id, "founder")
+        if actor is None:
+            await respond(interaction, "Apenas o cargo Founder pode confirmar esta exclusão.")
+            return
+        self.processing = True
+        self.disable_all()
+        await interaction.response.edit_message(
+            content=self.progress_content(0, len(self.target_ids), ()),
+            view=self,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+        async def update_progress(processed: int, total: int, results: tuple[str, ...]) -> None:
+            content = self.progress_content(processed, total, results)
+            try:
+                if interaction.message is not None:
+                    await interaction.message.edit(
+                        content=content,
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                else:
+                    await interaction.edit_original_response(
+                        content=content,
+                        view=self,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+            except (discord.Forbidden, discord.HTTPException, discord.NotFound):
+                log.info("Não consegui atualizar o progresso da exclusão Peace")
+
+        try:
+            results = await self.bot.delete_peace_users(
+                self.target_ids,
+                actor,
+                progress_callback=update_progress,
+            )
+            content = (
+                "**Resultado da exclusão**\n"
+                "**Usuários processados**\n"
+                f"{self.result_lines(tuple(results)) if results else 'Nenhum usuário foi processado.'}"
+            )
+        except Exception:
+            log.exception("Falha inesperada na confirmação de exclusão Peace")
+            content = "**Exclusão não concluída**\nOcorreu uma falha inesperada. Verifique os logs antes de tentar novamente."
         if interaction.message is not None:
             await interaction.message.edit(
-                content=f"ID liberado por {member.mention}. Antigo: `{old_id}` · novo: `{new_id}`.",
-                embed=None,
-                view=None,
-                allowed_mentions=discord.AllowedMentions(users=True),
+                content=content,
+                view=self,
+                allowed_mentions=discord.AllowedMentions.none(),
             )
+        else:
+            await interaction.edit_original_response(
+                content=content,
+                view=self,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+    @discord.ui.button(
+        label="Cancelar",
+        style=discord.ButtonStyle.secondary,
+        custom_id="peace_start_delete_cancel",
+    )
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id:
+            await respond(interaction, "Esta confirmação pertence a outro Founder.")
+            return
+        self.disable_all()
+        await interaction.response.edit_message(content="Operação cancelada. Nenhum vínculo foi alterado.", view=self)
 
 
 class WelcomeView(discord.ui.View):
     def __init__(self, bot: "PeaceBot"):
         super().__init__(timeout=None)
         guild_id = bot.settings.guild_id
-        set_id = bot.settings.set_channel_id
         rules_id = bot.settings.rules_channel_id
         ticket_id = bot.settings.ticket_panel_channel_id
         if rules_id is not None:
@@ -673,9 +2273,9 @@ class WelcomeView(discord.ui.View):
                 url=f"https://discord.com/channels/{guild_id}/{rules_id}",
             ))
         self.add_item(discord.ui.Button(
-            label="◈ Pedir set",
+            label="↗ Candidatar pelo site",
             style=discord.ButtonStyle.link,
-            url=f"https://discord.com/channels/{guild_id}/{set_id}",
+            url=f"{bot.settings.website_url.rstrip('/')}/candidatura/",
         ))
         if ticket_id is not None:
             self.add_item(discord.ui.Button(
@@ -831,21 +2431,10 @@ class TicketView(discord.ui.View):
         if guild is None:
             await respond(interaction, "Não consegui localizar o servidor.")
             return
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        }
-        owner = await self.bot.member(guild, int(ticket["owner_user_id"]))
-        if owner is not None:
-            overwrites[owner] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
-        if self.bot.settings.staff_role_id:
-            role = guild.get_role(self.bot.settings.staff_role_id)
-            if role is not None:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
         try:
             voice = await guild.create_voice_channel(
                 name=f"call-{clean_name(interaction.channel.name)}"[:90],
                 category=interaction.channel.category,
-                overwrites=overwrites,
                 reason="Call criada para ticket",
             )
             self.bot.database.set_ticket_voice(interaction.channel.id, voice.id)
@@ -1004,21 +2593,10 @@ class StaffTicketView(discord.ui.View):
             if guild is None:
                 await respond(interaction, "Não consegui localizar o servidor.")
                 return
-            overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-                guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            }
-            owner = await self.bot.member(guild, int(ticket["owner_user_id"]))
-            if owner is not None:
-                overwrites[owner] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
-            if self.bot.settings.staff_role_id:
-                role = guild.get_role(self.bot.settings.staff_role_id)
-                if role is not None:
-                    overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
             try:
                 voice = await guild.create_voice_channel(
                     name=f"call-{clean_name(channel.name)}"[:90],
                     category=channel.category,
-                    overwrites=overwrites,
                     reason="Call criada pela staff para ticket",
                 )
                 self.bot.database.set_ticket_voice(self.ticket_channel_id, voice.id)
@@ -1076,8 +2654,13 @@ class ClockEndView(discord.ui.View):
                 return
             seconds = int(row["duration_seconds"] or 0)
             await self.bot.send_log(
-                f"**Ponto finalizado**\nUsuário: {interaction.user.mention}\n"
-                f"Tempo registrado: `{duration_text(seconds)}`\nHorário: <t:{now_unix()}:F>"
+                "Ponto finalizado",
+                actor=interaction.user,
+                fields=(
+                    ("Usuário", interaction.user.mention),
+                    ("Tempo registrado", duration_text(seconds)),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
             )
             await respond(interaction, f"Ponto finalizado: `{duration_text(seconds)}`.")
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
@@ -1101,7 +2684,12 @@ class OperationsView(discord.ui.View):
             if active is None:
                 self.bot.database.start_clock(interaction.user.id)
                 await self.bot.send_log(
-                    f"**Ponto iniciado**\nUsuário: {interaction.user.mention}\nHorário: <t:{now_unix()}:F>"
+                    "Ponto iniciado",
+                    actor=interaction.user,
+                    fields=(
+                        ("Usuário", interaction.user.mention),
+                        ("Horário", f"<t:{now_unix()}:F>"),
+                    ),
                 )
                 await respond(interaction, "Ponto iniciado. Use × Encerrar ponto quando sair.", view=ClockEndView(self.bot))
             else:
@@ -1135,7 +2723,7 @@ class AbsenceModal(discord.ui.Modal, title="Solicitar ausência"):
             end_date=end,
             reason=str(self.reason.value).strip(),
         )
-        manager = f"<@&{self.bot.settings.manager_role_id}>" if self.bot.settings.manager_role_id else "Gerência"
+        manager = f"<@&{self.bot.settings.manager_role_id}>" if self.bot.settings.manager_role_id else "Management"
         channel = self.bot.guild.get_channel(self.bot.settings.absence_channel_id or 0) if self.bot.guild else None
         if isinstance(channel, discord.TextChannel):
             await channel.send(
@@ -1159,6 +2747,9 @@ class PeaceBot(commands.Bot):
         self.database = PeaceDatabase(settings.database_path)
         self.drafts: dict[int, SetDraft] = {}
         self.developer_drafts: dict[int, DeveloperDraft] = {}
+        self.verification_challenges: dict[int, tuple[str, float]] = {}
+        self.entry_sessions: dict[str, EntryInviteSession] = {}
+        self.entry_invite_lock = asyncio.Lock()
         self.guild: discord.Guild | None = None
         self.panels_synced = False
         self.iris = Iris(settings.iris_url, settings.iris_model) if settings.iris_enabled else None
@@ -1169,16 +2760,29 @@ class PeaceBot(commands.Bot):
         self.set_approval_views: dict[int, SetApprovalView] = {}
         self.return_approval_views: dict[int, ReturnApprovalView] = {}
         self.developer_approval_views: dict[int, DeveloperApprovalView] = {}
+        self.announcement_collectors: set[int] = set()
+        self.public_media_cache: dict[str, PublicMediaCache] = {}
+        self.public_media_cache_lock = asyncio.Lock()
+        self.public_api_rate_limit_events: dict[str, list[float]] = {}
+        self.public_member_overview_last_request: dict[int, float] = {}
         self.booster_tasks: set[int] = set()
+        self.managed_peace_role_removals: set[int] = set()
+        self.member_mutation_locks: dict[int, asyncio.Lock] = {}
+        self.return_mutation_locks: dict[int, asyncio.Lock] = {}
         self.reception_visibility_synced = False
         self.iris_context_cache = ""
         self.iris_context_cache_at = 0.0
         self.iris_context_lock = asyncio.Lock()
         self.iris_context_task: asyncio.Task | None = None
+        self.public_api_runner: web.AppRunner | None = None
+        self.central_bridge_runner: web.AppRunner | None = None
+        self.afk_presence_lock = asyncio.Lock()
 
     async def setup_hook(self) -> None:
         self.database.initialize()
-        self.add_view(SetView(self))
+        await self.start_public_api()
+        await self.start_central_bridge()
+        self.add_view(VerificationStartView(self))
         self.add_view(SupportView(self))
         self.add_view(OperationsView(self))
         self.add_view(ClockEndView(self))
@@ -1191,9 +2795,3479 @@ class PeaceBot(commands.Bot):
         for row in self.database.pending_developer_requests():
             self.developer_approval_view(int(row["id"]))
         try:
+            await self.tree.sync()
             await self.tree.sync(guild=discord.Object(id=self.settings.guild_id))
         except discord.HTTPException:
             log.exception("Falha ao sincronizar comandos slash")
+
+    def create_verification_challenge(self, member_id: int) -> list[str]:
+        """Create a short-lived CAPTCHA and return its shuffled choices."""
+        answer = "".join(secrets.choice(VERIFICATION_ALPHABET) for _ in range(6))
+        options = {answer}
+        while len(options) < 5:
+            options.add("".join(secrets.choice(VERIFICATION_ALPHABET) for _ in range(6)))
+        choices = list(options)
+        secrets.SystemRandom().shuffle(choices)
+        self.verification_challenges[member_id] = (answer, time.monotonic() + 180)
+        return choices
+
+    def bind_flow_role_id(self, setting_name: str, role_id: int) -> None:
+        """Bind a discovered flow role without mutating frozen configuration."""
+        value = int(role_id)
+        if is_dataclass(self.settings):
+            self.settings = replace(self.settings, **{setting_name: value})
+            return
+        # Test doubles and local integrations may provide a mutable settings
+        # namespace instead of the production Settings dataclass.
+        setattr(self.settings, setting_name, value)
+
+    async def ensure_flow_roles(self) -> None:
+        """Create the status and onboarding labels used by the member flow."""
+        if self.guild is None:
+            return
+        specs = (
+            (
+                NOT_VERIFIED_ROLE_NAME,
+                getattr(self.settings, "not_verified_role_id", None),
+                ("Não Verificado", "Não verificado", "Nao verificado"),
+                discord.Colour(0x7F8C8D),
+            ),
+            (
+                INTERN_ROLE_NAME,
+                getattr(self.settings, "intern_role_id", None),
+                ("Intern", "Estagiario"),
+                discord.Colour(0x1ABC9C),
+            ),
+            (
+                INVESTIGATOR_ROLE_NAME,
+                getattr(self.settings, "investigator_role_id", None),
+                ("Investigator",),
+                discord.Colour(0x3498DB),
+            ),
+            (
+                LEAD_INVESTIGATOR_ROLE_NAME,
+                getattr(self.settings, "lead_investigator_role_id", None),
+                (
+                    "Lead Investigator",
+                    "Chief Investigator",
+                    "Investigador Líder",
+                    "Investigador-chefe",
+                    "Investigador chefe",
+                ),
+                discord.Colour(0x9B59B6),
+            ),
+        )
+        for name, role_id, aliases, colour in specs:
+            access_role = name in {INVESTIGATOR_ROLE_NAME, LEAD_INVESTIGATOR_ROLE_NAME}
+            role = (
+                unique_role_named(self.guild, role_id, name, *aliases)
+                if access_role
+                else role_named(self.guild, role_id, name, *aliases)
+            )
+            if access_role and role is None and role_id is None:
+                alias_names = {name.casefold(), *(alias.casefold() for alias in aliases)}
+                if any(
+                    str(getattr(existing, "name", "")).casefold() in alias_names
+                    for existing in getattr(self.guild, "roles", ())
+                ):
+                    log.error("Cargo de acesso %s duplicado; autorização investigativa permanece fechada", name)
+                    continue
+            if role is None:
+                role = await self.guild.create_role(
+                    name=name,
+                    colour=colour,
+                    permissions=discord.Permissions.none(),
+                    hoist=False,
+                    mentionable=False,
+                    reason="Criar cargo do fluxo de entrada da Peace",
+                )
+            if role is None:
+                log.error("Não foi possível resolver ou criar o cargo %s", name)
+                continue
+            if (
+                role.name != name
+                or role.permissions != discord.Permissions.none()
+                or role.colour.value != colour.value
+            ):
+                await role.edit(
+                    name=name,
+                    colour=colour,
+                    permissions=discord.Permissions.none(),
+                    reason="Padronizar cargo do fluxo de entrada da Peace",
+                )
+            if name == INVESTIGATOR_ROLE_NAME and getattr(self.settings, "investigator_role_id", None) is None:
+                self.bind_flow_role_id("investigator_role_id", role.id)
+            elif name == LEAD_INVESTIGATOR_ROLE_NAME and getattr(self.settings, "lead_investigator_role_id", None) is None:
+                self.bind_flow_role_id("lead_investigator_role_id", role.id)
+
+    def entry_guild(self) -> discord.Guild | None:
+        return self.guild or self.get_guild(self.settings.guild_id)
+
+    def entry_verification_channel(self, guild: discord.Guild):
+        channel_id = getattr(self.settings, "verification_channel_id", None)
+        channel = guild.get_channel(int(channel_id)) if channel_id is not None else None
+        if channel is not None and callable(getattr(channel, "create_invite", None)):
+            return channel
+        return discord.utils.find(
+            lambda item: item.name.casefold() in {VERIFICATION_CHANNEL_NAME.casefold(), "verificar"}
+            and callable(getattr(item, "create_invite", None)),
+            getattr(guild, "text_channels", ()),
+        )
+
+    @staticmethod
+    def entry_session_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token) else None
+
+    def prune_entry_sessions(self) -> None:
+        now = datetime.now(timezone.utc)
+        for token, session in tuple(self.entry_sessions.items()):
+            if session.expires_at <= now:
+                self.entry_sessions.pop(token, None)
+
+    @staticmethod
+    def entry_invite_code(invite: object) -> str:
+        code = str(getattr(invite, "code", "") or "").strip()
+        if code:
+            return code
+        parsed = urlsplit(str(getattr(invite, "url", "") or ""))
+        return parsed.path.strip("/").split("/")[-1]
+
+    async def entry_invite_list(self, guild: discord.Guild) -> tuple[list[object], bool]:
+        """Read invites from the narrowest available Discord endpoint.
+
+        The boolean records whether at least one endpoint was inspected. An
+        empty list can mean that the individual invite is no longer available;
+        a false value means the bot could not inspect invites at all.
+        """
+        verification_channel = self.entry_verification_channel(guild)
+        invite_sources = [verification_channel, guild]
+        inspected = False
+        for source in invite_sources:
+            for method_name in ("invites", "fetch_invites"):
+                list_invites = getattr(source, method_name, None)
+                if not callable(list_invites):
+                    continue
+                try:
+                    invites = await list_invites()
+                except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
+                    continue
+                inspected = True
+                if invites:
+                    return list(invites), True
+        return [], inspected
+
+    async def entry_invite_for_code(
+        self,
+        guild: discord.Guild,
+        invite_code: str,
+    ) -> tuple[object | None, bool]:
+        invites, inspected = await self.entry_invite_list(guild)
+        for invite in invites:
+            if self.entry_invite_code(invite) == invite_code:
+                return invite, inspected
+        return None, inspected
+
+    def entry_member(self, session: EntryInviteSession) -> discord.Member | None:
+        if session.discord_user_id is None:
+            return None
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        get_member = getattr(guild, "get_member", None)
+        return get_member(int(session.discord_user_id)) if callable(get_member) else None
+
+    async def refresh_entry_session(self, session: EntryInviteSession) -> None:
+        if session.expires_at <= datetime.now(timezone.utc):
+            session.status = "expired"
+            return
+        member = self.entry_member(session)
+        if member is None:
+            if session.status == "waiting_invite":
+                now = time.monotonic()
+                created_at = session.created_at
+                if session.join_observed_at is not None:
+                    return
+                if created_at is not None and (datetime.now(timezone.utc) - created_at).total_seconds() < ENTRY_INVITE_PROPAGATION_GRACE_SECONDS:
+                    return
+                if now - session.last_invite_check_at >= 5:
+                    session.last_invite_check_at = now
+                    guild = self.entry_guild()
+                    if guild is not None:
+                        invite, inspected = await self.entry_invite_for_code(guild, session.invite_code)
+                        if inspected and invite is None:
+                            session.status = "invite_unavailable"
+            return
+
+        session.discord_username = str(
+            getattr(member, "display_name", None)
+            or getattr(member, "global_name", None)
+            or getattr(member, "name", "Discord")
+        )[:80]
+        guild = self.entry_guild()
+        if guild is None:
+            return
+        visitor = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        not_verified = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if role_member(member, getattr(self.settings, "peace_role_id", None)) or (
+            visitor is not None and visitor in member.roles
+        ):
+            session.status = "verified"
+        elif not_verified is not None and not_verified in member.roles:
+            session.status = "verification_pending"
+        else:
+            session.status = "role_missing"
+
+    async def bind_entry_invite(self, member: discord.Member) -> None:
+        """Bind a one-use invite to the member that joined through it."""
+        async with self.entry_invite_lock:
+            self.prune_entry_sessions()
+            sessions = [
+                session
+                for session in self.entry_sessions.values()
+                if session.discord_user_id is None and session.status == "waiting_invite"
+            ]
+            if not sessions:
+                return
+            observed_at = datetime.now(timezone.utc)
+            for session in sessions:
+                session.join_observed_at = observed_at
+
+            # Discord can publish on_member_join before the invite usage counter
+            # is visible to the next REST request. Keep the session in the
+            # waiting state while the counter settles instead of making the
+            # browser generate a replacement invite too early.
+            retry_delays = (0, 1, 2, 3, 4, 5, 6, 8, 10, 12)
+            for attempt, delay in enumerate(retry_delays):
+                if delay:
+                    await asyncio.sleep(delay)
+                invites, inspected = await self.entry_invite_list(member.guild)
+                if not inspected:
+                    log.info("Não consegui consultar os convites do canal de verificação para acompanhar a entrada pública")
+                    return
+                by_code = {self.entry_invite_code(invite): invite for invite in invites}
+                for session in sessions:
+                    invite = by_code.get(session.invite_code)
+                    if invite is None:
+                        continue
+                    try:
+                        raw_uses = getattr(invite, "uses", None)
+                        uses = int(raw_uses) if raw_uses is not None else None
+                    except (TypeError, ValueError):
+                        uses = None
+                    if uses is None or uses <= session.initial_uses:
+                        continue
+                    session.discord_user_id = member.id
+                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.status = "verification_pending"
+                    await self.refresh_entry_session(session)
+                    delete_invite = getattr(invite, "delete", None)
+                    if callable(delete_invite):
+                        try:
+                            await delete_invite(reason="Convite individual do fluxo público de entrada já utilizado")
+                        except (discord.Forbidden, discord.HTTPException, AttributeError):
+                            log.warning("Não consegui remover o convite individual após associar a entrada pública")
+                    log.info("Entrada pública associada pelo convite individual")
+                    return
+            log.info("A entrada pública ocorreu, mas o uso do convite ainda não apareceu após as tentativas de consulta")
+            joined_at = getattr(member, "joined_at", None)
+            if isinstance(joined_at, datetime) and joined_at.tzinfo is None:
+                joined_at = joined_at.replace(tzinfo=timezone.utc)
+            if isinstance(joined_at, datetime):
+                recent_sessions = [
+                    session
+                    for session in sessions
+                    if session.created_at is not None
+                    and abs((joined_at - session.created_at).total_seconds()) <= 120
+                ]
+                if len(recent_sessions) == 1:
+                    session = recent_sessions[0]
+                    session.discord_user_id = member.id
+                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.status = "verification_pending"
+                    await self.refresh_entry_session(session)
+                    log.info("Entrada pública associada pelo único horário de entrada compatível")
+
+    async def entry_session_payload(self, session: EntryInviteSession) -> dict[str, object]:
+        await self.refresh_entry_session(session)
+        member = self.entry_member(session)
+        guild = self.entry_guild()
+        visitor = (
+            role_named(
+                guild,
+                getattr(self.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
+                "Visitor",
+            )
+            if guild
+            else None
+        )
+        not_verified = (
+            role_named(
+                guild,
+                getattr(self.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            if guild
+            else None
+        )
+        has_visitor = bool(member is not None and visitor is not None and visitor in member.roles)
+        has_not_verified = bool(member is not None and not_verified is not None and not_verified in member.roles)
+        return {
+            "session_token": session.session_token,
+            "invite_url": session.invite_url if session.status not in {"invite_unavailable", "expired"} else "",
+            "expires_at": session.expires_at.isoformat(),
+            "expires_in": max(0, int((session.expires_at - datetime.now(timezone.utc)).total_seconds())),
+            "status": session.status,
+            "discord_user": (
+                {
+                    "id": str(session.discord_user_id),
+                    "username": session.discord_username or "Discord",
+                    "mention": f"@{session.discord_username or 'usuário'}",
+                }
+                if session.discord_user_id is not None
+                else None
+            ),
+            "verification": {
+                "channel": VERIFICATION_CHANNEL_NAME,
+                "has_not_verified_role": has_not_verified,
+                "has_visitor_role": has_visitor,
+                "completed": session.status == "verified",
+            },
+        }
+
+    async def public_api_entry_start(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de entrada inválidos."}, status=400)
+
+        supplied_token = payload.get("session_token", "")
+        if supplied_token and self.entry_session_token(supplied_token) is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(self.entry_session_token(supplied_token) or "")
+        if session is not None:
+            return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        channel = self.entry_verification_channel(guild)
+        if channel is None:
+            return web.json_response({"ok": False, "code": "VERIFY_CHANNEL_UNAVAILABLE", "message": "O canal verify não está disponível agora."}, status=503)
+        try:
+            invite = await channel.create_invite(
+                max_age=ENTRY_INVITE_MAX_AGE_SECONDS,
+                max_uses=ENTRY_INVITE_MAX_USES,
+                unique=True,
+                reason="Convite único do fluxo público de entrada Peace",
+            )
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            log.info("Não consegui criar o convite único do fluxo público de entrada")
+            return web.json_response({"ok": False, "code": "INVITE_UNAVAILABLE", "message": "Não foi possível gerar o convite agora."}, status=503)
+
+        invite_code = self.entry_invite_code(invite)
+        invite_url = str(getattr(invite, "url", "") or "").strip() or (f"https://discord.gg/{invite_code}" if invite_code else "")
+        if not invite_code or not invite_url:
+            return web.json_response({"ok": False, "code": "INVITE_INVALID", "message": "O Discord retornou um convite inválido."}, status=503)
+        try:
+            initial_uses = int(getattr(invite, "uses", 0) or 0)
+        except (TypeError, ValueError):
+            initial_uses = 0
+        token = secrets.token_urlsafe(32)
+        created_at = datetime.now(timezone.utc)
+        session = EntryInviteSession(
+            session_token=token,
+            invite_code=invite_code,
+            invite_url=invite_url,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=ENTRY_INVITE_MAX_AGE_SECONDS),
+            created_at=created_at,
+            initial_uses=initial_uses,
+        )
+        self.entry_sessions[token] = session
+        return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+    async def public_api_entry_status(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        # Entry tokens must not travel in URLs: browser history, referrers and
+        # reverse-proxy access logs can retain query strings. The supported
+        # client contract is the POST body below.
+        supplied_token = None
+        if request.method == "POST":
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+                supplied_token = payload.get("session_token")
+            except (TypeError, json.JSONDecodeError):
+                return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acompanhamento inválidos."}, status=400)
+        token = self.entry_session_token(supplied_token)
+        if token is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(token)
+        if session is None:
+            return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
+        return web.json_response({"ok": True, **await self.entry_session_payload(session)})
+
+    async def public_api_entry_repair(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de diagnóstico inválidos."}, status=400)
+
+        token = self.entry_session_token(payload.get("session_token"))
+        if token is None:
+            return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
+        self.prune_entry_sessions()
+        session = self.entry_sessions.get(token)
+        if session is None:
+            return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
+        if session.discord_user_id is None:
+            return web.json_response({"ok": False, "code": "NOT_JOINED", "message": "Ainda não identifiquei sua entrada pelo convite."}, status=409)
+
+        supplied_id = str(payload.get("discord_id", "")).strip()
+        if supplied_id and (not supplied_id.isdigit() or not 15 <= len(supplied_id) <= 22):
+            return web.json_response({"ok": False, "code": "INVALID_DISCORD_ID", "message": "O ID do Discord deve conter somente números."}, status=400)
+        if supplied_id and int(supplied_id) != session.discord_user_id:
+            return web.json_response({"ok": False, "code": "DISCORD_ID_MISMATCH", "message": "O ID informado não corresponde à conta identificada pelo convite."}, status=400)
+        for key, maximum in (("discord_username", 80), ("discord_profile_url", 300)):
+            if len(str(payload.get(key, "") or "")) > maximum:
+                return web.json_response({"ok": False, "code": "FIELD_TOO_LONG", "message": "Um dos campos ultrapassou o limite permitido."}, status=400)
+        if time.monotonic() - session.last_repair_at < 5:
+            return web.json_response({"ok": False, "code": "REPAIR_THROTTLED", "message": "Aguarde alguns segundos antes de tentar novamente."}, status=429, headers={"Retry-After": "5"})
+        session.last_repair_at = time.monotonic()
+
+        member = self.entry_member(session)
+        guild = self.entry_guild()
+        if member is None or guild is None:
+            return web.json_response({"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "Não consegui localizar sua entrada no servidor."}, status=404)
+        visitor = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        not_verified = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if role_member(member, getattr(self.settings, "peace_role_id", None)) or (visitor is not None and visitor in member.roles):
+            session.status = "verified"
+            return web.json_response({"ok": True, "code": "ALREADY_VERIFIED", "message": "Sua verificação já foi concluída.", **await self.entry_session_payload(session)})
+        if not_verified is None:
+            return web.json_response({"ok": False, "code": "ROLE_NOT_CONFIGURED", "message": "O cargo Not Verified não está configurado. A staff precisa corrigir a configuração."}, status=503)
+        if not_verified not in member.roles:
+            bot_member = getattr(guild, "me", None)
+            if bot_member is None or not role_is_manageable(not_verified, bot_member):
+                return web.json_response({"ok": False, "code": "ROLE_HIERARCHY", "message": "O bot não consegue aplicar Not Verified por causa da hierarquia de cargos."}, status=409)
+            try:
+                await member.add_roles(not_verified, reason="Reparo solicitado no fluxo público de entrada Peace")
+            except (discord.Forbidden, discord.HTTPException):
+                return web.json_response({"ok": False, "code": "ROLE_UPDATE_FAILED", "message": "Não consegui aplicar Not Verified. A staff precisa revisar as permissões."}, status=502)
+            session.status = "verification_pending"
+            return web.json_response({"ok": True, "code": "ROLE_REPAIRED", "message": "Apliquei Not Verified. Agora abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
+        session.status = "verification_pending"
+        return web.json_response({"ok": True, "code": "ROLE_READY", "message": "Sua conta está pronta. Abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
+
+    async def public_member_auth_request(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
+
+        raw_peace_id = payload.get("peace_id")
+        peace_id = self.public_peace_id(raw_peace_id)
+        challenge_token = self.public_member_challenge_token(request)
+        raw_peace_id_is_blank = raw_peace_id is None or (
+            isinstance(raw_peace_id, str) and not raw_peace_id.strip()
+        )
+        if peace_id is None and raw_peace_id_is_blank and challenge_token is not None:
+            previous = self.database.central_login_challenge_for_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+            if previous is not None:
+                peace_id = int(previous["peace_id"])
+        if peace_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_PEACE_ID", "message": "O ID Peace deve conter somente números."}, status=400)
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        try:
+            member = await self.public_auth_member(peace_id)
+            if member is None:
+                return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
+            if not self.database.central_login_request_allowed(
+                discord_user_id=member.id,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                max_user_requests=3,
+                max_client_requests=60,
+            ):
+                return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
+            issued, challenge_token = await self.issue_public_auth_code(member, peace_id)
+        except (sqlite3.Error, discord.DiscordException, asyncio.TimeoutError, OSError):
+            log.warning("Fonte de autenticação pública indisponível ao solicitar código", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if issued is None:
+            return web.json_response({"ok": False, "code": "AUTH_THROTTLED", "message": PUBLIC_MEMBER_AUTH_THROTTLED}, status=429, headers={"Retry-After": "600"})
+        if not issued:
+            return web.json_response({"ok": False, "code": "DM_UNAVAILABLE", "message": "Não consegui enviar a mensagem privada. Abra suas DMs no Discord."}, status=502)
+        code_ttl_seconds = self.bounded_auth_code_ttl()
+        response = web.json_response({
+            "ok": True,
+            "message": "Código enviado para a sua DM no Discord.",
+            "code_expires_in": code_ttl_seconds,
+        })
+        response.set_cookie(
+            PUBLIC_MEMBER_CHALLENGE_COOKIE,
+            challenge_token or "",
+            max_age=code_ttl_seconds,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            path=PUBLIC_MEMBER_CHALLENGE_PATH,
+        )
+        return response
+
+    async def public_member_auth_verify(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de acesso inválidos."}, status=400)
+
+        code = str(payload.get("code", "")).strip()
+        keep_connected = payload.get("keep_connected") is True
+        challenge_token = self.public_member_challenge_token(request)
+        if challenge_token is None:
+            return web.json_response({"ok": False, "code": "AUTH_CHALLENGE_MISSING", "message": "Solicite um novo código para continuar."}, status=400)
+        if not re.fullmatch(r"\d{6}", code):
+            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "Digite o código de 6 números recebido no Discord."}, status=400)
+        try:
+            challenge = self.database.central_login_challenge_for_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+            if challenge is None:
+                return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
+            peace_id = int(challenge["peace_id"])
+            member = await self.public_auth_member(peace_id)
+        except (sqlite3.Error, discord.DiscordException, asyncio.TimeoutError, OSError, ValueError, TypeError):
+            log.warning("Fonte de autenticação pública indisponível ao validar código", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if member is None or not self.session_belongs_to_member(challenge, member):
+            return web.json_response({"ok": False, "code": "AUTH_DENIED", "message": PUBLIC_MEMBER_AUTH_DENIAL}, status=403)
+        try:
+            consumed = self.database.consume_public_login_challenge(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                code=code,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao consumir código web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if consumed is None:
+            return web.json_response({"ok": False, "code": "INVALID_CODE", "message": "O código não confere, expirou ou já foi utilizado."}, status=401)
+        ttl_seconds = self.bounded_auth_session_ttl(persistent=keep_connected)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+        try:
+            token = self.database.create_central_login_session(
+                discord_user_id=member.id,
+                peace_id=peace_id,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+                project_id=None,
+                scope="peace:member",
+                expires_at=expires_at.isoformat(),
+            )
+            row = self.database.validate_central_login_session(
+                token=token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao criar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if row is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_UNAVAILABLE", "message": "A sessão não pôde ser criada agora. Tente novamente em instantes."}, status=503)
+        response = web.json_response({
+            "ok": True,
+            "message": "Acesso confirmado.",
+            "session": self.public_auth_session_payload(row, member=member),
+        })
+        response.set_cookie(
+            PUBLIC_MEMBER_SESSION_COOKIE,
+            token,
+            max_age=ttl_seconds if keep_connected else None,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            path="/",
+        )
+        response.del_cookie(PUBLIC_MEMBER_CHALLENGE_COOKIE, path=PUBLIC_MEMBER_CHALLENGE_PATH)
+        return response
+
+    async def public_member_auth_session(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token = self.public_member_token(request)
+        if token is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": "Sua sessão expirou. Entre novamente."}, status=401)
+        try:
+            row = self.database.validate_central_login_session(
+                token=token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao validar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if row is None:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        try:
+            member = await self.public_auth_member(int(row["peace_id"]))
+        except (discord.DiscordException, asyncio.TimeoutError, OSError):
+            log.warning("Discord indisponível ao validar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if member is None or not self.session_belongs_to_member(row, member):
+            try:
+                self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            except (sqlite3.Error, OSError):
+                log.warning("Não consegui revogar sessão web sem membro ativo", exc_info=True)
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        return web.json_response({"ok": True, "message": "Sessão válida.", "session": self.public_auth_session_payload(row, member=member)})
+
+    async def public_member_auth_revoke(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        tokens = {
+            token
+            for token in (
+                self.public_member_token(request),
+                self.central_bearer_token(request),
+                request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE, ""),
+            )
+            if token and ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token)
+        }
+        if not tokens:
+            return web.json_response({"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED}, status=401)
+        try:
+            for token in tokens:
+                self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite indisponível ao encerrar sessão web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        response = web.json_response({"ok": True, "message": "Sessão encerrada."})
+        response.del_cookie(PUBLIC_MEMBER_SESSION_COOKIE, path="/")
+        response.del_cookie(PUBLIC_MEMBER_CHALLENGE_COOKIE, path=PUBLIC_MEMBER_CHALLENGE_PATH)
+        return response
+
+    async def public_member_session_context(
+        self,
+        request: web.Request,
+    ) -> tuple[str | None, object | None, discord.Member | None]:
+        """Validate the public bearer and live Peace role for every member API call."""
+        token = self.public_member_token(request)
+        if token is None:
+            return None, None, None
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+        )
+        if row is None:
+            return token, None, None
+        member = await self.public_auth_member(int(row["peace_id"]))
+        if member is None or not self.session_belongs_to_member(row, member):
+            self.database.revoke_central_login_session(token=token, client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID)
+            return token, None, None
+        return token, row, member
+
+    def public_member_capabilities(self, member: discord.Member) -> dict[str, bool]:
+        """Derive capabilities from stable role IDs, never from role names."""
+
+        def configured_or_structural(setting_name: str, role_key: str | None = None) -> int | None:
+            configured = getattr(self.settings, setting_name, None)
+            if configured is not None:
+                return int(configured)
+            return canonical_role_id(role_key) if role_key else None
+
+        def has_role(role_id: int | None) -> bool:
+            return role_id is not None and role_member(member, role_id)
+
+        staff = has_role(configured_or_structural("staff_role_id", "staff"))
+        management = has_role(configured_or_structural("manager_role_id", "manager"))
+        founder = has_role(canonical_founder_role_id())
+        # Dev and the two investigative roles are intentionally fail-closed
+        # when their deployment IDs are not configured. Their labels are not
+        # authorization boundaries because Discord members with manage-roles
+        # could otherwise create a same-named visual role.
+        developer = has_role(getattr(self.settings, "central_access_role_id", None))
+        investigator = has_role(getattr(self.settings, "investigator_role_id", None))
+        lead_investigator = has_role(getattr(self.settings, "lead_investigator_role_id", None))
+        return {
+            "investigator": investigator or lead_investigator,
+            "lead_investigator": lead_investigator,
+            "management": management,
+            "staff": staff,
+            "developer": developer,
+            "scan_only": staff or management or founder,
+            "logs": staff or management or founder or developer,
+            "partners_edit": management,
+        }
+
+    @staticmethod
+    def public_avatar_url(subject: object) -> str | None:
+        avatar = getattr(subject, "display_avatar", None) or getattr(subject, "avatar", None)
+        url = getattr(avatar, "url", None)
+        return str(url) if url else None
+
+    @staticmethod
+    def public_message_text(message: object) -> str:
+        """Return bounded public text without allowing Discord mentions to notify."""
+        content = str(getattr(message, "content", "") or "").strip()
+        embeds = getattr(message, "embeds", ()) or ()
+        if (not content or re.fullmatch(r"(?:<@&?\d+>\s*)+", content)) and embeds:
+            description = str(getattr(embeds[0], "description", "") or "").strip()
+            title = str(getattr(embeds[0], "title", "") or "").strip()
+            content = "\n\n".join(part for part in (title, description) if part)
+        content = re.sub(r"<@!?\d+>", "@membro", content)
+        content = re.sub(r"<@&\d+>", "@cargo", content)
+        content = content.replace("@everyone", "@todos").replace("@here", "@canal")
+        return content[:1200]
+
+    @classmethod
+    def public_message_summary(cls, message: object, *, kind: str) -> dict[str, object]:
+        author = getattr(message, "author", None)
+        embeds = getattr(message, "embeds", ()) or ()
+        embed = embeds[0] if embeds else None
+        embed_author = getattr(embed, "author", None) if embed is not None else None
+        footer = getattr(embed, "footer", None) if embed is not None else None
+        footer_text = str(getattr(footer, "text", "") or "")
+        display_name = str(
+            footer_text.removeprefix("Publicado por ").strip()
+            if footer_text.startswith("Publicado por ")
+            else getattr(author, "display_name", None)
+            or getattr(author, "global_name", None)
+            or getattr(author, "name", "Peace")
+        )[:80]
+        avatar_url = cls.public_avatar_url(author)
+        embed_icon = getattr(embed_author, "icon_url", None) if embed_author is not None else None
+        if footer_text.startswith("Publicado por ") and embed_icon:
+            avatar_url = str(embed_icon)
+        created_at = getattr(message, "created_at", None)
+        if isinstance(created_at, datetime):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            published_at = created_at.astimezone(timezone.utc).isoformat()
+        else:
+            published_at = None
+        attachments = getattr(message, "attachments", ()) or ()
+        image_url = next(
+            (
+                str(getattr(attachment, "url", ""))
+                for attachment in attachments
+                if str(getattr(attachment, "content_type", "") or "").startswith("image/")
+                and str(getattr(attachment, "url", ""))
+            ),
+            None,
+        )
+        return {
+            "id": str(getattr(message, "id", "")),
+            "kind": kind,
+            "text": cls.public_message_text(message),
+            "author": display_name,
+            "avatar_url": avatar_url,
+            "published_at": published_at,
+            "image_url": image_url,
+            "url": str(getattr(message, "jump_url", "") or "") or None,
+        }
+
+    async def public_channel_messages(
+        self,
+        channel: object,
+        *,
+        kind: str,
+        limit: int,
+        requester: discord.Member | None = None,
+    ) -> tuple[list[dict[str, object]], bool]:
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return [], False
+        if requester is not None:
+            permissions_for = getattr(channel, "permissions_for", None)
+            if not callable(permissions_for):
+                return [], False
+            try:
+                permissions = permissions_for(requester)
+                if not getattr(permissions, "view_channel", False) or not getattr(permissions, "read_message_history", False):
+                    return [], False
+            except (AttributeError, TypeError, discord.DiscordException):
+                return [], False
+        items: list[dict[str, object]] = []
+        try:
+            async for message in history(limit=max(1, min(limit, 24))):
+                summary = self.public_message_summary(message, kind=kind)
+                if summary["text"] or summary["image_url"]:
+                    items.append(summary)
+                if len(items) >= limit:
+                    break
+        except (
+            discord.Forbidden,
+            discord.HTTPException,
+            asyncio.TimeoutError,
+            OSError,
+            AttributeError,
+            TypeError,
+        ):
+            log.info("Não consegui ler a fonte pública %s", kind)
+            return [], False
+        return items, True
+
+    def public_partner_channel(self) -> discord.TextChannel | None:
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        configured_id = getattr(self.settings, "website_partners_channel_id", None)
+        if configured_id is not None:
+            configured = guild.get_channel(int(configured_id))
+            if isinstance(configured, discord.TextChannel):
+                return configured
+        names = {name.casefold() for name in PARTNER_CHANNEL_NAMES}
+        return discord.utils.find(
+            lambda channel: isinstance(channel, discord.TextChannel)
+            and (
+                channel.name.casefold() in names
+                or channel.name.casefold().endswith("・parceiros")
+                or channel.name.casefold().endswith("・partners")
+            ),
+            guild.text_channels,
+        )
+
+    async def public_member_auth_overview(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            token, row, member = await self.public_member_session_context(request)
+        except (sqlite3.Error, OSError, discord.DiscordException, asyncio.TimeoutError):
+            log.warning("Fonte de autenticação indisponível ao carregar overview", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "AUTH_UNAVAILABLE", "message": PUBLIC_MEMBER_AUTH_UNAVAILABLE},
+                status=503,
+            )
+        if token is None or row is None or member is None:
+            return web.json_response(
+                {"ok": False, "code": "AUTH_SESSION_INVALID", "message": PUBLIC_MEMBER_SESSION_EXPIRED},
+                status=401,
+            )
+        now = time.monotonic()
+        last_request = self.public_member_overview_last_request.get(member.id, 0.0)
+        if now - last_request < PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS:
+            return web.json_response(
+                {"ok": False, "code": "OVERVIEW_THROTTLED", "message": PUBLIC_MEMBER_OVERVIEW_THROTTLED},
+                status=429,
+                headers={"Retry-After": str(PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS)},
+            )
+        self.public_member_overview_last_request[member.id] = now
+        if len(self.public_member_overview_last_request) > 2048:
+            cutoff = now - 3600
+            self.public_member_overview_last_request = {
+                user_id: timestamp
+                for user_id, timestamp in self.public_member_overview_last_request.items()
+                if timestamp >= cutoff
+            }
+
+        guild = self.entry_guild()
+        capabilities = self.public_member_capabilities(member)
+        media_results = await asyncio.gather(
+            self.public_media_items_with_state("moments"),
+            self.public_media_items_with_state("clips"),
+            return_exceptions=True,
+        )
+        normalized_media: list[tuple[list[dict[str, object]], bool]] = []
+        for result in media_results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, Exception):
+                log.warning("Fonte de mídia pública falhou ao montar o overview: %s", type(result).__name__)
+                normalized_media.append(([], False))
+            else:
+                normalized_media.append(result)
+        (moments, moments_available), (clips, clips_available) = normalized_media
+        seed = secrets.randbelow(2**32)
+        media_items = self.select_public_media(moments, "moments", seed)[:3] + self.select_public_media(clips, "clips", seed)[:3]
+        media_available = moments_available or clips_available
+        media_complete = moments_available and clips_available
+        announcement_items, announcement_available = await self.public_channel_messages(
+            self.announcement_channel(),
+            kind="announcement",
+            limit=5,
+            requester=member,
+        )
+        partner_items, partner_available = await self.public_channel_messages(
+            self.public_partner_channel(),
+            kind="partner",
+            limit=8,
+            requester=member,
+        )
+
+        active_items: list[dict[str, object]] = []
+        active_available = True
+        try:
+            active_rows = self.database.active_clocks(limit=24)
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite de presença indisponível para o overview", exc_info=True)
+            active_rows = []
+            active_available = False
+        detailed_presence = capabilities["staff"] or capabilities["management"] or capabilities["developer"]
+        if guild is None:
+            active_available = False
+        for row_clock in active_rows if detailed_presence and active_available else []:
+            if guild is None:
+                break
+            get_member = getattr(guild, "get_member", None)
+            clock_member = get_member(int(row_clock["discord_user_id"])) if callable(get_member) else None
+            if clock_member is None or not self.public_member_has_peace_role(clock_member):
+                continue
+            active_items.append(
+                {
+                    "author": str(getattr(clock_member, "display_name", None) or getattr(clock_member, "name", "membro"))[:80],
+                    "avatar_url": self.public_avatar_url(clock_member),
+                    "started_at": row_clock["started_at"],
+                }
+            )
+
+        def block(
+            items: list[dict[str, object]],
+            source: str,
+            empty_message: str,
+            *,
+            available: bool = True,
+            count: int | None = None,
+            stale: bool | None = None,
+        ) -> dict[str, object]:
+            effective_stale = (not available) if stale is None else stale
+            return {
+                "state": "ready" if items else ("empty" if available else "unavailable"),
+                "source": source,
+                "updated_at": datetime.now(timezone.utc).isoformat() if available else None,
+                "stale": effective_stale,
+                "items": items,
+                "count": count,
+                "message": None if items else empty_message,
+            }
+
+        overview_updated_at = datetime.now(timezone.utc).isoformat()
+        overview: dict[str, object] = {
+            "updated_at": overview_updated_at,
+            "stale": not (announcement_available and media_complete and active_available and partner_available),
+            "member_identity": self.public_auth_session_payload(row, member=member),
+            "next_action": {
+                "state": "discord_authority",
+                "source": "discord",
+                "updated_at": overview_updated_at,
+                "stale": False,
+                "title": "Ações e suporte continuam no Discord",
+                "message": "Use o servidor para pedidos, verificação e atendimento. Esta área acompanha apenas informações autorizadas.",
+            },
+            "capabilities": capabilities,
+            "announcements": block(
+                announcement_items,
+                "discord:avisos",
+                "Nenhum aviso publicado foi sincronizado.",
+                available=announcement_available,
+            ),
+            "media": block(
+                media_items,
+                "discord:midias-clipes",
+                "Nenhuma mídia disponível agora.",
+                available=media_available,
+                stale=not media_complete,
+            ),
+            "active_members": block(
+                active_items,
+                "discord:ponto",
+                (
+                    f"{len(active_rows)} membro(s) com ponto ativo."
+                    if active_rows and not detailed_presence and active_available
+                    else "Nenhum membro está com ponto ativo agora."
+                ),
+                available=active_available,
+                count=len(active_rows) if active_available else None,
+            ),
+            "partners": block(
+                partner_items,
+                "discord:parceiros",
+                "Nenhum parceiro publicado agora.",
+                available=partner_available,
+            ),
+        }
+        if capabilities["investigator"]:
+            overview["investigation"] = block(
+                [],
+                "site:investigations",
+                "A área investigativa é gerida no site e ainda não tem registros publicados.",
+                available=True,
+            )
+        response = web.json_response({"ok": True, "overview": overview})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @staticmethod
+    def public_discord_id_from_profile(value: object) -> int | None:
+        parsed = urlsplit(str(value or "").strip())
+        if parsed.scheme != "https" or parsed.hostname not in {"discord.com", "discordapp.com", "www.discord.com"}:
+            return None
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) != 2 or parts[0].casefold() != "users" or not re.fullmatch(r"\d{15,22}", parts[1]):
+            return None
+        return int(parts[1])
+
+    @staticmethod
+    def public_member_names(member: discord.Member) -> set[str]:
+        return {
+            str(value).strip().casefold()
+            for value in (
+                getattr(member, "name", None),
+                getattr(member, "global_name", None),
+                getattr(member, "display_name", None),
+                getattr(member, "nick", None),
+            )
+            if str(value or "").strip()
+        }
+
+    async def public_member_by_identity(
+        self,
+        *,
+        username: str,
+        discord_id: int | None,
+        profile_id: int | None,
+    ) -> tuple[discord.Member | None, str | None]:
+        guild = self.entry_guild()
+        if guild is None:
+            return None, "ENTRY_MEMBER_NOT_FOUND"
+        if discord_id is not None and profile_id is not None and discord_id != profile_id:
+            return None, "MEMBER_IDENTITY_MISMATCH"
+        target_id = discord_id or profile_id
+        candidates: list[discord.Member] = []
+        if target_id is not None:
+            get_member = getattr(guild, "get_member", None)
+            member = get_member(target_id) if callable(get_member) else None
+            if member is None:
+                fetch_member = getattr(guild, "fetch_member", None)
+                if callable(fetch_member):
+                    try:
+                        member = await fetch_member(target_id)
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                        member = None
+            if member is not None:
+                candidates.append(member)
+        else:
+            wanted = username.casefold()
+            candidates = [
+                member
+                for member in getattr(guild, "members", ())
+                if wanted in self.public_member_names(member) and not getattr(member, "bot", False)
+            ]
+        if not candidates:
+            return None, "ENTRY_MEMBER_NOT_FOUND"
+        if len(candidates) > 1:
+            return None, "MEMBER_AMBIGUOUS"
+        member = candidates[0]
+        if username.casefold() not in self.public_member_names(member):
+            return None, "MEMBER_IDENTITY_MISMATCH"
+        return member, None
+
+    async def public_entry_identify_member(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados de identificação inválidos."}, status=400)
+        username = str(payload.get("discord_username", "")).strip()
+        if not username or len(username) > 80:
+            return web.json_response({"ok": False, "code": "INVALID_USERNAME", "message": "Informe um username do Discord válido."}, status=400)
+        supplied_id = str(payload.get("discord_id", "")).strip()
+        discord_id = None
+        if supplied_id:
+            if not re.fullmatch(r"\d{15,22}", supplied_id):
+                return web.json_response({"ok": False, "code": "INVALID_DISCORD_ID", "message": "O ID do Discord deve conter somente números."}, status=400)
+            discord_id = int(supplied_id)
+        profile_value = str(payload.get("discord_profile_url", "")).strip()
+        profile_id = None
+        if profile_value:
+            profile_id = self.public_discord_id_from_profile(profile_value)
+            if profile_id is None:
+                return web.json_response({"ok": False, "code": "INVALID_DISCORD_PROFILE", "message": "Informe um link de perfil válido do Discord."}, status=400)
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
+        member, error_code = await self.public_member_by_identity(
+            username=username,
+            discord_id=discord_id,
+            profile_id=profile_id,
+        )
+        if member is None:
+            messages = {
+                "MEMBER_AMBIGUOUS": "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
+                "MEMBER_IDENTITY_MISMATCH": "O username, o ID e o link informado não pertencem à mesma conta.",
+                "ENTRY_MEMBER_NOT_FOUND": "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
+            }
+            return web.json_response({"ok": False, "code": error_code or "ENTRY_MEMBER_NOT_FOUND", "message": messages.get(error_code, messages["ENTRY_MEMBER_NOT_FOUND"])}, status=409 if error_code == "MEMBER_AMBIGUOUS" else 404)
+
+        display_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "membro"))[:80]
+        discord_user = {"username": display_name, "mention": f"@{display_name}"}
+        peace_member = self.public_member_has_peace_role(member)
+        visitor_role_id = getattr(self.settings, "visitor_role_id", None)
+        not_verified_role_id = getattr(self.settings, "not_verified_role_id", None)
+        visitor = visitor_role_id is not None and role_member(member, visitor_role_id)
+        not_verified = not_verified_role_id is not None and role_member(member, not_verified_role_id)
+        if peace_member:
+            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user})
+        if visitor:
+            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitante foi confirmada. Continue a entrevista.", "discord_user": discord_user})
+        if not_verified:
+            return web.json_response({"ok": True, "status": "verification_pending", "next_stage": 2, "message": "Sua conta está no servidor. Conclua a verificação humana no canal #verify.", "discord_user": discord_user})
+        return web.json_response({"ok": True, "status": "role_missing", "next_stage": 2, "message": "Sua conta está no servidor, mas o cargo de entrada não foi localizado.", "discord_user": discord_user})
+
+    @staticmethod
+    def public_media_url(value: object) -> str | None:
+        """Accept only Discord CDN media for files attached to public messages."""
+        candidate = str(value or "").strip()
+        parsed = urlsplit(candidate)
+        if parsed.scheme != "https" or parsed.hostname not in PUBLIC_MEDIA_CDN_HOSTS:
+            return None
+        return candidate[:2000]
+
+    @staticmethod
+    def public_media_provider_cdn_url(value: object) -> str | None:
+        """Accept only provider CDN media already exposed by a Discord embed."""
+        candidate = str(value or "").strip()
+        parsed = urlsplit(candidate)
+        hostname = (parsed.hostname or "").casefold()
+        suffix = Path(parsed.path).suffix.casefold()
+        if parsed.scheme != "https" or hostname not in PUBLIC_MEDIA_PROVIDER_CDN_HOSTS:
+            return None
+        if not parsed.path.startswith(("/mediac/", "/ugcc/")):
+            return None
+        if suffix not in PUBLIC_MEDIA_IMAGE_EXTENSIONS | PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+            return None
+        return candidate[:4000]
+
+    @staticmethod
+    def public_media_link_url(value: object) -> str | None:
+        """Accept a small, explicit set of public clip/image hosts from text."""
+        candidate = str(value or "").strip().rstrip(".,;:!?)]}")
+        parsed = urlsplit(candidate)
+        hostname = (parsed.hostname or "").casefold().removeprefix("www.")
+        if parsed.scheme != "https" or hostname not in PUBLIC_MEDIA_LINK_HOSTS:
+            return None
+        return candidate[:2000]
+
+    @classmethod
+    def public_media_links(cls, value: object) -> list[str]:
+        return [
+            link
+            for raw in PUBLIC_MEDIA_LINK_PATTERN.findall(str(value or ""))
+            if (link := cls.public_media_link_url(raw)) is not None
+        ]
+
+    @staticmethod
+    def public_media_provider(url: str) -> str:
+        hostname = (urlsplit(url).hostname or "").casefold().removeprefix("www.")
+        return {
+            "medal.tv": "Medal",
+            "streamable.com": "Streamable",
+            "youtube.com": "YouTube",
+            "youtu.be": "YouTube",
+            "youtube-nocookie.com": "YouTube",
+            "twitch.tv": "Twitch",
+            "clips.twitch.tv": "Twitch",
+            "gyazo.com": "Gyazo",
+            "imgur.com": "Imgur",
+            "i.imgur.com": "Imgur",
+            "outplayed.tv": "Outplayed",
+            "tiktok.com": "TikTok",
+            "vt.tiktok.com": "TikTok",
+            "vm.tiktok.com": "TikTok",
+        }.get(hostname, "Web")
+
+    @classmethod
+    def public_media_link_details(cls, url: str) -> dict[str, str]:
+        """Return a safe embed target without fetching arbitrary remote HTML."""
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").casefold().removeprefix("www.")
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        provider = cls.public_media_provider(url)
+        result = {
+            "provider": provider,
+            "type": "video",
+            "kind": "link",
+            "canonical_id": "",
+            "embed_url": "",
+            "media_url": "",
+        }
+
+        if hostname == "medal.tv":
+            try:
+                clips_index = segments.index("clips")
+                result["canonical_id"] = segments[clips_index + 1]
+            except (ValueError, IndexError):
+                result["canonical_id"] = "/".join(segments).casefold()
+            # Medal's public page is not a stable iframe player. The runtime
+            # resolves active clips to their signed CDN MP4; expired clips stay
+            # source-only instead of rendering a blank or blocked iframe.
+            return result
+        if hostname == "outplayed.tv":
+            result["kind"] = "embed"
+            result["canonical_id"] = "/".join(segments).casefold()
+            result["embed_url"] = url
+            return result
+        if hostname == "streamable.com" and segments:
+            result["kind"] = "embed"
+            result["canonical_id"] = segments[-1].casefold()
+            result["embed_url"] = f"https://streamable.com/e/{segments[-1]}"
+            return result
+        if hostname in {"youtube.com", "youtube-nocookie.com", "youtu.be"}:
+            video_id = ""
+            if hostname == "youtu.be" and segments:
+                video_id = segments[0]
+            elif len(segments) >= 2 and segments[0] in {"shorts", "embed", "live"}:
+                video_id = segments[1]
+            else:
+                video_id = parse_qs(parsed.query).get("v", [""])[0]
+            if video_id:
+                result["kind"] = "embed"
+                result["canonical_id"] = video_id
+                result["embed_url"] = f"https://www.youtube-nocookie.com/embed/{video_id}"
+            return result
+        if hostname == "clips.twitch.tv" and segments:
+            slug = segments[-1]
+            result["kind"] = "embed"
+            result["canonical_id"] = slug.casefold()
+            result["embed_url"] = f"https://clips.twitch.tv/embed?clip={slug}&parent=peacegg.com.br&parent=www.peacegg.com.br"
+            return result
+        if hostname == "twitch.tv":
+            try:
+                clip_index = segments.index("clip")
+                slug = segments[clip_index + 1]
+            except (ValueError, IndexError):
+                slug = ""
+            if slug:
+                result["kind"] = "embed"
+                result["canonical_id"] = slug.casefold()
+                result["embed_url"] = f"https://clips.twitch.tv/embed?clip={slug}&parent=peacegg.com.br&parent=www.peacegg.com.br"
+            return result
+        if hostname in {"tiktok.com", "vt.tiktok.com", "vm.tiktok.com"}:
+            match = PUBLIC_MEDIA_TIKTOK_ID_PATTERN.search(parsed.path) if hostname == "tiktok.com" else None
+            if match:
+                result["kind"] = "embed"
+                result["canonical_id"] = match.group(1)
+                result["embed_url"] = (
+                    f"https://www.tiktok.com/player/v1/{match.group(1)}"
+                    "?controls=1&description=1&music_info=1"
+                )
+            return result
+        if hostname == "gyazo.com" and segments:
+            result["kind"] = "direct"
+            result["canonical_id"] = segments[-1].casefold()
+            result["type"] = "image"
+            result["media_url"] = f"https://i.gyazo.com/{segments[-1]}.png"
+            return result
+        if hostname == "i.imgur.com":
+            result["kind"] = "direct"
+            result["canonical_id"] = Path(parsed.path).stem.casefold()
+            result["type"] = "image" if Path(parsed.path).suffix.casefold() in PUBLIC_MEDIA_IMAGE_EXTENSIONS else "video"
+            result["media_url"] = url
+            return result
+        if hostname == "imgur.com" and segments:
+            result["kind"] = "embed"
+            result["canonical_id"] = segments[-1].casefold()
+            result["embed_url"] = url
+            return result
+        return result
+
+    @staticmethod
+    def public_media_type(attachment: object, url: str) -> str | None:
+        content_type = str(getattr(attachment, "content_type", "") or "").split(";", 1)[0].casefold()
+        suffix = Path(urlsplit(url).path).suffix.casefold()
+        if content_type.startswith("image/") or suffix in PUBLIC_MEDIA_IMAGE_EXTENSIONS:
+            return "image"
+        if content_type.startswith("video/") or suffix in PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+            return "video"
+        return None
+
+    @staticmethod
+    def public_media_caption(message: object) -> str:
+        caption = str(getattr(message, "content", "") or "")
+        caption = re.sub(r"<@!?\d+>|<@&\d+>|@everyone|@here", "", caption, flags=re.IGNORECASE)
+        caption = PUBLIC_MEDIA_LINK_PATTERN.sub("", caption)
+        caption = re.sub(r"\s+", " ", caption).strip()
+        return caption[:240]
+
+    @classmethod
+    def public_media_author(cls, message: object) -> dict[str, str] | None:
+        author = getattr(message, "author", None)
+        if author is None:
+            return None
+        display_name = str(
+            getattr(author, "display_name", None)
+            or getattr(author, "global_name", None)
+            or getattr(author, "name", "Membro")
+        ).strip()[:80]
+        username = str(getattr(author, "name", "") or "").strip()[:80]
+        display_avatar = getattr(getattr(author, "display_avatar", None), "url", None)
+        avatar = display_avatar or getattr(getattr(author, "avatar", None), "url", None)
+        avatar_url = cls.public_media_url(avatar) or ""
+        return {"display_name": display_name or "Membro", "username": username, "avatar_url": avatar_url}
+
+    @classmethod
+    def public_media_thumbnail(cls, message: object) -> str:
+        for embed in getattr(message, "embeds", ()) or ():
+            for part_name in ("thumbnail", "image"):
+                part = getattr(embed, part_name, None)
+                candidate = None
+                if part is not None:
+                    raw_url = getattr(part, "url", "")
+                    candidate = cls.public_media_url(raw_url) or cls.public_media_provider_cdn_url(raw_url)
+                if candidate:
+                    return candidate
+        return ""
+
+    @classmethod
+    def public_media_embed_video(cls, message: object) -> str:
+        """Read a provider video URL only when Discord already supplied one."""
+        videos = cls.public_media_embed_videos(message)
+        return videos[0] if videos else ""
+
+    @classmethod
+    def public_media_embed_videos(cls, message: object) -> list[str]:
+        """Read provider video URLs only when Discord already supplied them."""
+        videos: list[str] = []
+        for embed in getattr(message, "embeds", ()) or ():
+            part = getattr(embed, "video", None)
+            if part is None:
+                continue
+            for attribute in ("url", "proxy_url"):
+                candidate = cls.public_media_provider_cdn_url(getattr(part, attribute, ""))
+                if candidate and Path(urlsplit(candidate).path).suffix.casefold() in PUBLIC_MEDIA_VIDEO_EXTENSIONS:
+                    if candidate not in videos:
+                        videos.append(candidate)
+                    break
+        return videos
+
+    @classmethod
+    def public_media_message_links(cls, message: object) -> list[str]:
+        """Collect allowlisted links from message text and Discord previews."""
+        values = [str(getattr(message, "content", "") or "")]
+        for embed in getattr(message, "embeds", ()) or ():
+            for attribute in ("url", "title", "description"):
+                values.append(str(getattr(embed, attribute, "") or ""))
+
+        links: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            for link in cls.public_media_links(value):
+                key = link.casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append(link)
+        return links
+
+    @staticmethod
+    def public_media_medal_url_matches_id(url: str, canonical_id: str) -> bool:
+        if not canonical_id:
+            return True
+        if canonical_id.casefold() in url.casefold():
+            return True
+        auth = parse_qs(urlsplit(url).query).get("auth", [""])[0]
+        encoded_data = re.search(r"(?:^|~)data=([^~]+)", auth)
+        if encoded_data is None:
+            return False
+        try:
+            encoded = encoded_data.group(1)
+            decoded = base64.b64decode(encoded + "=" * (-len(encoded) % 4), validate=False).decode("utf-8", "ignore")
+        except (ValueError, TypeError):
+            return False
+        return canonical_id.casefold() in decoded.casefold()
+
+    @classmethod
+    def public_media_medal_assets_from_html(cls, source: object, canonical_id: str) -> dict[str, str]:
+        """Extract only signed Medal media for the clip being resolved."""
+        markup = html.unescape(str(source or "")).replace("\\u0026", "&").replace("\\/", "/")
+        videos = [
+            candidate
+            for candidate in PUBLIC_MEDIA_MEDAL_VIDEO_PATTERN.findall(markup)
+            if cls.public_media_medal_url_matches_id(candidate, canonical_id)
+        ]
+        thumbnails = [
+            candidate
+            for candidate in PUBLIC_MEDIA_MEDAL_THUMBNAIL_PATTERN.findall(markup)
+            if cls.public_media_medal_url_matches_id(candidate, canonical_id)
+        ]
+        video_url = next((cls.public_media_provider_cdn_url(candidate) for candidate in videos), "")
+        thumbnail_url = next((cls.public_media_provider_cdn_url(candidate) for candidate in thumbnails), "")
+        return {"media_url": video_url, "thumbnail_url": thumbnail_url}
+
+    @staticmethod
+    def public_media_embed_metadata(message: object) -> dict[str, str]:
+        """Keep only bounded provider preview text already supplied by Discord."""
+        for embed in getattr(message, "embeds", ()) or ():
+            title = str(getattr(embed, "title", "") or "").strip()[:160]
+            description = str(getattr(embed, "description", "") or "").strip()[:240]
+            provider = getattr(embed, "provider", None)
+            provider_name = str(getattr(provider, "name", "") or "").strip()[:80]
+            provider_author = getattr(embed, "author", None)
+            provider_author_name = str(getattr(provider_author, "name", "") or "").strip()[:80]
+            if title or description or provider_name or provider_author_name:
+                return {
+                    "provider_title": title,
+                    "provider_description": description,
+                    "provider_name": provider_name,
+                    "provider_author": provider_author_name,
+                }
+        return {
+            "provider_title": "",
+            "provider_description": "",
+            "provider_name": "",
+            "provider_author": "",
+        }
+
+    @classmethod
+    def public_media_items_from_message(
+        cls,
+        message: object,
+        channel_kind: str,
+    ) -> list[dict[str, object]]:
+        created_at = getattr(message, "created_at", None)
+        if not isinstance(created_at, datetime):
+            created_at = datetime.now(timezone.utc)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        reactions = 0
+        for reaction in getattr(message, "reactions", ()) or ():
+            try:
+                reactions += max(0, int(getattr(reaction, "count", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+
+        message_id = str(getattr(message, "id", "") or "")
+        jump_url = str(getattr(message, "jump_url", "") or "")
+        if not jump_url.startswith("https://discord.com/"):
+            jump_url = ""
+        caption = cls.public_media_caption(message)
+        author = cls.public_media_author(message)
+        thumbnail_url = cls.public_media_thumbnail(message)
+        embed_video_urls = cls.public_media_embed_videos(message)
+        embed_metadata = cls.public_media_embed_metadata(message)
+        raw_content = str(getattr(message, "content", "") or "")
+        message_links = cls.public_media_message_links(message)
+        medal_links = [link for link in message_links if cls.public_media_provider(link) == "Medal"]
+        items: list[dict[str, object]] = []
+        seen_keys: set[str] = set()
+        used_embed_video_urls: set[str] = set()
+        for index, attachment in enumerate(getattr(message, "attachments", ()) or ()):
+            url = cls.public_media_url(getattr(attachment, "url", ""))
+            media_type = cls.public_media_type(attachment, url or "") if url else None
+            if not url or media_type is None:
+                continue
+            try:
+                size = int(getattr(attachment, "size", 0) or 0)
+            except (TypeError, ValueError):
+                size = 0
+            if size > 50 * 1024 * 1024:
+                continue
+            seen_keys.add(f"discord:{url.casefold()}")
+            items.append(
+                {
+                    "id": f"{message_id}:{index}" if message_id else f"{channel_kind}:{index}:{url}",
+                    "type": media_type,
+                    "kind": "direct",
+                    "canonical_id": url,
+                    "url": url,
+                    "source_url": url,
+                    "embed_url": "",
+                    "fallback_url": url,
+                    "provider": "Discord",
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+        for link_index, link in enumerate(message_links):
+            details = cls.public_media_link_details(link)
+            canonical_id = details.get("canonical_id", "") or urlsplit(link).path.rstrip("/").casefold()
+            dedupe_key = f"{details.get('provider', 'Web').casefold()}:{canonical_id}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            media_url = details.get("media_url", "") or link
+            media_kind = details.get("kind", "link")
+            if details.get("provider") == "Medal" and embed_video_urls:
+                matching_embed_video = next(
+                    (
+                        candidate
+                        for candidate in embed_video_urls
+                        if candidate not in used_embed_video_urls
+                        and cls.public_media_medal_url_matches_id(candidate, canonical_id)
+                    ),
+                    "",
+                )
+                # A single provider preview can safely represent the single
+                # page link in a message. Never reuse it across multiple clips.
+                if not matching_embed_video and len(medal_links) == 1:
+                    matching_embed_video = next(
+                        (candidate for candidate in embed_video_urls if candidate not in used_embed_video_urls),
+                        "",
+                    )
+                if matching_embed_video:
+                    used_embed_video_urls.add(matching_embed_video)
+                    media_url = matching_embed_video
+                    media_kind = "direct"
+            items.append(
+                {
+                    "id": f"{message_id}:link:{link_index}" if message_id else f"{channel_kind}:link:{link_index}:{link}",
+                    "type": details.get("type", "video"),
+                    "kind": media_kind,
+                    "canonical_id": canonical_id,
+                    "url": media_url,
+                    "source_url": link,
+                    "embed_url": details.get("embed_url", ""),
+                    "fallback_url": link,
+                    "provider": details.get("provider", "Web"),
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+
+        for embed_index, embed_video_url in enumerate(embed_video_urls):
+            if embed_video_url in used_embed_video_urls:
+                continue
+            dedupe_key = f"medal-cdn:{embed_video_url.casefold()}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            source_url = medal_links[0] if len(medal_links) == 1 else embed_video_url
+            items.append(
+                {
+                    "id": f"{message_id}:embed:{embed_index}" if message_id else f"{channel_kind}:embed:{embed_index}:{embed_video_url}",
+                    "type": "video",
+                    "kind": "direct",
+                    "canonical_id": embed_video_url,
+                    "url": embed_video_url,
+                    "source_url": source_url,
+                    "embed_url": "",
+                    "fallback_url": source_url,
+                    "provider": "Medal",
+                    "thumbnail_url": thumbnail_url,
+                    **embed_metadata,
+                    "discord_url": jump_url,
+                    "caption": caption,
+                    "message_text": caption,
+                    "text": caption,
+                    "author": author,
+                    "created_at": created_at.isoformat(),
+                    "created_at_unix": int(created_at.timestamp()),
+                    "engagement": reactions,
+                    "channel": channel_kind,
+                }
+            )
+        return items
+
+    @classmethod
+    async def public_media_resolve_medal_item(
+        cls,
+        item: dict[str, object],
+        session: ClientSession,
+    ) -> dict[str, object]:
+        if item.get("provider") != "Medal" or item.get("kind") != "link":
+            return item
+        source_url = cls.public_media_link_url(item.get("source_url")) or ""
+        canonical_id = str(item.get("canonical_id") or "").strip()
+        if not source_url or cls.public_media_provider(source_url) != "Medal" or not canonical_id:
+            return item
+        current_url = source_url
+        try:
+            for _ in range(PUBLIC_MEDIA_MEDAL_MAX_REDIRECTS + 1):
+                async with session.get(current_url, allow_redirects=False) as response:
+                    if 300 <= response.status < 400:
+                        location = str(response.headers.get("Location", "") or "").strip()
+                        redirected_url = cls.public_media_link_url(urljoin(current_url, location)) if location else None
+                        if not redirected_url or cls.public_media_provider(redirected_url) != "Medal":
+                            return item
+                        current_url = redirected_url
+                        continue
+                    if response.status != 200:
+                        return item
+                    content_type = str(response.headers.get("Content-Type", "")).casefold()
+                    if content_type and "html" not in content_type:
+                        return item
+                    content_length = response.headers.get("Content-Length")
+                    try:
+                        if content_length and int(content_length) > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            return item
+                    except (TypeError, ValueError):
+                        pass
+                    content = getattr(response, "content", None)
+                    if content is not None and callable(getattr(content, "read", None)):
+                        chunks: list[bytes] = []
+                        total_bytes = 0
+                        while total_bytes <= PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            chunk = await content.read(
+                                min(64 * 1024, PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES + 1 - total_bytes)
+                            )
+                            if not chunk:
+                                break
+                            if not isinstance(chunk, bytes):
+                                chunk = bytes(chunk)
+                            chunks.append(chunk)
+                            total_bytes += len(chunk)
+                            if total_bytes > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                                return item
+                        raw_markup = b"".join(chunks)
+                        markup = raw_markup.decode("utf-8", "ignore")
+                    else:
+                        markup = await response.text(errors="ignore")
+                        if len(markup) > PUBLIC_MEDIA_MEDAL_MAX_HTML_BYTES:
+                            return item
+                    break
+            else:
+                return item
+        except (ClientError, asyncio.TimeoutError, UnicodeError):
+            return item
+
+        assets = cls.public_media_medal_assets_from_html(markup, canonical_id)
+        media_url = assets.get("media_url", "")
+        if assets.get("thumbnail_url") and not item.get("thumbnail_url"):
+            item = dict(item)
+            item["thumbnail_url"] = assets["thumbnail_url"]
+        if not media_url:
+            return item
+        resolved = dict(item)
+        resolved.update(
+            {
+                "kind": "direct",
+                "url": media_url,
+                "media_url": media_url,
+                "embed_url": "",
+                "fallback_url": source_url,
+            }
+        )
+        if assets.get("thumbnail_url") and not resolved.get("thumbnail_url"):
+            resolved["thumbnail_url"] = assets["thumbnail_url"]
+        return resolved
+
+    @classmethod
+    async def public_media_resolve_medal_items(cls, items: list[dict[str, object]]) -> list[dict[str, object]]:
+        indexes = [
+            index
+            for index, item in enumerate(items)
+            if item.get("provider") == "Medal" and item.get("kind") == "link"
+        ][:PUBLIC_MEDIA_MEDAL_RESOLUTION_LIMIT]
+        if not indexes:
+            return items
+
+        semaphore = asyncio.Semaphore(8)
+        timeout = ClientTimeout(total=PUBLIC_MEDIA_MEDAL_REQUEST_TIMEOUT_SECONDS)
+        async with ClientSession(
+            timeout=timeout,
+            headers={"User-Agent": "Peace public media resolver/1.0"},
+        ) as session:
+            async def resolve(index: int) -> tuple[int, dict[str, object]]:
+                async with semaphore:
+                    try:
+                        return index, await cls.public_media_resolve_medal_item(items[index], session)
+                    except Exception:
+                        log.debug("Falha ao resolver mídia Medal no índice %s", index, exc_info=True)
+                        return index, items[index]
+
+            results = await asyncio.gather(*(resolve(index) for index in indexes), return_exceptions=True)
+            for result in results:
+                if isinstance(result, tuple) and len(result) == 2:
+                    index, resolved = result
+                    items[index] = resolved
+        return items
+
+    async def collect_public_media(self, channel_kind: str) -> tuple[list[dict[str, object]], bool]:
+        setting_name = {
+            "moments": "website_media_channel_id",
+            "clips": "website_clips_channel_id",
+        }.get(channel_kind)
+        channel_id = getattr(self.settings, setting_name, None) if setting_name else None
+        guild = self.entry_guild()
+        if guild is None or channel_id is None:
+            return [], False
+        get_channel = getattr(guild, "get_channel", None)
+        channel = get_channel(int(channel_id)) if callable(get_channel) else None
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return [], False
+        bot_member = getattr(guild, "me", None)
+        permissions_for = getattr(channel, "permissions_for", None)
+        if bot_member is not None and callable(permissions_for):
+            try:
+                permissions = permissions_for(bot_member)
+                if not getattr(permissions, "view_channel", True) or not getattr(permissions, "read_message_history", True):
+                    return [], False
+            except (AttributeError, TypeError):
+                return [], False
+        items: list[dict[str, object]] = []
+        try:
+            async for message in history(limit=PUBLIC_MEDIA_HISTORY_LIMIT):
+                items.extend(self.public_media_items_from_message(message, channel_kind))
+                if len(items) >= PUBLIC_MEDIA_HISTORY_LIMIT:
+                    break
+        except (discord.Forbidden, discord.HTTPException, AttributeError, TypeError):
+            log.info("Não consegui ler a mídia pública do canal %s", channel_kind)
+            return [], False
+        await self.public_media_resolve_medal_items(items)
+        return items[:PUBLIC_MEDIA_HISTORY_LIMIT], True
+
+    async def public_media_items_with_state(self, channel_kind: str) -> tuple[list[dict[str, object]], bool]:
+        now = time.monotonic()
+        try:
+            cache_seconds = max(30, int(getattr(self.settings, "website_media_cache_seconds", 300)))
+        except (TypeError, ValueError):
+            cache_seconds = 300
+        cached = self.public_media_cache.get(channel_kind)
+        if cached is not None and now - cached.refreshed_at < cache_seconds:
+            return [dict(item) for item in cached.items], cached.available
+
+        async with self.public_media_cache_lock:
+            now = time.monotonic()
+            cached = self.public_media_cache.get(channel_kind)
+            if cached is not None and now - cached.refreshed_at < cache_seconds:
+                return [dict(item) for item in cached.items], cached.available
+            try:
+                items, available = await self.collect_public_media(channel_kind)
+            except (ClientError, asyncio.TimeoutError, discord.DiscordException, OSError):
+                log.warning("Fonte de mídia pública indisponível: %s", channel_kind)
+                items, available = [], False
+            self.public_media_cache[channel_kind] = PublicMediaCache(
+                refreshed_at=now,
+                items=tuple(dict(item) for item in items),
+                available=available,
+            )
+            return [dict(item) for item in items], available
+
+    async def public_media_items(self, channel_kind: str) -> list[dict[str, object]]:
+        items, _available = await self.public_media_items_with_state(channel_kind)
+        return items
+
+    @staticmethod
+    def select_public_media(
+        items: list[dict[str, object]],
+        channel_kind: str,
+        seed: int,
+    ) -> list[dict[str, object]]:
+        sorted_items = sorted(
+            items,
+            key=lambda item: int(item.get("created_at_unix", 0) or 0),
+            reverse=True,
+        )
+        ordered: list[dict[str, object]] = []
+        seen_content: set[str] = set()
+        for item in sorted_items:
+            provider = str(item.get("provider", "Web") or "Web").strip().casefold()
+            source_url = PeaceBot.public_media_link_url(item.get("source_url"))
+            identity = ""
+            if source_url:
+                details = PeaceBot.public_media_link_details(source_url)
+                identity = str(details.get("canonical_id", "") or "").strip().casefold()
+                provider = str(details.get("provider", provider) or provider).strip().casefold()
+            if not identity:
+                identity = str(item.get("canonical_id", "") or item.get("url", "") or item.get("id", "")).strip().casefold()
+            content_key = f"{provider}:{identity}"
+            if not identity or content_key in seen_content:
+                continue
+            seen_content.add(content_key)
+            ordered.append(item)
+        if not ordered:
+            return []
+        selected: list[dict[str, object]] = []
+        selected_ids: set[str] = set()
+
+        def add(pool: list[dict[str, object]], offset: int = 0) -> None:
+            if not pool:
+                return
+            item = pool[offset % len(pool)]
+            item_id = str(item.get("id", ""))
+            if item_id not in selected_ids:
+                selected.append(item)
+                selected_ids.add(item_id)
+
+        if channel_kind == "clips":
+            ranked = sorted(
+                ordered,
+                key=lambda item: (
+                    int(item.get("engagement", 0) or 0),
+                    int(item.get("created_at_unix", 0) or 0),
+                ),
+                reverse=True,
+            )
+            add(ranked[:18], seed)
+            add(ordered[:18], seed // 3 + 1)
+            add(ordered[18:], seed // 5 + 2)
+            candidates = ranked[:30] + ordered[:30]
+        else:
+            recent = ordered[:18]
+            archive = ordered[18:]
+            add(recent, seed)
+            add(archive, seed // 3 + 1)
+            candidates = recent + archive
+
+        # Keep the selection deterministic for one browser while avoiding the
+        # same ordering for every visitor. The salt separates both channels.
+        rng = random.Random(seed + (0xC11 if channel_kind == "clips" else 0xA17))
+        remaining = [item for item in candidates if str(item.get("id", "")) not in selected_ids]
+        rng.shuffle(remaining)
+        for item in remaining:
+            if len(selected) >= PUBLIC_MEDIA_SELECTION_LIMIT:
+                break
+            item_id = str(item.get("id", ""))
+            if item_id in selected_ids:
+                continue
+            selected.append(item)
+            selected_ids.add(item_id)
+        return selected[:PUBLIC_MEDIA_SELECTION_LIMIT]
+
+    async def public_api_media(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        raw_seed = request.query.get("seed", "")
+        try:
+            seed = abs(int(raw_seed)) % (2**32) if raw_seed else secrets.randbelow(2**32)
+        except (TypeError, ValueError):
+            seed = secrets.randbelow(2**32)
+        (moments, moments_available), (clips, clips_available) = await asyncio.gather(
+            self.public_media_items_with_state("moments"),
+            self.public_media_items_with_state("clips"),
+        )
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        response = web.json_response(
+            {
+                "ok": True,
+                "updated_at": refreshed_at,
+                "refresh_after": max(30, int(getattr(self.settings, "website_media_cache_seconds", 300) or 300)),
+                "moments": self.select_public_media(moments, "moments", seed),
+                "clips": self.select_public_media(clips, "clips", seed),
+                "sources": {
+                    "moments": {
+                        "state": "ready" if moments else ("empty" if moments_available else "unavailable"),
+                        "available": moments_available,
+                        "stale": not moments_available,
+                        "updated_at": refreshed_at if moments_available else None,
+                    },
+                    "clips": {
+                        "state": "ready" if clips else ("empty" if clips_available else "unavailable"),
+                        "available": clips_available,
+                        "stale": not clips_available,
+                        "updated_at": refreshed_at if clips_available else None,
+                    },
+                },
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def public_announcement_channel(self) -> object | None:
+        """Find the explicitly named public announcement source in Discord."""
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
+        channels = getattr(guild, "text_channels", ()) or ()
+        return discord.utils.find(
+            lambda channel: callable(getattr(channel, "history", None))
+            and str(getattr(channel, "name", "")).casefold() in names,
+            channels,
+        )
+
+    async def public_api_notices(self, request: web.Request) -> web.Response:
+        """Expose only messages from the server's named public notices channel."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        channel = self.public_announcement_channel()
+        notices, available = await self.public_channel_messages(
+            channel,
+            kind="announcement",
+            limit=12,
+        )
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        source_state = "ready" if notices else ("empty" if available else "unavailable")
+        response = web.json_response(
+            {
+                "ok": True,
+                "updated_at": refreshed_at if available else None,
+                "notices": notices,
+                "source": {
+                    "state": source_state,
+                    "available": available,
+                    "channel": str(getattr(channel, "name", "")) or None,
+                },
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @staticmethod
+    def public_discord_oauth_token(request: web.Request) -> str | None:
+        token = request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE, "")
+        return token if OAUTH_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def public_discord_oauth_config(settings: object) -> dict[str, str] | None:
+        client_id = str(getattr(settings, "discord_oauth_client_id", "") or "").strip()
+        client_secret = str(getattr(settings, "discord_oauth_client_secret", "") or "").strip()
+        redirect_uri = str(getattr(settings, "discord_oauth_redirect_uri", "") or "").strip()
+        parsed = urlsplit(redirect_uri)
+        valid_redirect = bool(
+            redirect_uri
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and not parsed.query
+            and not parsed.fragment
+            and (
+                parsed.scheme == "https"
+                or (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"})
+            )
+        )
+        if not re.fullmatch(r"[0-9]{15,25}", client_id) or not client_secret or not valid_redirect:
+            return None
+        return {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+        }
+
+    @staticmethod
+    def public_discord_redirect_uri_for_request(
+        request: web.Request,
+        config: dict[str, str],
+    ) -> str:
+        """Select a registered loopback callback only for the local proxy.
+
+        The production callback remains the configured default. The local
+        static preview adds a trusted-by-allowlist origin header because a
+        top-level browser navigation does not reliably send ``Origin``.
+        The value is never accepted as an arbitrary URL.
+        """
+        frontend_origin = str(request.headers.get("X-Peace-Frontend-Origin", "") or "").strip().rstrip("/")
+        if frontend_origin in PUBLIC_LOCAL_PROXY_ORIGINS:
+            return frontend_origin + "/api/auth/discord/callback"
+        return config["redirect_uri"]
+
+    @staticmethod
+    def public_discord_avatar_url(discord_user_id: object, avatar_hash: object) -> str | None:
+        user_id = str(discord_user_id or "").strip()
+        hash_value = str(avatar_hash or "").strip()
+        if not re.fullmatch(r"[0-9]{15,25}", user_id):
+            return None
+        if not hash_value:
+            # Discord exposes users without a custom avatar through its
+            # official default-avatar endpoint. Snowflakes from the current
+            # username system derive the default index from their timestamp
+            # bits; returning this URL keeps the profile image authoritative
+            # instead of silently replacing it with initials.
+            default_index = (int(user_id) >> 22) % 6
+            return f"https://cdn.discordapp.com/embed/avatars/{default_index}.png"
+        if not DISCORD_AVATAR_HASH_PATTERN.fullmatch(hash_value):
+            return None
+        extension = "gif" if hash_value.startswith("a_") else "png"
+        return f"https://cdn.discordapp.com/avatars/{user_id}/{hash_value}.{extension}?size=128"
+
+    @staticmethod
+    def public_oauth_return_to(value: object) -> str:
+        candidate = str(value or "").strip()
+        if (
+            not candidate
+            or len(candidate) > 220
+            or not candidate.startswith("/")
+            or candidate.startswith("//")
+            or "\\" in candidate
+            or any(ord(character) < 0x20 or ord(character) == 0x7F for character in candidate)
+        ):
+            return "/meu-processo/"
+        return candidate
+
+    @staticmethod
+    def public_oauth_redirect(return_to: str, status: str) -> web.HTTPFound:
+        parsed = urlsplit(return_to)
+        query = f"{parsed.query}&{urlencode({'oauth': status})}" if parsed.query else urlencode({'oauth': status})
+        return web.HTTPFound(parsed._replace(query=query).geturl())
+
+    def public_oauth_cookie_secure(self, redirect_uri: str | None = None) -> bool:
+        if redirect_uri:
+            return str(redirect_uri).startswith("https://")
+        config = self.public_discord_oauth_config(self.settings)
+        return bool(config and config["redirect_uri"].startswith("https://"))
+
+    def public_oauth_state_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "discord_oauth_state_ttl_seconds", 600))
+        except (TypeError, ValueError):
+            configured = 600
+        return min(15 * 60, max(60, configured))
+
+    def public_oauth_session_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "discord_oauth_session_ttl_seconds", 24 * 60 * 60))
+        except (TypeError, ValueError):
+            configured = 24 * 60 * 60
+        return min(7 * 24 * 60 * 60, max(15 * 60, configured))
+
+    def public_exam_passing_score(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "civil_passing_score", CIVIL_DEFAULT_PASSING_SCORE))
+        except (TypeError, ValueError):
+            configured = CIVIL_DEFAULT_PASSING_SCORE
+        return min(100, max(0, configured))
+
+    def public_exam_answer_key(self) -> dict[str, int] | None:
+        """Load the answer key only from the protected runtime secret store."""
+        raw = str(getattr(self.settings, "civil_answer_key", "") or "").strip()
+        if not raw:
+            return None
+        try:
+            return parse_answer_key(raw)
+        except ValueError:
+            log.error("CIVIL_ANSWER_KEY está ausente, inválida ou incompatível com o banco")
+            return None
+
+    def public_exam_max_deadline_days(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "exam_max_deadline_days", 14))
+        except (TypeError, ValueError):
+            configured = 14
+        return min(30, max(1, configured))
+
+    @staticmethod
+    def public_exam_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token if OAUTH_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def public_exam_assignment_id(value: object) -> int | None:
+        if value is None or isinstance(value, bool):
+            return None
+        raw = str(value).strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,18}", raw):
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def public_exam_deadline(value: object) -> datetime | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    @staticmethod
+    def public_exam_assignment_payload(row: object) -> dict[str, object]:
+        return {
+            "id": int(row["id"]),
+            "candidate_username": str(row["candidate_username_snapshot"]),
+            "question_bank_version": str(row["question_bank_version"]),
+            "passing_score": int(row["passing_score"]),
+            "deadline_at": str(row["deadline_at"]),
+            "status": str(row["status"]),
+            "created_at": str(row["created_at"]),
+            "started_at": row["started_at"],
+            "submitted_at": row["submitted_at"],
+            "score": int(row["score"]) if row["score"] is not None else None,
+            "correct_count": int(row["correct_count"]) if row["correct_count"] is not None else None,
+            "passed": bool(row["passed"]) if row["passed"] is not None else None,
+        }
+
+    @staticmethod
+    def public_exam_manager_assignment_payload(row: object) -> dict[str, object]:
+        """Add candidate identity only on the manager-scoped response."""
+        payload = PeaceBot.public_exam_assignment_payload(row)
+        payload.update(
+            {
+                "candidate_discord_user_id": str(row["candidate_discord_user_id"]),
+                "manager_discord_user_id": str(row["manager_discord_user_id"]),
+            }
+        )
+        return payload
+
+    async def public_discord_auth_start(self, request: web.Request) -> web.StreamResponse:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        return_to = self.public_oauth_return_to(request.query.get("return_to"))
+        config = self.public_discord_oauth_config(self.settings)
+        if config is None:
+            if "text/html" in str(request.headers.get("Accept", "")):
+                return self.public_oauth_redirect(return_to, "not-configured")
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "OAUTH_NOT_CONFIGURED",
+                    "message": "A conexão com Discord ainda não está configurada.",
+                },
+                status=503,
+            )
+        state = secrets.token_urlsafe(32)
+        code_verifier = secrets.token_urlsafe(48)
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(code_verifier.encode("ascii")).digest()
+        ).rstrip(b"=").decode("ascii")
+        ttl = self.public_oauth_state_ttl()
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        redirect_uri = self.public_discord_redirect_uri_for_request(request, config)
+        try:
+            self.database.create_discord_oauth_state(
+                state=state,
+                code_verifier=code_verifier,
+                return_to=return_to,
+                expires_at=expires_at.isoformat(),
+                redirect_uri=redirect_uri,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui persistir o estado OAuth do Discord", exc_info=True)
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "OAUTH_UNAVAILABLE",
+                    "message": "A conexão com Discord está temporariamente indisponível.",
+                },
+                status=503,
+            )
+        location = f"{DISCORD_OAUTH_AUTHORIZE_URL}?{urlencode({
+            'response_type': 'code',
+            'client_id': config['client_id'],
+            'scope': DISCORD_OAUTH_SCOPE,
+            'state': state,
+            'redirect_uri': redirect_uri,
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256',
+        })}"
+        response = web.HTTPFound(location)
+        response.set_cookie(
+            PUBLIC_DISCORD_OAUTH_STATE_COOKIE,
+            state,
+            max_age=ttl,
+            httponly=True,
+            secure=self.public_oauth_cookie_secure(redirect_uri),
+            samesite="Lax",
+            path="/api/auth/discord",
+        )
+        return response
+
+    async def discord_oauth_user(self, *, code: str, code_verifier: str, config: dict[str, str]) -> dict[str, object] | None:
+        timeout = ClientTimeout(total=8)
+        async with ClientSession(timeout=timeout) as client:
+            async with client.post(
+                DISCORD_OAUTH_TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": config["redirect_uri"],
+                    "client_id": config["client_id"],
+                    "client_secret": config["client_secret"],
+                    "code_verifier": code_verifier,
+                },
+                headers={"Accept": "application/json"},
+            ) as token_response:
+                if token_response.status != 200:
+                    return None
+                token_payload = await token_response.json(content_type=None)
+            access_token = str(token_payload.get("access_token", "") or "")
+            if not access_token or not re.fullmatch(r"[A-Za-z0-9._-]{16,256}", access_token):
+                return None
+            async with client.get(
+                DISCORD_API_USER_URL,
+                headers={"Accept": "application/json", "Authorization": f"Bearer {access_token}"},
+            ) as user_response:
+                if user_response.status != 200:
+                    return None
+                user_payload = await user_response.json(content_type=None)
+        return user_payload if isinstance(user_payload, dict) else None
+
+    async def public_discord_auth_callback(self, request: web.Request) -> web.StreamResponse:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        state = str(request.query.get("state", "") or "").strip()
+        state_cookie = str(request.cookies.get(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, "") or "").strip()
+        if not state or not OAUTH_TOKEN_PATTERN.fullmatch(state) or not hmac.compare_digest(state, state_cookie):
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_STATE_INVALID", "message": "A conexão expirou. Inicie novamente."},
+                status=400,
+            )
+        try:
+            state_row = self.database.consume_discord_oauth_state(state)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui consumir o estado OAuth do Discord", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_UNAVAILABLE", "message": "A conexão está temporariamente indisponível."},
+                status=503,
+            )
+        if state_row is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_STATE_EXPIRED", "message": "A conexão expirou. Inicie novamente."},
+                status=400,
+            )
+        return_to = self.public_oauth_return_to(state_row["return_to"])
+        if request.query.get("iss") != DISCORD_OAUTH_ISSUER:
+            return self.public_oauth_redirect(return_to, "issuer-error")
+        if request.query.get("error"):
+            return self.public_oauth_redirect(return_to, "cancelled")
+        code = str(request.query.get("code", "") or "").strip()
+        config = self.public_discord_oauth_config(self.settings)
+        if not code or len(code) > 512 or config is None:
+            return self.public_oauth_redirect(return_to, "unavailable")
+        stored_redirect_uri = str(state_row["redirect_uri"] or "").strip()
+        if stored_redirect_uri in {
+            origin + "/api/auth/discord/callback" for origin in PUBLIC_LOCAL_PROXY_ORIGINS
+        }:
+            callback_redirect_uri = stored_redirect_uri
+        else:
+            callback_redirect_uri = config["redirect_uri"]
+        exchange_config = dict(config)
+        exchange_config["redirect_uri"] = callback_redirect_uri
+        try:
+            user_payload = await self.discord_oauth_user(
+                code=code,
+                code_verifier=str(state_row["code_verifier"]),
+                config=exchange_config,
+            )
+            if user_payload is None:
+                return self.public_oauth_redirect(return_to, "unavailable")
+            discord_user_id = str(user_payload.get("id", "")).strip()
+            if not re.fullmatch(r"[0-9]{15,25}", discord_user_id):
+                return self.public_oauth_redirect(return_to, "identity-error")
+            username = str(user_payload.get("username", "") or "").strip()[:80] or "Discord"
+            global_name = str(user_payload.get("global_name", "") or "").strip()[:80] or None
+            display_name = global_name or username
+            avatar_hash = str(user_payload.get("avatar", "") or "").strip()
+            if not DISCORD_AVATAR_HASH_PATTERN.fullmatch(avatar_hash):
+                avatar_hash = None
+            self.database.upsert_candidate_profile(
+                discord_user_id=discord_user_id,
+                username=username,
+                global_name=global_name,
+                display_name=display_name,
+                avatar_hash=avatar_hash,
+            )
+            session_token = self.database.create_discord_oauth_session(
+                discord_user_id=discord_user_id,
+                username=username,
+                global_name=global_name,
+                display_name=display_name,
+                avatar_hash=avatar_hash,
+                expires_at=(datetime.now(timezone.utc) + timedelta(seconds=self.public_oauth_session_ttl())).isoformat(),
+            )
+        except (ClientError, asyncio.TimeoutError, OSError, ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
+            log.warning("Não consegui concluir o callback OAuth do Discord", exc_info=True)
+            return self.public_oauth_redirect(return_to, "unavailable")
+        response = self.public_oauth_redirect(return_to, "connected")
+        response.set_cookie(
+            PUBLIC_DISCORD_SESSION_COOKIE,
+            session_token,
+            max_age=self.public_oauth_session_ttl(),
+            httponly=True,
+            secure=self.public_oauth_cookie_secure(callback_redirect_uri),
+            samesite="Lax",
+            path="/",
+        )
+        response.del_cookie(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, path="/api/auth/discord")
+        return response
+
+    async def public_discord_session_context(self, request: web.Request) -> tuple[str | None, object | None]:
+        token = self.public_discord_oauth_token(request)
+        if token is None:
+            return None, None
+        row = self.database.validate_discord_oauth_session(token)
+        return token, row
+
+    async def public_discord_auth_session(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token, row = await self.public_discord_session_context(request)
+        if token is None or row is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        profile = self.database.candidate_profile(row["discord_user_id"])
+        membership = await self.public_discord_membership_payload(row["discord_user_id"])
+        return web.json_response(
+            {
+                "ok": True,
+                "identity": {
+                    "discord_id": str(row["discord_user_id"]),
+                    "username": str(row["username"]),
+                    "global_name": row["global_name"],
+                    "display_name": row["display_name"] or row["username"],
+                    "avatar_url": self.public_discord_avatar_url(row["discord_user_id"], row["avatar_hash"]),
+                },
+                "profile": {
+                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                    "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
+                },
+                "server": membership,
+            }
+        )
+
+    async def public_discord_auth_logout(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token = self.public_discord_oauth_token(request)
+        if token is not None:
+            self.database.revoke_discord_oauth_session(token)
+        response = web.json_response({"ok": True, "message": "Sessão encerrada."})
+        response.del_cookie(PUBLIC_DISCORD_SESSION_COOKIE, path="/")
+        response.del_cookie(PUBLIC_DISCORD_OAUTH_STATE_COOKIE, path="/api/auth/discord")
+        return response
+
+    async def public_discord_member_state(
+        self,
+        discord_user_id: int | str,
+    ) -> tuple[discord.Member | None, str]:
+        """Resolve live guild membership without confusing absence and outage."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None, "unavailable"
+        fetch_member = getattr(guild, "fetch_member", None)
+        if callable(fetch_member):
+            try:
+                return await fetch_member(int(discord_user_id)), "member"
+            except discord.NotFound:
+                return None, "not_member"
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
+                return None, "unavailable"
+        get_member = getattr(guild, "get_member", None)
+        if not callable(get_member):
+            return None, "unavailable"
+        member = get_member(int(discord_user_id))
+        return (member, "member") if member is not None else (None, "not_member")
+
+    async def public_discord_member_by_id(self, discord_user_id: int | str) -> discord.Member | None:
+        member, _ = await self.public_discord_member_state(discord_user_id)
+        return member
+
+    async def public_discord_membership_payload(self, discord_user_id: int | str) -> dict[str, object]:
+        member, state = await self.public_discord_member_state(discord_user_id)
+        if member is None:
+            return {
+                "state": state,
+                "is_member": False if state == "not_member" else None,
+                "is_peace_member": False if state == "not_member" else None,
+                "is_manager": False if state == "not_member" else None,
+            }
+        try:
+            is_peace_member = self.public_member_has_peace_role(member)
+        except (AttributeError, TypeError):
+            is_peace_member = False
+        try:
+            is_manager = management_role_member(member, self.settings)
+        except (AttributeError, TypeError):
+            is_manager = False
+        return {
+            "state": "peace" if is_peace_member else "member",
+            "is_member": True,
+            "is_peace_member": bool(is_peace_member),
+            "is_manager": bool(is_manager),
+        }
+
+    async def public_manager_member(self, discord_user_id: int | str) -> discord.Member | None:
+        member = await self.public_discord_member_by_id(discord_user_id)
+        if member is None:
+            return None
+        try:
+            return member if management_role_member(member, self.settings) else None
+        except (AttributeError, TypeError):
+            role_id = getattr(self.settings, "manager_role_id", None)
+            return member if role_id is not None and role_member(member, role_id) else None
+
+    async def public_exam_process(self, request: web.Request, *, require_peace: bool = False) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para ver seu processo."},
+                status=401,
+            )
+        membership = None
+        if require_peace:
+            membership = await self.public_discord_membership_payload(session["discord_user_id"])
+            if membership["state"] == "unavailable" or membership["is_peace_member"] is None:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "PEACE_MEMBERSHIP_UNAVAILABLE",
+                        "message": "Não foi possível confirmar seu cargo Peace agora.",
+                    },
+                    status=503,
+                )
+            if membership["is_peace_member"] is not True:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "PEACE_ROLE_REQUIRED",
+                        "message": "O painel Peace está disponível somente para contas com cargo Peace.",
+                    },
+                    status=403,
+                )
+        try:
+            profile = self.database.candidate_profile(session["discord_user_id"])
+            assignments = self.database.exam_assignments_for_candidate(session["discord_user_id"])
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui consultar o processo de seleção", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "PROCESS_UNAVAILABLE", "message": "O processo está temporariamente indisponível."},
+                status=503,
+            )
+        if membership is None:
+            membership = await self.public_discord_membership_payload(session["discord_user_id"])
+        return web.json_response(
+            {
+                "ok": True,
+                "identity": {
+                    "discord_id": str(session["discord_user_id"]),
+                    "username": str(session["username"]),
+                    "global_name": session["global_name"],
+                    "display_name": session["display_name"] or session["username"],
+                    "avatar_url": self.public_discord_avatar_url(session["discord_user_id"], session["avatar_hash"]),
+                },
+                "profile": {
+                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                    "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
+                    "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
+                },
+                "server": membership,
+                "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
+            }
+        )
+
+    async def public_peace_process(self, request: web.Request) -> web.Response:
+        """Return the panel process only after the live Peace role check."""
+        return await self.public_exam_process(request, require_peace=True)
+
+    async def public_exam_access(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de abrir a prova."},
+                status=401,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
+        access_token = self.public_exam_token(payload.get("access_token"))
+        if access_token is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token)
+        if assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_LINK_NOT_FOUND", "message": "Esse link não existe ou já não está disponível."}, status=404)
+        if str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "Este link foi atribuído a outra conta Discord."}, status=403)
+        if assignment["status"] in {"revoked", "expired"}:
+            return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Este prazo ou atribuição não está mais disponível."}, status=410)
+        return web.json_response({"ok": True, "assignment": self.public_exam_assignment_payload(assignment)})
+
+    async def public_exam_start(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de iniciar."}, status=401)
+        if self.public_exam_answer_key() is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "A prova ainda não está configurada pela equipe."},
+                status=503,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
+        access_token = self.public_exam_token(payload.get("access_token"))
+        if access_token is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token)
+        if assignment is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "O link não pertence à conta conectada."}, status=403)
+        assignment_id = int(assignment["id"])
+        if assignment["status"] == "submitted":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi enviada e não pode ser refeita.", "assignment": self.public_exam_assignment_payload(assignment)}, status=409)
+        question_order, option_order = materialize_exam()
+        assignment, attempt = self.database.start_exam_attempt(
+            assignment_id=assignment_id,
+            candidate_discord_user_id=session["discord_user_id"],
+            question_order=question_order,
+            option_order=option_order,
+        )
+        if assignment is None or assignment["status"] == "expired":
+            return web.json_response({"ok": False, "code": "EXAM_EXPIRED", "message": "O prazo desta prova terminou."}, status=410)
+        if attempt is None or attempt["status"] != "in_progress":
+            return web.json_response({"ok": False, "code": "EXAM_NOT_STARTABLE", "message": "Esta prova não pode ser iniciada agora."}, status=409)
+        try:
+            stored_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            stored_options = {
+                str(key): [int(index) for index in value]
+                for key, value in json.loads(str(attempt["option_order_json"])).items()
+            }
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
+            log.error("Tentativa de prova %s possui materialização inválida", int(attempt["id"]))
+            return web.json_response({"ok": False, "code": "EXAM_CORRUPTED", "message": "Não consegui abrir esta prova. A equipe precisa revisar a atribuição."}, status=500)
+        return web.json_response(
+            {
+                "ok": True,
+                "assignment": self.public_exam_assignment_payload(assignment),
+                "attempt": {
+                    "id": int(attempt["id"]),
+                    "started_at": str(attempt["started_at"]),
+                    "questions": public_exam_payload(stored_order, stored_options),
+                },
+            }
+        )
+
+    async def deliver_exam_result_once(self, assignment: object) -> str:
+        assignment_id = int(assignment["id"])
+        if not self.database.claim_exam_result_delivery(assignment_id):
+            return "already_claimed"
+        manager = await self.public_discord_member_by_id(assignment["manager_discord_user_id"])
+        if manager is None:
+            self.database.set_exam_result_delivery(assignment_id, status="failed", error="manager_unavailable")
+            return "failed"
+        embed = discord.Embed(
+            title="Peace · resultado da Apostila Civil",
+            description="Uma tentativa única foi finalizada.",
+            colour=discord.Colour(0xB9CAD3),
+        )
+        embed.add_field(name="Candidato", value=str(assignment["candidate_username_snapshot"]), inline=True)
+        embed.add_field(name="Discord ID", value=f"`{assignment['candidate_discord_user_id']}`", inline=True)
+        embed.add_field(name="Nota", value=f"**{int(assignment['score'])}/{100}**", inline=True)
+        embed.add_field(name="Situação", value="Aprovado" if bool(assignment["passed"]) else "Não aprovado", inline=True)
+        embed.add_field(name="Atribuição", value=f"`#{assignment_id}`", inline=True)
+        try:
+            await manager.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            self.database.set_exam_result_delivery(assignment_id, status="failed", error="manager_dm_failed")
+            return "failed"
+        self.database.set_exam_result_delivery(assignment_id, status="sent")
+        return "sent"
+
+    async def public_exam_submit(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord antes de enviar."}, status=401)
+        answer_key = self.public_exam_answer_key()
+        if answer_key is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "A prova ainda não está configurada pela equipe."},
+                status=503,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Respostas inválidas."}, status=400)
+        assignment_id = self.public_exam_assignment_id(payload.get("assignment_id"))
+        answers = payload.get("answers")
+        if assignment_id is None or not isinstance(answers, dict):
+            return web.json_response({"ok": False, "code": "INVALID_ANSWERS", "message": "Envie todas as respostas da prova."}, status=400)
+        assignment = self.database.exam_assignment(assignment_id)
+        attempt = self.database.exam_attempt_for_candidate(assignment_id, session["discord_user_id"])
+        if assignment is None or attempt is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "Não encontrei uma tentativa vinculada à sua conta."}, status=404)
+        if attempt["status"] != "in_progress":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi finalizada."}, status=409)
+        try:
+            question_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            option_order = {
+                str(key): [int(index) for index in value]
+                for key, value in json.loads(str(attempt["option_order_json"])).items()
+            }
+            result = grade_exam(answers, question_order, option_order, answer_key)
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            return web.json_response({"ok": False, "code": "INVALID_ANSWERS", "message": "Responda todas as questões uma única vez.", "detail": str(error)}, status=400)
+        passing_score = int(assignment["passing_score"])
+        passed = int(result["score"]) >= passing_score
+        status, saved_assignment, _ = self.database.submit_exam_attempt(
+            assignment_id=assignment_id,
+            candidate_discord_user_id=session["discord_user_id"],
+            answers=answers,
+            score=int(result["score"]),
+            correct_count=int(result["correct_count"]),
+            passed=passed,
+        )
+        if status == "already_submitted":
+            return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi finalizada."}, status=409)
+        if status == "expired":
+            return web.json_response({"ok": False, "code": "EXAM_EXPIRED", "message": "O prazo terminou antes do envio."}, status=409)
+        if status != "submitted" or saved_assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_NOT_SUBMITTABLE", "message": "Não foi possível finalizar esta tentativa."}, status=409)
+        delivery_status = await self.deliver_exam_result_once(saved_assignment)
+        return web.json_response(
+            {
+                "ok": True,
+                "result": {
+                    "score": int(saved_assignment["score"]),
+                    "scale": 100,
+                    "passing_score": passing_score,
+                    "correct_count": int(saved_assignment["correct_count"]),
+                    "total_questions": len(question_order),
+                    "passed": bool(saved_assignment["passed"]),
+                    "submitted_at": str(saved_assignment["submitted_at"]),
+                },
+                "manager_delivery": "sent" if delivery_status == "sent" else "pending_or_failed",
+            }
+        )
+
+    async def public_exam_assignments(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para acessar a gerência."}, status=401)
+        manager = await self.public_manager_member(session["discord_user_id"])
+        if manager is None:
+            return web.json_response({"ok": False, "code": "MANAGER_REQUIRED", "message": "Somente Gerência pode gerar provas."}, status=403)
+        if self.public_exam_answer_key() is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "O gabarito protegido ainda não está configurado pela equipe."},
+                status=503,
+            )
+        if request.method == "GET":
+            assignments = self.database.exam_assignments_for_manager(session["discord_user_id"])
+            return web.json_response({"ok": True, "assignments": [self.public_exam_manager_assignment_payload(row) for row in assignments]})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da atribuição inválidos."}, status=400)
+        candidate_id = str(payload.get("candidate_discord_user_id", "") or "").strip()
+        candidate_username = str(payload.get("candidate_username", "") or "").strip()
+        deadline = self.public_exam_deadline(payload.get("deadline_at"))
+        if not re.fullmatch(r"[0-9]{15,25}", candidate_id):
+            return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_ID", "message": "Informe um Discord ID válido."}, status=400)
+        if not 2 <= len(candidate_username) <= 80:
+            return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_USERNAME", "message": "Informe o username real do Discord."}, status=400)
+        now = datetime.now(timezone.utc)
+        if deadline is None or deadline <= now + timedelta(minutes=1):
+            return web.json_response({"ok": False, "code": "INVALID_DEADLINE", "message": "O prazo precisa estar no futuro."}, status=400)
+        if deadline > now + timedelta(days=self.public_exam_max_deadline_days()):
+            return web.json_response({"ok": False, "code": "DEADLINE_TOO_LONG", "message": "O prazo ultrapassa o limite configurado pela equipe."}, status=400)
+        candidate_member, candidate_state = await self.public_discord_member_state(candidate_id)
+        if candidate_state == "member":
+            known_names = {
+                str(getattr(candidate_member, "name", "") or "").casefold(),
+                str(getattr(candidate_member, "global_name", "") or "").casefold(),
+                str(getattr(candidate_member, "display_name", "") or "").casefold(),
+            }
+            if candidate_username.casefold() not in known_names:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "CANDIDATE_IDENTITY_MISMATCH",
+                        "message": "O username não corresponde ao Discord ID informado.",
+                    },
+                    status=409,
+                )
+        try:
+            assignment, raw_token = self.database.create_exam_assignment(
+                candidate_discord_user_id=candidate_id,
+                candidate_username=candidate_username,
+                manager_discord_user_id=session["discord_user_id"],
+                question_bank_version=CIVIL_BANK_VERSION,
+                passing_score=self.public_exam_passing_score(),
+                deadline_at=deadline.isoformat(),
+            )
+        except ExamAssignmentExistsError:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "EXAM_ALREADY_ASSIGNED",
+                    "message": "Este Discord ID já possui uma prova única registrada.",
+                },
+                status=409,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui criar atribuição de prova", exc_info=True)
+            return web.json_response({"ok": False, "code": "EXAM_ASSIGNMENT_UNAVAILABLE", "message": "Não consegui gerar a prova agora."}, status=503)
+        base_url = str(getattr(self.settings, "website_url", "") or "").rstrip("/")
+        host = str(request.host or "")
+        if host.startswith(("127.0.0.1:", "localhost:", "[::1]:")):
+            base_url = f"{request.scheme}://{host}"
+        access_url = f"{base_url}/prova/?access={urlencode({'': raw_token})[1:]}" if base_url else f"/prova/?access={raw_token}"
+        return web.json_response({"ok": True, "assignment": self.public_exam_manager_assignment_payload(assignment), "access_url": access_url})
+
+    @staticmethod
+    @web.middleware
+    async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
+        route = str(getattr(request, "path", "") or "").split("?", 1)[0]
+        origin = request.headers.get("Origin")
+        if origin and origin not in PUBLIC_API_ORIGINS:
+            # Browsers will not send a JSON cross-origin request without a
+            # successful preflight, but reject a supplied hostile Origin at
+            # the application boundary as well. Requests without Origin are
+            # kept for direct technical clients that do not use cookies.
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "ORIGIN_NOT_ALLOWED",
+                    "message": "Origem não autorizada.",
+                },
+                status=403,
+                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+            )
+        cookie_mutation = route in {
+            "/api/member/auth/verify",
+            "/api/member/auth/revoke",
+            "/api/auth/discord/logout",
+            "/api/exams/access",
+            "/api/exams/start",
+            "/api/exams/submit",
+            "/api/exams/assignments",
+        }
+        if (
+            request.method == "POST"
+            and cookie_mutation
+            and (
+                request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE)
+                or request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE)
+                or request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE)
+            )
+            and origin not in PUBLIC_API_ORIGINS
+        ):
+            # A cookie-authenticated mutation must prove that it came from
+            # the public Peace origin. Bearer-only legacy clients do not use
+            # this browser CSRF path.
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "ORIGIN_REQUIRED",
+                    "message": "A origem da sessão não pôde ser confirmada.",
+                },
+                status=403,
+                headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+            )
+        response = await handler(request)
+        if route in PUBLIC_API_NO_STORE_ROUTES:
+            response.headers["Cache-Control"] = "no-store, private"
+            response.headers["Pragma"] = "no-cache"
+            vary = {
+                value.strip()
+                for value in response.headers.get("Vary", "").split(",")
+                if value.strip()
+            }
+            vary.update({"Cookie", "Authorization"})
+            if vary:
+                response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
+        if origin in PUBLIC_API_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
+            vary = {
+                value.strip()
+                for value in response.headers.get("Vary", "").split(",")
+                if value.strip()
+            }
+            vary.add("Origin")
+            response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
+        return response
+
+    async def public_api_health(self, request: web.Request) -> web.Response:
+        response = web.json_response({"ok": True, "service": "peace-backend"})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    async def public_api_status(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        discord_connected = self.is_ready() and not self.is_closed()
+        response = web.json_response(
+            {
+                "service": "peace-backend",
+                "status": "ok" if discord_connected else "starting",
+                "frontend": "netlify",
+                "discord": {"connected": discord_connected},
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def public_api_rate_limit(self, request: web.Request) -> web.Response | None:
+        """Apply a bounded per-origin-process limit to public endpoints.
+
+        The public edge may add a stronger IP limit, but the bot must still
+        protect its Discord and SQLite work when it is reached directly or
+        through a proxy that does not preserve the client address.
+        """
+        route = str(getattr(request, "path", "") or "").split("?", 1)[0]
+        policy = PUBLIC_API_RATE_LIMITS.get(route)
+        if policy is None:
+            return None
+        limit, window_seconds = policy
+        remote = str(getattr(request, "remote", None) or "unknown").strip()[:128]
+        key = f"{route}|{remote}"
+        now = time.monotonic()
+        events = [
+            timestamp
+            for timestamp in self.public_api_rate_limit_events.get(key, [])
+            if now - timestamp < window_seconds
+        ]
+        if len(events) >= limit:
+            retry_after = max(1, int(window_seconds - (now - events[0])))
+            self.public_api_rate_limit_events[key] = events
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "RATE_LIMITED",
+                    "message": "Aguarde alguns segundos antes de tentar novamente.",
+                },
+                status=429,
+                headers={
+                    "Retry-After": str(retry_after),
+                    "Cache-Control": "no-store",
+                },
+            )
+        events.append(now)
+        self.public_api_rate_limit_events[key] = events
+        if len(self.public_api_rate_limit_events) > 4096:
+            cutoff = now - max(window for _, window in PUBLIC_API_RATE_LIMITS.values())
+            self.public_api_rate_limit_events = {
+                rate_key: timestamps
+                for rate_key, timestamps in self.public_api_rate_limit_events.items()
+                if timestamps and timestamps[-1] >= cutoff
+            }
+        return None
+
+    async def public_api_options(self, request: web.Request) -> web.Response:
+        response = web.Response(status=204)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def public_api_app(self) -> web.Application:
+        """Build the intentionally small public API surface used by Netlify."""
+        app = web.Application(
+            client_max_size=64 * 1024,
+            middlewares=(self.public_api_cors,),
+        )
+        app.router.add_get("/healthz", self.public_api_health)
+        app.router.add_get("/api/status", self.public_api_status)
+        app.router.add_get("/api/media", self.public_api_media)
+        app.router.add_get("/api/notices", self.public_api_notices)
+        app.router.add_post("/api/entry/start", self.public_api_entry_start)
+        app.router.add_get("/api/entry/status", self.public_api_entry_status)
+        app.router.add_post("/api/entry/status", self.public_api_entry_status)
+        app.router.add_post("/api/entry/repair", self.public_api_entry_repair)
+        app.router.add_post("/api/entry/identify", self.public_entry_identify_member)
+        app.router.add_post("/api/member/auth/request", self.public_member_auth_request)
+        app.router.add_post("/api/member/auth/verify", self.public_member_auth_verify)
+        app.router.add_post("/api/member/auth/session", self.public_member_auth_session)
+        app.router.add_post("/api/member/auth/revoke", self.public_member_auth_revoke)
+        app.router.add_get("/api/member/overview", self.public_member_auth_overview)
+        app.router.add_get("/api/auth/discord/start", self.public_discord_auth_start)
+        app.router.add_get("/api/auth/discord/callback", self.public_discord_auth_callback)
+        app.router.add_get("/api/auth/discord/session", self.public_discord_auth_session)
+        app.router.add_post("/api/auth/discord/logout", self.public_discord_auth_logout)
+        app.router.add_get("/api/exams/process", self.public_exam_process)
+        app.router.add_get("/api/peace/process", self.public_peace_process)
+        app.router.add_post("/api/exams/access", self.public_exam_access)
+        app.router.add_post("/api/exams/start", self.public_exam_start)
+        app.router.add_post("/api/exams/submit", self.public_exam_submit)
+        app.router.add_get("/api/exams/assignments", self.public_exam_assignments)
+        app.router.add_post("/api/exams/assignments", self.public_exam_assignments)
+        for route in (
+            "/api/status",
+            "/api/media",
+            "/api/notices",
+            "/api/entry/start",
+            "/api/entry/status",
+            "/api/entry/repair",
+            "/api/entry/identify",
+            "/api/member/auth/request",
+            "/api/member/auth/verify",
+            "/api/member/auth/session",
+            "/api/member/auth/revoke",
+            "/api/member/overview",
+            "/api/auth/discord/start",
+            "/api/auth/discord/callback",
+            "/api/auth/discord/session",
+            "/api/auth/discord/logout",
+            "/api/exams/process",
+            "/api/peace/process",
+            "/api/exams/access",
+            "/api/exams/start",
+            "/api/exams/submit",
+            "/api/exams/assignments",
+        ):
+            app.router.add_route("OPTIONS", route, self.public_api_options)
+        return app
+
+    async def start_public_api(self) -> None:
+        if not self.settings.api_enabled:
+            log.info("API pública da Peace desativada por configuração")
+            return
+        app = self.public_api_app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            site = web.TCPSite(runner, self.settings.api_host, self.settings.api_port)
+            await site.start()
+        except OSError:
+            await runner.cleanup()
+            log.exception(
+                "Não consegui abrir a API pública da Peace em %s:%s",
+                self.settings.api_host,
+                self.settings.api_port,
+            )
+            return
+        self.public_api_runner = runner
+        log.info(
+            "API pública da Peace ativa em http://%s:%s",
+            self.settings.api_host,
+            self.settings.api_port,
+        )
+
+    async def stop_public_api(self) -> None:
+        if self.public_api_runner is not None:
+            await self.public_api_runner.cleanup()
+            self.public_api_runner = None
+
+    async def start_central_bridge(self) -> None:
+        if not is_valid_central_bridge_key(self.settings.central_bridge_key):
+            log.warning("Ponte local da Central desativada: CENTRAL_BRIDGE_KEY inválida")
+            return
+        try:
+            host, port, bridge_url = parse_central_bridge_url(self.settings.central_bridge_url)
+        except RuntimeError:
+            log.exception("Ponte local da Central desativada: CENTRAL_BRIDGE_URL inválida")
+            return
+        app = web.Application(client_max_size=16 * 1024)
+        app.router.add_post("/v1/central/auth/request", self.central_auth_request)
+        app.router.add_post("/v1/central/auth/verify", self.central_auth_verify)
+        app.router.add_post("/v1/central/auth/session", self.central_auth_session)
+        app.router.add_post("/v1/central/auth/revoke", self.central_auth_revoke)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            site = web.TCPSite(runner, host, port)
+            await site.start()
+        except OSError:
+            await runner.cleanup()
+            log.exception(
+                "Não consegui abrir a ponte local da Central em %s:%s",
+                host,
+                port,
+            )
+            return
+        self.central_bridge_runner = runner
+        log.info("Ponte local da Central ativa em %s", bridge_url)
+
+    async def stop_central_bridge(self) -> None:
+        if self.central_bridge_runner is not None:
+            await self.central_bridge_runner.cleanup()
+            self.central_bridge_runner = None
+
+    def central_bridge_authorized(self, request: web.Request) -> bool:
+        supplied = request.headers.get("X-Central-Bridge-Key", "")
+        return bool(
+            supplied
+            and is_valid_central_bridge_key(self.settings.central_bridge_key)
+            and secrets.compare_digest(supplied, self.settings.central_bridge_key)
+        )
+
+    @staticmethod
+    def central_client_id(value: object) -> str | None:
+        client_id = str(value or "").strip()
+        return client_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", client_id) else None
+
+    @staticmethod
+    def central_project_id(value: object) -> str | None:
+        project_id = str(value or "").strip()
+        return project_id if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", project_id) else None
+
+    @staticmethod
+    def central_bearer_token(request: web.Request) -> str | None:
+        authorization = request.headers.get("Authorization", "")
+        match = re.fullmatch(r"Bearer ([A-Za-z0-9_-]{32,128})", authorization)
+        return match.group(1) if match else None
+
+    @classmethod
+    def public_member_token(cls, request: web.Request) -> str | None:
+        """Prefer the HttpOnly web cookie; accept bearer for legacy sessions."""
+        cookie = request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE, "")
+        if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(cookie):
+            return cookie
+        return cls.central_bearer_token(request)
+
+    @classmethod
+    def public_member_challenge_token(cls, request: web.Request) -> str | None:
+        token = request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE, "")
+        return token if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def session_belongs_to_member(row: object, member: discord.Member) -> bool:
+        return str(getattr(member, "id", "")) == str(row["discord_user_id"])
+
+    async def central_auth_member(self, peace_id: int) -> discord.Member | None:
+        self.database.initialize()
+        record = self.database.member_by_peace_id(peace_id)
+        if record is None:
+            return None
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+        try:
+            member = await guild.fetch_member(int(record["discord_user_id"]))
+        except discord.NotFound:
+            member = None
+        except (discord.Forbidden, discord.HTTPException):
+            return None
+        if member is None or not role_member(member, self.settings.central_access_role_id):
+            return None
+        return member
+
+    @staticmethod
+    def public_peace_id(value: object) -> int | None:
+        # Do not use ``value or ""`` here: the Founder identity is the valid
+        # numeric value 0, and JSON clients may send it as a number instead of
+        # the string emitted by the public form.
+        if value is None or isinstance(value, bool):
+            return None
+        text = str(value).strip()
+        if not re.fullmatch(r"[0-9]{1,19}", text):
+            return None
+        # ID 0 is the valid Founder identity in the Peace database. The
+        # public member route still requires the live Peace role below, so
+        # accepting zero here does not turn it into an unauthorised lookup.
+        parsed = int(text)
+        return parsed if parsed <= MAX_SQLITE_INTEGER else None
+
+    def public_member_has_peace_role(self, member: discord.Member) -> bool:
+        role_id = getattr(self.settings, "peace_role_id", None)
+        return role_id is not None and role_member(member, role_id)
+
+    async def public_auth_member(self, peace_id: int) -> discord.Member | None:
+        """Resolve one active Peace member without exposing lookup details."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+
+        self.database.initialize()
+        record = self.database.member_by_peace_id(peace_id)
+        if record is None:
+            return None
+        member_id = int(record["discord_user_id"])
+        fetch_member = getattr(guild, "fetch_member", None)
+        if callable(fetch_member):
+            # Authentication must use Discord's current role state. The cache
+            # remains a test/local fallback only when the guild object cannot
+            # perform an authoritative fetch at all.
+            try:
+                member = await fetch_member(member_id)
+            except discord.NotFound:
+                member = None
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
+                # A missing member is a normal denial. Permission, gateway,
+                # timeout, and provider failures are not: collapsing those
+                # into ``None`` makes the public route tell a valid member
+                # that their ID is wrong while Discord is unavailable.
+                raise
+        else:
+            get_member = getattr(guild, "get_member", None)
+            member = get_member(member_id) if callable(get_member) else None
+        configured_role_id = getattr(self.settings, "peace_role_id", None)
+        if member is None or configured_role_id is None or not role_member(member, configured_role_id):
+            return None
+        return member
+
+    @staticmethod
+    def public_auth_session_payload(
+        row,
+        *,
+        member: discord.Member | None = None,
+        token: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "peace_id": int(row["peace_id"]),
+            "member_name": str(
+                getattr(member, "display_name", None)
+                or getattr(member, "global_name", None)
+                or getattr(member, "name", "membro")
+            )[:80] if member is not None else "membro",
+            "expires_at": row["expires_at"],
+            "avatar_url": PeaceBot.public_avatar_url(member) if member is not None else None,
+        }
+        if token is not None:
+            payload["token"] = token
+        return payload
+
+    async def issue_public_auth_code(
+        self,
+        member: discord.Member,
+        peace_id: int,
+    ) -> tuple[bool, str] | tuple[None, None] | tuple[bool, None]:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        ttl_seconds = self.bounded_auth_code_ttl()
+        created = self.database.try_create_public_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            code=code,
+            expires_at=(datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat(),
+            max_user_requests=3,
+            max_client_requests=60,
+        )
+        if created is None:
+            return None, None
+        _, challenge_token = created
+        try:
+            await member.send(
+                embed=self.access_code_embed(member, peace_id, code, ttl_seconds),
+                allowed_mentions=discord.AllowedMentions(
+                    users=True,
+                    roles=False,
+                    everyone=False,
+                    replied_user=False,
+                ),
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            self.database.revoke_central_login_challenge_token(
+                challenge_token=challenge_token,
+                client_id=PUBLIC_MEMBER_AUTH_CLIENT_ID,
+            )
+            log.info("DM fechada para o código de acesso público do membro %s", member.id)
+            return False, None
+        return True, challenge_token
+
+    def bounded_auth_session_ttl(self, *, persistent: bool) -> int:
+        setting_name = (
+            "central_auth_persistent_session_ttl_seconds"
+            if persistent
+            else "central_auth_session_ttl_seconds"
+        )
+        default = AUTH_SESSION_MAX_TTL_SECONDS if persistent else 30 * 60
+        try:
+            configured = int(getattr(self.settings, setting_name, default))
+        except (TypeError, ValueError):
+            configured = default
+        return min(AUTH_SESSION_MAX_TTL_SECONDS, max(60, configured))
+
+    def bounded_auth_code_ttl(self) -> int:
+        try:
+            configured = int(getattr(self.settings, "central_auth_code_ttl_seconds", 600))
+        except (TypeError, ValueError):
+            configured = 600
+        return min(15 * 60, max(60, configured))
+
+    def access_code_embed(
+        self,
+        member: discord.Member,
+        peace_id: int,
+        code: str,
+        ttl_seconds: int,
+    ) -> discord.Embed:
+        try:
+            local_now = datetime.now(ZoneInfo(getattr(self.settings, "peace_timezone", "America/Sao_Paulo")))
+        except (ZoneInfoNotFoundError, ValueError):
+            local_now = datetime.now(timezone.utc)
+        if 5 <= local_now.hour < 12:
+            greeting = "Bom dia"
+        elif 12 <= local_now.hour < 18:
+            greeting = "Boa tarde"
+        else:
+            greeting = "Boa noite"
+        embed = discord.Embed(
+            title="Peace · código de acesso",
+            description=f"{greeting}, <@{member.id}>.",
+            colour=discord.Colour(0x2B2D31),
+        )
+        embed.add_field(name="Código", value=f"`{code}`", inline=True)
+        embed.add_field(name="ID Peace", value=f"`{peace_id}`", inline=True)
+        embed.add_field(name="Validade", value=f"{max(1, ttl_seconds // 60)} minutos", inline=True)
+        embed.set_footer(text="Digite este código somente no site oficial da Peace. Não compartilhe este código.")
+        avatar_url = self.public_avatar_url(member)
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+        return embed
+
+    @staticmethod
+    def central_denied() -> web.Response:
+        return web.json_response({"ok": False, "message": CENTRAL_AUTH_DENIAL}, status=403)
+
+    @staticmethod
+    def central_session_response(row, token: str | None = None) -> dict[str, object]:
+        response: dict[str, object] = {
+            "peace_id": int(row["peace_id"]),
+            "subject": f"discord:{row['discord_user_id']}",
+            "client_id": row["client_id"],
+            "scope": str(row["scope"]).split(),
+            "project_id": row["project_id"],
+            "expires_at": row["expires_at"],
+        }
+        if token is not None:
+            response["token"] = token
+        return response
+
+    async def central_auth_request(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+            peace_id = self.public_peace_id(payload.get("peace_id"))
+            client_id = self.central_client_id(payload.get("client_id"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        if peace_id is None or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
+        if member is None:
+            return self.central_denied()
+        if not self.database.central_login_request_allowed(
+            discord_user_id=member.id,
+            client_id=client_id,
+        ):
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        issued = await self.issue_central_login_code(member, peace_id, client_id)
+        if issued is None:
+            return web.json_response(
+                {"ok": False, "message": CENTRAL_AUTH_THROTTLED},
+                status=429,
+                headers={"Retry-After": "600"},
+            )
+        if not issued:
+            return web.json_response(
+                {"ok": False, "message": "Não foi possível enviar a DM. Abra suas mensagens privadas."},
+                status=502,
+            )
+        return web.json_response({"ok": True, "message": "Código enviado no Discord."})
+
+    async def central_auth_verify(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+            peace_id = self.public_peace_id(payload.get("peace_id"))
+            code = str(payload.get("code", "")).strip()
+            client_id = self.central_client_id(payload.get("client_id"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        if peace_id is None or not re.fullmatch(r"\d{6}", code) or client_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if payload.get("project_id") and project_id is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        member = await self.central_auth_member(peace_id)
+        if member is None:
+            return self.central_denied()
+        valid = self.database.consume_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+        )
+        if not valid:
+            return web.json_response({"ok": False, "message": "Código inválido, expirado ou já utilizado."}, status=401)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=self.bounded_auth_session_ttl(persistent=False)
+        )
+        scope = "central:access central:sync" if project_id else "central:access"
+        token = self.database.create_central_login_session(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            project_id=project_id,
+            scope=scope,
+            expires_at=expires_at.isoformat(),
+        )
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return web.json_response({"ok": False, "message": "Não foi possível criar a sessão da Central."}, status=503)
+        return web.json_response({
+            "ok": True,
+            "message": "Acesso à Central liberado.",
+            "session": self.central_session_response(row, token),
+        })
+
+    async def central_auth_session(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        project_id = self.central_project_id(payload.get("project_id"))
+        if client_id is None or token is None or (payload.get("project_id") and project_id is None):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        row = self.database.validate_central_login_session(
+            token=token,
+            client_id=client_id,
+            project_id=project_id,
+        )
+        if row is None:
+            return self.central_denied()
+        member = await self.central_auth_member(int(row["peace_id"]))
+        if member is None or not self.session_belongs_to_member(row, member):
+            self.database.revoke_central_login_session(token=token, client_id=client_id)
+            return self.central_denied()
+        return web.json_response({
+            "ok": True,
+            "message": "Sessão válida.",
+            "session": self.central_session_response(row),
+        })
+
+    async def central_auth_revoke(self, request: web.Request) -> web.Response:
+        if not self.central_bridge_authorized(request):
+            return web.json_response({"ok": False, "message": "Ponte não autorizada."}, status=401)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        client_id = self.central_client_id(payload.get("client_id"))
+        token = self.central_bearer_token(request)
+        if client_id is None or token is None:
+            return web.json_response({"ok": False, "message": "Dados de acesso inválidos."}, status=400)
+        self.database.revoke_central_login_session(token=token, client_id=client_id)
+        return web.json_response({"ok": True, "message": "Sessão encerrada."})
+
+    async def close(self) -> None:
+        await self.stop_public_api()
+        await self.stop_central_bridge()
+        await super().close()
 
     async def run_startup_step(self, label: str, operation):
         """Run one startup reconciliation without blocking the remaining steps."""
@@ -1232,17 +6306,22 @@ class PeaceBot(commands.Bot):
             log.error("Servidor %s não está disponível no cache do bot", self.settings.guild_id)
             return
         log.info("Conectado como %s no servidor %s", self.user, self.guild.name)
-        await self.run_startup_step("reserva de IDs Peace", self.sync_missing_peace_ids)
+        await self.run_startup_step("presença AFK", self.ensure_afk_presence)
+        # Nickname repair is an independent startup invariant. Run it before
+        # panel reconciliation so a slow or rate-limited panel history request
+        # cannot prevent existing Peace members from receiving their live
+        # visual-role prefix.
+        await self.run_startup_step("tags Peace prioritárias", self.sync_peace_tags)
         if not self.panels_synced:
             completed, result = await self.run_startup_step("painéis", self.sync_panels)
             self.panels_synced = completed and result is True
-        if not self.reception_visibility_synced:
-            completed, _ = await self.run_startup_step("visibilidade da recepção", self.sync_reception_visibility)
-            self.reception_visibility_synced = completed
+        await self.run_startup_step("cargos do fluxo de entrada", self.ensure_flow_roles)
+        await self.run_startup_step("retornos Peace aprovados", self.sync_approved_return_requests)
+        await self.run_startup_step("reserva de IDs Peace", self.sync_missing_peace_ids)
+        await self.run_startup_step("painel de verificação", self.sync_verification_panel)
         for label, operation in (
-            ("visibilidade dos tickets fechados", self.sync_closed_ticket_visibility),
             ("painel de boas-vindas", self.sync_welcome_panel),
-            ("canal de spam-control", self.sync_automod_channel),
+            ("painel anti-spam", self.sync_automod_channel),
             ("auditoria dos tickets fechados", self.audit_closed_tickets),
             ("auditoria dos tickets abertos", self.audit_open_ticket_controls),
         ):
@@ -1257,9 +6336,7 @@ class PeaceBot(commands.Bot):
             ("painéis de retorno pendentes", self.sync_pending_return_panels),
             ("painéis de developers pendentes", self.sync_pending_developer_panels),
             ("cargos de visitante", self.sync_visitor_roles),
-            ("tags Peace", self.sync_peace_tags),
-            ("nomes dos tickets", self.sync_ticket_names),
-            ("áreas de booster", self.sync_booster_spaces),
+            ("limpeza de exclusões Peace antigas", self.sync_released_member_cleanup),
         ):
             await self.run_startup_step(label, operation)
         if self.iris is not None:
@@ -1271,30 +6348,218 @@ class PeaceBot(commands.Bot):
             )
             self.iris_context_task.add_done_callback(self.report_background_task)
 
+    async def ensure_afk_presence(self) -> bool:
+        """Keep the bot in the configured AFK voice channel, muted and idempotently."""
+
+        channel_id = getattr(self.settings, "afk_channel_id", None)
+        if channel_id is None or self.guild is None:
+            return False
+
+        async with self.afk_presence_lock:
+            target = self.guild.get_channel(int(channel_id))
+            if target is None or not callable(getattr(target, "connect", None)):
+                log.warning("Canal AFK %s não é um canal de voz disponível", channel_id)
+                return False
+
+            voice = getattr(self.guild, "voice_client", None)
+            if voice is None:
+                voice = discord.utils.get(self.voice_clients, guild=self.guild)
+
+            if voice is not None and not voice.is_connected():
+                try:
+                    await voice.disconnect(force=True)
+                except (discord.HTTPException, AttributeError):
+                    log.debug("A conexão de voz antiga não pôde ser encerrada", exc_info=True)
+                voice = None
+
+            if voice is None:
+                await target.connect(self_mute=True)
+                log.info("Presença AFK iniciada no canal %s", target.id)
+                return True
+
+            if getattr(getattr(voice, "channel", None), "id", None) != target.id:
+                await voice.move_to(target)
+
+            await self.guild.change_voice_state(channel=target, self_mute=True)
+            log.info("Presença AFK sincronizada no canal %s", target.id)
+            return True
+
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        if self.user is None or member.id != self.user.id:
+            return
+        channel_id = getattr(self.settings, "afk_channel_id", None)
+        target_id = getattr(getattr(after, "channel", None), "id", None)
+        if channel_id is not None and (target_id != int(channel_id) or not getattr(after, "self_mute", False)):
+            await self.run_startup_step("reconexão da presença AFK", self.ensure_afk_presence)
+
     async def on_member_join(self, member: discord.Member) -> None:
         await self.reconcile_visitor_role(member)
+        await self.bind_entry_invite(member)
         if not await self.ensure_return_request(member):
             await self.sync_member_tag(member)
         await self.ensure_booster_space(member)
 
-    async def on_member_remove(self, member: discord.Member) -> None:
-        if member.bot or not role_member(member, self.settings.peace_role_id):
-            return
-        reserved = self.database.reserve_peace_member(member.id)
+    async def peace_role_removal_actor(
+        self,
+        before: discord.Member,
+        after: discord.Member,
+    ) -> discord.abc.User | None:
+        """Best-effort audit-log lookup; never guess an actor from stale entries."""
+        guild = after.guild
+        bot_member = getattr(guild, "me", None)
+        permissions = getattr(bot_member, "guild_permissions", None)
+        if bot_member is None or not getattr(permissions, "view_audit_log", False):
+            return None
+
+        def role_ids(value) -> set[int]:
+            roles = getattr(value, "roles", value)
+            if roles is None:
+                return set()
+            return {int(getattr(role, "id", role)) for role in roles}
+
+        try:
+            async for entry in guild.audit_logs(
+                limit=15,
+                action=discord.AuditLogAction.member_role_update,
+            ):
+                target = getattr(entry, "target", None)
+                if getattr(target, "id", None) != after.id:
+                    continue
+                created_at = getattr(entry, "created_at", None)
+                if created_at is None or datetime.now(timezone.utc) - created_at > timedelta(seconds=45):
+                    continue
+                for change in getattr(entry, "changes", ()):
+                    if getattr(change, "key", None) != "roles":
+                        continue
+                    before_ids = role_ids(getattr(change, "before", None))
+                    after_ids = role_ids(getattr(change, "after", None))
+                    if not before_ids and not after_ids:
+                        continue
+                    if self.settings.peace_role_id in before_ids and self.settings.peace_role_id not in after_ids:
+                        actor = getattr(entry, "user", None)
+                        if actor is not None:
+                            return actor
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("Não consegui consultar o audit log para a remoção de Peace de %s", after.id)
+        return None
+
+    async def reserve_member_peace(
+        self,
+        member: discord.Member,
+        *,
+        reason: str,
+        actor: discord.abc.User | None = None,
+    ) -> sqlite3.Row | None:
+        reserved = self.database.reserve_peace_member(
+            member.id,
+            reason=reason,
+            actor_user_id=getattr(actor, "id", None),
+        )
         if reserved is not None:
-            log.info("ID Peace %s reservado para o retorno de %s", reserved["peace_id"], member.id)
+            await self.send_log(
+                "ID Peace reservado",
+                actor=actor or member,
+                fields=(
+                    ("Usuário", member.mention),
+                    ("ID reservado", f"`{int(reserved['peace_id'])}`"),
+                    ("Motivo", reason),
+                    ("Quem", actor.mention if actor is not None else "não identificado"),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
+            )
+        return reserved
+
+    async def on_member_remove(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+        existing_reservation = self.database.reserved_peace_id_for_user(member.id)
+        if existing_reservation is not None:
+            self.database.annotate_peace_reservation(
+                member.id,
+                reason="membro também saiu do servidor",
+            )
+            return
+        if not role_member(member, self.settings.peace_role_id) and not self.database.recorded_peace_member(
+            member.id,
+            self.settings.peace_role_id,
+        ):
+            return
+        await self.reserve_member_peace(
+            member,
+            reason="membro saiu do servidor enquanto o vínculo Peace estava ativo",
+        )
 
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
-        if before.roles != after.roles:
-            await self.reconcile_visitor_role(after)
-            if not await self.ensure_return_request(after):
-                await self.sync_member_tag(after)
+        roles_changed = before.roles != after.roles
+        nickname_changed = getattr(before, "nick", None) != getattr(after, "nick", None)
+        if not roles_changed and not nickname_changed:
+            return
+        # A removal clears the nickname before it removes the Peace role. Do
+        # not let the intermediate Discord event immediately rebuild the old
+        # tag while the two-step mutation is still in progress.
+        if after.id in self.managed_peace_role_removals:
+            return
+        if roles_changed:
+            before_role_ids = {role.id for role in before.roles}
+            after_role_ids = {role.id for role in after.roles}
+            peace_removed = (
+                self.settings.peace_role_id in before_role_ids
+                and self.settings.peace_role_id not in after_role_ids
+            )
+            if peace_removed and after.id not in self.managed_peace_role_removals:
+                actor = await self.peace_role_removal_actor(before, after)
+                await self.reserve_member_peace(
+                    after,
+                    reason="cargo Peace retirado enquanto o membro permaneceu no servidor",
+                    actor=actor,
+                )
+            visitor = role_named(
+                after.guild,
+                getattr(self.settings, "visitor_role_id", None),
+                VISITOR_ROLE_NAME,
+                "Visitor",
+            )
+            not_verified = role_named(
+                after.guild,
+                getattr(self.settings, "not_verified_role_id", None),
+                NOT_VERIFIED_ROLE_NAME,
+                "Não verificado",
+                "Nao verificado",
+            )
+            prefer_reverification = (
+                visitor is not None
+                and not_verified is not None
+                and visitor.id in before_role_ids
+                and visitor.id in after_role_ids
+                and not_verified.id not in before_role_ids
+                and not_verified.id in after_role_ids
+            )
+            await self.reconcile_visitor_role(
+                after,
+                prefer_reverification=prefer_reverification,
+            )
+            if prefer_reverification:
+                await self.sync_verification_panel()
+        if not await self.ensure_return_request(after):
+            await self.sync_member_tag(after)
+        if roles_changed:
             await self.ensure_booster_space(after)
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
             return
         try:
+            if message.guild is None:
+                dm_command = (message.content or "").strip().casefold()
+                if dm_command in {"start", "/start", "!start"}:
+                    log.info("Menu interno solicitado por DM (usuário %s)", message.author.id)
+                    await self.send_dm_start_menu(message.author.id, message.channel)
+                return
             if self.settings.automod_channel_id and message.channel.id == self.settings.automod_channel_id:
                 await self.handle_automod_message(message)
                 return
@@ -1360,7 +6625,7 @@ class PeaceBot(commands.Bot):
         self,
         channel_id: int | None,
         custom_id: str,
-        embed: discord.Embed,
+        embed: discord.Embed | list[discord.Embed],
         view: discord.ui.View,
         asset_name: str | None = None,
     ) -> bool:
@@ -1370,6 +6635,7 @@ class PeaceBot(commands.Bot):
         if not isinstance(channel, discord.TextChannel):
             log.warning("Canal de painel inválido ou ausente: %s", channel_id)
             return False
+        embeds = embed if isinstance(embed, list) else [embed]
         try:
             matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
@@ -1387,123 +6653,218 @@ class PeaceBot(commands.Bot):
                 message = matches[0]
                 attachments = [asset(asset_name)] if asset_name else []
                 if asset_name:
-                    embed.set_image(url=f"attachment://{asset_name}")
-                await message.edit(content=None, embed=embed, view=view, attachments=attachments)
+                    embeds[0].set_image(url=f"attachment://{asset_name}")
+                payload = self.panel_embed_payload(embeds)
+                await message.edit(content=None, **payload, view=view, attachments=attachments)
                 for duplicate in matches[1:]:
                     await duplicate.delete()
                 return True
             file = asset(asset_name) if asset_name else None
             if asset_name:
-                embed.set_image(url=f"attachment://{asset_name}")
-            await channel.send(embed=embed, view=view, file=file)
+                embeds[0].set_image(url=f"attachment://{asset_name}")
+            payload = self.panel_embed_payload(embeds)
+            await channel.send(**payload, view=view, file=file)
             return True
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao sincronizar painel no canal %s", channel_id)
             return False
 
+    @staticmethod
+    def panel_embed_payload(embeds: list[discord.Embed]) -> dict[str, object]:
+        """Use one or multiple embeds without changing the single-embed API."""
+        if len(embeds) == 1:
+            return {"embed": embeds[0]}
+        return {"embeds": embeds}
+
     async def sync_panels(self) -> bool:
         results = await asyncio.gather(
-            self.sync_one_panel(self.settings.set_channel_id, "peace_pedir_set_open", self.set_panel_embed(), SetView(self), SET_PANEL_ASSET),
-            self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embed(), SupportView(self), TICKET_PANEL_ASSET),
-            self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embed(), OperationsView(self), OPERATIONS_PANEL_ASSET),
+            self.sync_one_panel(self.settings.ticket_panel_channel_id, "peace_support_open_ticket", self.support_panel_embeds(), SupportView(self), TICKET_PANEL_ASSET),
+            self.sync_one_panel(self.settings.operations_channel_id, "clock_in_btn", self.operations_panel_embeds(), OperationsView(self), OPERATIONS_PANEL_ASSET),
         )
         return all(results)
 
     @staticmethod
+    def verification_panel_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="◈ Verificação de acesso",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · INICIAR",
+            value="Use o botão abaixo.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · LER",
+            value="Leia o código exibido.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · SELECIONAR",
+            value="Escolha a opção correta.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{VERIFICATION_ASSET}")
+        embed.set_footer(text=VERIFICATION_PANEL_MARKER)
+        return embed
+
+    @staticmethod
+    def verification_explanation_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Clique em **Iniciar verificação**, leia o código da imagem e selecione a resposta. "
+                "Quando a escolha estiver correta, eu libero o cargo **Visitante** para você."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Confirma que uma pessoa está controlando a conta antes de liberar o acesso inicial.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Reduz automações e mantém as áreas de visitante protegidas.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def verification_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.verification_panel_embed(), cls.verification_explanation_embed()]
+
+    async def sync_verification_panel(self) -> bool:
+        """Publish the CAPTCHA panel without changing channel structure or permissions."""
+        if self.guild is None or self.user is None:
+            return False
+        try:
+            channel = (
+                self.guild.get_channel(self.settings.verification_channel_id)
+                if self.settings.verification_channel_id is not None
+                else None
+            )
+            if not isinstance(channel, discord.TextChannel):
+                channel = discord.utils.find(
+                    lambda item: item.name.casefold() in {VERIFICATION_CHANNEL_NAME.casefold(), "verificar"},
+                    self.guild.text_channels,
+                )
+            if channel is None:
+                log.warning("Canal de verificação não encontrado; permissões não serão alteradas")
+                return False
+
+            embeds = self.verification_panel_embeds()
+            matches: list[discord.Message] = []
+            async for message in channel.history(limit=100):
+                if message.author.id != self.user.id:
+                    continue
+                if message.embeds and (message.embeds[0].footer.text or "") == VERIFICATION_PANEL_MARKER:
+                    matches.append(message)
+            if matches:
+                payload = self.panel_embed_payload(embeds)
+                await matches[0].edit(
+                    content=None,
+                    **payload,
+                    view=VerificationStartView(self),
+                    attachments=[asset(VERIFICATION_ASSET)],
+                )
+                for duplicate in matches[1:]:
+                    await duplicate.delete()
+            else:
+                payload = self.panel_embed_payload(embeds)
+                await channel.send(
+                    **payload,
+                    view=VerificationStartView(self),
+                    file=asset(VERIFICATION_ASSET),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao sincronizar a área de verificação")
+            return False
+
+    @staticmethod
     def automod_embed() -> discord.Embed:
         embed = discord.Embed(
-            title="PEACE // SPAM CONTROL",
-            description=(
-                "Este canal existe somente para controlar spam.\n"
-                "Ele não é chat, suporte, ticket ou canal de divulgação."
-            ),
             color=0xE74C3C,
         )
         embed.add_field(
-            name="ESCOPO",
-            value="Use este canal apenas como barreira automática contra mensagens repetidas, links em massa e divulgação abusiva.",
-            inline=False,
+            name="🛡️ DETECT",
+            value="Mensagem identificada",
+            inline=True,
         )
         embed.add_field(
-            name="AÇÃO AUTOMÁTICA",
-            value="Qualquer mensagem enviada aqui é apagada e gera timeout automático de 7 dias.",
-            inline=False,
+            name="🧹 REMOVE",
+            value="Mensagem removida",
+            inline=True,
         )
         embed.add_field(
-            name="LIMITE DA PUNIÇÃO",
-            value="Este sistema não bane e não expulsa. A punição é aplicada sem revisão manual neste canal.",
-            inline=False,
-        )
-        embed.add_field(
-            name="STATUS",
-            value="PROTEÇÃO ATIVA · SPAM CONTROL ONLY",
-            inline=False,
+            name="⏱️ TIMEOUT",
+            value="7 dias",
+            inline=True,
         )
         embed.set_image(url=f"attachment://{AUTOMOD_ASSET}")
-        embed.set_footer(text="automod:spam-control")
         return embed
 
+    @staticmethod
+    def is_automod_panel_message(message: discord.Message) -> bool:
+        """Identify old or current bot-owned anti-spam panels without touching user messages."""
+        embed_text: list[str] = []
+        image_urls: list[str] = []
+        for embed in message.embeds:
+            embed_text.extend(
+                value
+                for value in (
+                    embed.title or "",
+                    embed.description or "",
+                    embed.footer.text or "",
+                    *(field.name for field in embed.fields),
+                    *(field.value for field in embed.fields),
+                )
+                if value
+            )
+            if embed.image.url:
+                image_urls.append(embed.image.url)
+        attachments = " ".join(attachment.filename for attachment in message.attachments)
+        searchable = "\n".join((message.content, *embed_text, attachments)).casefold()
+        return (
+            "peace // spam control" in searchable
+            or "contenção automática" in searchable
+            or "<svg" in searchable
+            or "automod.png" in " ".join(image_urls).casefold()
+            or "automod.svg" in searchable
+        )
+
     async def sync_automod_channel(self) -> None:
-        """Mantém o painel visual do canal público de contenção de spam."""
+        """Refresh only the bot-owned anti-spam message; never change channel permissions."""
         if self.guild is None or self.user is None or self.settings.automod_channel_id is None:
             return
         channel = self.guild.get_channel(self.settings.automod_channel_id)
         if not isinstance(channel, discord.TextChannel):
             return
         try:
-            if (
-                channel.name != "spam-control"
-                or channel.category is not None
-                or channel.position != 0
-                or channel.topic != "Spam control only. Do not send messages in this channel."
-            ):
-                await channel.edit(
-                    name="spam-control",
-                    category=None,
-                    position=0,
-                    topic="Spam control only. Do not send messages in this channel.",
-                    reason="Padronização do honeypot de spam",
-                )
-            await channel.set_permissions(
-                self.guild.default_role,
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                reason="Canal público de detecção automática de spam",
-            )
-            bot_messages: list[discord.Message] = []
+            matches: list[discord.Message] = []
             async for message in channel.history(limit=100):
-                if message.author.id == self.user.id:
-                    bot_messages.append(message)
-            panel = next((
-                message for message in bot_messages
-                if message.embeds and (message.embeds[0].footer.text or "") == "automod:spam-control"
-            ), None)
-            if panel is None:
-                panel = next(
-                    (message for message in bot_messages if message.content.startswith("Sistema de Moderação Automática")),
-                    None,
-                )
-            if panel is None:
-                for message in bot_messages:
-                    await message.delete()
-                await channel.send(
-                    embed=self.automod_embed(),
-                    file=asset(AUTOMOD_ASSET),
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-            else:
-                await panel.edit(
+                if message.author.id == self.user.id and self.is_automod_panel_message(message):
+                    matches.append(message)
+            embed = self.automod_embed()
+            if matches:
+                await matches[0].edit(
                     content=None,
-                    embed=self.automod_embed(),
+                    embed=embed,
                     view=None,
                     attachments=[asset(AUTOMOD_ASSET)],
                 )
-                for duplicate in bot_messages:
-                    if duplicate.id != panel.id:
-                        await duplicate.delete()
+                for duplicate in matches[1:]:
+                    await duplicate.delete()
+                return
+            await channel.send(
+                embed=embed,
+                file=asset(AUTOMOD_ASSET),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
         except (discord.Forbidden, discord.HTTPException):
-            log.exception("Falha ao sincronizar o canal de moderação automática")
+            log.exception("Falha ao sincronizar o painel anti-spam")
 
     async def handle_automod_message(self, message: discord.Message) -> None:
         """Apaga a mensagem do honeypot e aplica timeout, sem expulsar nem banir."""
@@ -1526,7 +6887,14 @@ class PeaceBot(commands.Bot):
                 actor_user_id=message.author.id,
             )
             await self.send_log(
-                f"Moderação automática: mensagem removida e timeout de 7 dias aplicado em {message.author.mention}."
+                "Moderação automática",
+                actor=message.author,
+                fields=(
+                    ("Usuário", message.author.mention),
+                    ("Ação", "Mensagem removida e timeout de 7 dias aplicado."),
+                    ("Canal", getattr(message.channel, "mention", f"#{message.channel.id}")),
+                    ("Horário", f"<t:{now_unix()}:F>"),
+                ),
             )
 
     async def disable_ticket_controls(self, channel: discord.TextChannel) -> None:
@@ -1791,39 +7159,197 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível limpar os painéis antigos do staff-only")
 
-    @staticmethod
-    def set_panel_embed() -> discord.Embed:
-        return discord.Embed(
-            title="◈ Pedir set",
-            description=(
-                "Escolha uma entrevista e preencha tudo com dados corretos.\n\n"
-                "Player: apelido, RG e telefone in-game.\n"
-                "Developers: nome real, área e experiência.\n"
-                "Staff: indisponível por enquanto.\n\n"
-                "Se você já possui Peace, não solicite uma nova entrada como player."
-            ),
+    def set_panel_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="◈ Request a Peace set",
+            color=0x101827,
         )
+        embed.add_field(
+            name="1 · ESCOLHER",
+            value="Selecione o caminho da entrevista.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · PREENCHER",
+            value="Informe dados corretos e completos.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · ANALISAR",
+            value="A equipe revisa o pedido.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{SET_PANEL_ASSET}")
+        return embed
+
+    def set_panel_details_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Escolha uma entrevista e preencha os dados solicitados com atenção. "
+                "A equipe usa essas informações para analisar a entrada correta em cada área."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="Regra",
+            value="Uma nova entrada de Player não é aceita para quem já possui Peace.",
+            inline=False,
+        )
+        return embed
+
+    def set_panel_embeds(self) -> list[discord.Embed]:
+        return [self.set_panel_embed(), self.set_panel_details_embed()]
 
     @staticmethod
     def support_panel_embed() -> discord.Embed:
-        return discord.Embed(
-            title="🎫 Atendimento Peace",
-            description="Escolha o assunto e descreva o caso. A equipe assume o atendimento quando necessário.",
-        )
-
-    def operations_panel_embed(self) -> discord.Embed:
-        return discord.Embed(
-            title="⚙ Operações Peace",
-            description="Registre seu ponto e acesse os recursos internos da Peace Tools.",
-        )
-
-    def welcome_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="BEM-VINDO À PEACE",
-            description="Leia as regras e use os botões para entrar, pedir suporte ou iniciar uma entrevista.",
+            title="◈ Atendimento Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · ESCOLHER",
+            value="Selecione o assunto do atendimento.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · DESCREVER",
+            value="Explique o caso com os dados necessários.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · ACOMPANHAR",
+            value="A equipe assume o ticket quando necessário.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{TICKET_PANEL_ASSET}")
+        return embed
+
+    @staticmethod
+    def support_panel_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Abra um ticket, escolha a categoria correta e descreva o que precisa. "
+                "A conversa fica organizada em um atendimento próprio."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Cria um espaço privado para a equipe acompanhar e resolver seu caso.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Evita pedidos espalhados e mantém cada atendimento com seu contexto.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def support_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.support_panel_embed(), cls.support_panel_details_embed()]
+
+    @staticmethod
+    def operations_panel_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="◷ Operações Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · INICIAR",
+            value="Use ◷ Ponto ao começar suas atividades.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · ACOMPANHAR",
+            value="Acesse os recursos internos da Peace Tools.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · FINALIZAR",
+            value="Encerre o ponto ao terminar.",
+            inline=True,
+        )
+        embed.set_image(url=f"attachment://{OPERATIONS_PANEL_ASSET}")
+        return embed
+
+    @staticmethod
+    def operations_panel_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Registre o início do trabalho com ◷ Ponto e use × Encerrar ponto "
+                "quando sair. O site continua disponível pelo botão ao lado."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Registra o período ativo e envia os marcos operacionais para os logs.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Mantém o histórico da equipe organizado e auditável.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def operations_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.operations_panel_embed(), cls.operations_panel_details_embed()]
+
+    @staticmethod
+    def welcome_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="◈ Bem-vindo à Peace",
+            color=0x101827,
+        )
+        embed.add_field(
+            name="1 · LER",
+            value="Comece pelas regras do servidor.",
+            inline=True,
+        )
+        embed.add_field(
+            name="2 · ENTRAR",
+            value="Envie sua candidatura pelo site oficial.",
+            inline=True,
+        )
+        embed.add_field(
+            name="3 · FALAR",
+            value="Abra um atendimento se precisar de ajuda.",
+            inline=True,
         )
         embed.set_image(url=f"attachment://{WELCOME_ASSET}")
         return embed
+
+    @staticmethod
+    def welcome_details_embed() -> discord.Embed:
+        embed = discord.Embed(
+            title="Como funciona",
+            description=(
+                "Use os botões para seguir o primeiro acesso na ordem certa: leia as regras, "
+                "abra a candidatura no site e procure a equipe quando precisar."
+            ),
+            color=0x101827,
+        )
+        embed.add_field(
+            name="O que faz",
+            value="Reúne em um só lugar os caminhos principais para começar na comunidade.",
+            inline=True,
+        )
+        embed.add_field(
+            name="Por que existe",
+            value="Deixa o acesso inicial claro e reduz dúvidas antes da entrada.",
+            inline=True,
+        )
+        return embed
+
+    @classmethod
+    def welcome_panel_embeds(cls) -> list[discord.Embed]:
+        return [cls.welcome_embed(), cls.welcome_details_embed()]
 
     async def sync_welcome_panel(self) -> None:
         if self.guild is None or self.user is None or self.settings.welcome_channel_id is None:
@@ -1839,22 +7365,26 @@ class PeaceBot(commands.Bot):
                 if message.author.id != self.user.id:
                     continue
                 bot_messages.append(message)
-                if any(attachment.filename in {WELCOME_ASSET, "welcome.png"} for attachment in message.attachments):
+                if any(
+                    attachment.filename in {WELCOME_ASSET, WELCOME_LEGACY_ASSET}
+                    for attachment in message.attachments
+                ):
                     matches.append(message)
             if not matches:
                 for old_message in bot_messages:
                     await old_message.delete()
                 await channel.send(
-                    embed=self.welcome_embed(),
+                    embeds=self.welcome_panel_embeds(),
                     view=view,
                     file=asset(WELCOME_ASSET),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             else:
                 bot_message = matches[0]
+                payload = self.panel_embed_payload(self.welcome_panel_embeds())
                 await bot_message.edit(
                     content=None,
-                    embed=self.welcome_embed(),
+                    **payload,
                     view=view,
                     attachments=[asset(WELCOME_ASSET)],
                 )
@@ -1874,111 +7404,12 @@ class PeaceBot(commands.Bot):
             log.info("Não foi possível sincronizar o painel de boas-vindas")
 
     async def sync_reception_visibility(self) -> None:
-        if self.guild is None or self.settings.welcome_channel_id is None:
-            return
-        welcome = self.guild.get_channel(self.settings.welcome_channel_id)
-        category = welcome.category if isinstance(welcome, discord.TextChannel) else None
-        if not isinstance(category, discord.CategoryChannel):
-            return
-        visitor = self.guild.get_role(self.settings.visitor_role_id or 0)
-        if visitor is None:
-            log.warning("Cargo de visitante não encontrado para proteger a recepção")
-            return
-        hidden_roles = [role for role in self.guild.roles if not role.is_default() and role.id != visitor.id]
-        targets = [category, *category.channels]
-
-        async def set_if_needed(target, subject, **permissions) -> None:
-            current = target.overwrites_for(subject)
-            if all(getattr(current, key) == value for key, value in permissions.items()):
-                return
-            await target.set_permissions(subject, **permissions, reason="Recepção exclusiva para visitantes")
-
-        try:
-            for target in targets:
-                await set_if_needed(
-                    target,
-                    self.guild.default_role,
-                    view_channel=False,
-                    send_messages=False,
-                )
-                await set_if_needed(
-                    target,
-                    visitor,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=False,
-                )
-                for role in hidden_roles:
-                    await set_if_needed(
-                        target,
-                        role,
-                        view_channel=False,
-                    )
-                if self.guild.me is not None:
-                    await set_if_needed(
-                        target,
-                        self.guild.me,
-                        view_channel=True,
-                        read_message_history=True,
-                        send_messages=True,
-                        manage_messages=True,
-                    )
-        except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível ajustar a visibilidade da recepção")
+        """Channel visibility is operator-managed; the bot does not rewrite it."""
+        return
 
     async def sync_closed_ticket_visibility(self) -> None:
-        """Mantém tickets arquivados legíveis somente pela Íris/bot."""
-        if self.guild is None or self.settings.closed_ticket_category_id is None:
-            return
-        category = self.guild.get_channel(self.settings.closed_ticket_category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return
-        try:
-            async def set_if_needed(target, subject, **permissions) -> None:
-                current = target.overwrites_for(subject)
-                if all(getattr(current, key) == value for key, value in permissions.items()):
-                    return
-                await target.set_permissions(subject, **permissions, reason="Tickets fechados privados para a Íris")
-
-            await set_if_needed(
-                category,
-                self.guild.default_role,
-                view_channel=False,
-                read_message_history=False,
-                send_messages=False,
-            )
-            for role in self.guild.roles:
-                if role.is_default():
-                    continue
-                await set_if_needed(
-                    category,
-                    role,
-                    view_channel=False,
-                    read_message_history=False,
-                    send_messages=False,
-                )
-            if self.guild.me is not None:
-                await set_if_needed(
-                    category,
-                    self.guild.me,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    manage_messages=True,
-                )
-            desired = self.closed_ticket_overwrites()
-            desired_ids = {subject.id for subject in desired}
-            for channel in category.text_channels:
-                current_ids = {subject.id for subject in channel.overwrites}
-                if current_ids == desired_ids and all(
-                    channel.overwrites_for(subject) == overwrite
-                    for subject, overwrite in desired.items()
-                ):
-                    continue
-                await channel.edit(overwrites=desired, reason="Higienização de ticket fechado")
-        except (discord.Forbidden, discord.HTTPException):
-            log.exception("Não foi possível fechar a visibilidade dos tickets arquivados")
+        """Closed-ticket visibility is operator-managed; the bot does not rewrite it."""
+        return
 
     async def sync_ticket_names(self) -> None:
         """Corrige nomes antigos e usa o ID incremental do ticket, não o ID do usuário."""
@@ -1999,84 +7430,249 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def tag_prefix(member: discord.Member, settings: Settings) -> str | None:
-        if member.id == settings.founder_user_id:
-            return "F"
-        names = {role.name.casefold() for role in member.roles}
-        if any(
-            name == "dev"
-            or any(
-                marker in name
-                for marker in (
-                    "developer",
-                    "desenvolvedor",
-                    "desenvolvimento",
-                    "frontend",
-                    "backend",
-                    "documentation",
-                    "documentação",
-                    "documentacao",
-                    "ai & bots",
-                    "ia & bots",
-                )
-            )
-            for name in names
-        ):
-            return "D"
-        if any("streamer" in name for name in names):
-            return "S"
-        if any("recrutador" in name for name in names):
-            return "R"
-        if any("gerente" in name or "gerência" in name or "gerencia" in name for name in names):
-            return "G"
+        visual_prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=(role.name for role in member.roles),
+            founder_user_id=settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default=None,
+            role_positions=role_position_map(member.roles),
+            role_hoist=role_hoist_map(member.roles),
+        )
+        if visual_prefix is not None:
+            return visual_prefix
         if role_member(member, settings.peace_role_id):
             return "N"
         return None
 
-    async def sync_member_tag(self, member: discord.Member) -> None:
-        if member.bot:
-            return
-        prefix = self.tag_prefix(member, self.settings)
+    @staticmethod
+    def peace_nickname(
+        member: discord.Member,
+        *,
+        role_names: list[str],
+        peace_id: int,
+        settings: Settings,
+        role_positions: dict[str, int] | None = None,
+        role_hoist: dict[str, bool] | None = None,
+    ) -> str | None:
+        visual_prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=role_names,
+            founder_user_id=settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default=None,
+            role_positions=role_positions,
+            role_hoist=role_hoist,
+        )
+        has_peace = role_member(member, settings.peace_role_id) or any(
+            str(name).casefold().strip() == "peace"
+            for name in role_names
+        )
+        prefix = visual_prefix or ("N" if has_peace else None)
         if prefix is None:
-            return
+            return None
+        current = member.nick or member.display_name or member.name
+        base = alias_from_nickname(current, strip_legacy_id=has_peace) or member.name
+        return build_peace_nickname(prefix, base, peace_id)
+
+    async def sync_member_tag(
+        self,
+        member: discord.Member,
+        *,
+        role_names: list[str] | None = None,
+        peace_id: int | None = None,
+        strict: bool = False,
+        stats: dict[str, int] | None = None,
+    ) -> bool:
+        if member.bot:
+            if stats is not None:
+                stats["ignored"] = stats.get("ignored", 0) + 1
+            return True
+        effective_role_names = role_names or [role.name for role in member.roles]
+        effective_role_positions = role_position_map(member.roles)
+        effective_role_hoist = role_hoist_map(member.roles)
+        has_peace = role_member(member, self.settings.peace_role_id) or any(
+            str(name).casefold().strip() == "peace"
+            for name in effective_role_names
+        )
         record = self.database.get_member(member.id)
-        if record is None and role_member(member, self.settings.peace_role_id):
-            peace_id = self.database.ensure_runtime_member(
+        if peace_id is not None:
+            resolved_peace_id = peace_id
+        elif record is None and has_peace:
+            resolved_peace_id = self.database.ensure_runtime_member(
                 discord_user_id=member.id,
                 username=member.name,
                 nickname=member.nick,
                 role_ids=[role.id for role in member.roles],
-                role_names=[role.name for role in member.roles],
+                role_names=effective_role_names,
                 founder_id=self.settings.founder_user_id,
+                role_positions=effective_role_positions,
+                role_hoist=effective_role_hoist,
             )
         else:
-            peace_id = int(record["peace_id"]) if record is not None else int(str(member.id)[-4:])
-        current = member.nick or member.display_name or member.name
-        match = re.match(r"^[A-Z]\s*⎰\s*(.+?)\s+(\d{1,8})$", current)
-        base = match.group(1).strip() if match else current.strip()
-        base = re.sub(r"\s+", " ", base)[:20].strip() or member.name[:20]
-        desired = f"{prefix} ⎰ {base} {peace_id}"[:32]
+            resolved_peace_id = int(record["peace_id"]) if record is not None else int(str(member.id)[-4:])
+        if record is not None and role_names is None:
+            self.database.ensure_runtime_member(
+                discord_user_id=member.id,
+                username=member.name,
+                nickname=member.nick,
+                role_ids=[role.id for role in member.roles],
+                role_names=effective_role_names,
+                founder_id=self.settings.founder_user_id,
+                role_positions=effective_role_positions,
+                role_hoist=effective_role_hoist,
+            )
+        desired = self.peace_nickname(
+            member,
+            role_names=effective_role_names,
+            peace_id=resolved_peace_id,
+            settings=self.settings,
+            role_positions=effective_role_positions,
+            role_hoist=effective_role_hoist,
+        )
+        if desired is None:
+            if stats is not None:
+                stats["not_applicable"] = stats.get("not_applicable", 0) + 1
+            return True
         if member.nick == desired:
-            return
+            if stats is not None:
+                stats["already_correct"] = stats.get("already_correct", 0) + 1
+            return True
         try:
             await member.edit(nick=desired, reason="Padronização da tag Peace")
+            self.database.update_nickname(member.id, desired)
+            if stats is not None:
+                stats["updated"] = stats.get("updated", 0) + 1
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível atualizar a tag de %s", member.id)
+            if stats is not None:
+                stats["failed"] = stats.get("failed", 0) + 1
+            if strict:
+                raise
+            return False
+        return True
 
-    async def sync_peace_tags(self) -> None:
+    async def members_for_tag_sync(self) -> tuple[list[discord.Member], bool]:
+        """Return the complete member view used by the nickname backfill.
+
+        ``Guild.members`` is a cache and can be incomplete after a restart or
+        when the gateway has not delivered every member chunk yet. The REST
+        member iterator is the authoritative fallback for this reconciliation;
+        cached members remain useful when Discord denies the fetch.
+        """
         if self.guild is None:
-            return
-        for member in self.guild.members:
+            return [], False
+        members_by_id = {
+            member.id: member
+            for member in getattr(self.guild, "members", ())
+            if getattr(member, "id", None) is not None
+        }
+        member_count = getattr(self.guild, "member_count", None)
+        if getattr(self.guild, "chunked", False) or (
+            isinstance(member_count, int) and len(members_by_id) >= member_count
+        ):
+            return list(members_by_id.values()), False
+        fetch_members = getattr(self.guild, "fetch_members", None)
+        if not callable(fetch_members):
+            return list(members_by_id.values()), False
+        try:
+            async for member in fetch_members(limit=None):
+                members_by_id[member.id] = member
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Não foi possível buscar todos os membros para a sincronização de tags; "
+                "usando o cache (%s membros)",
+                len(members_by_id),
+            )
+            return list(members_by_id.values()), False
+        return list(members_by_id.values()), True
+
+    async def sync_peace_tags(self) -> dict[str, int | bool]:
+        if self.guild is None:
+            return {
+                "seen": 0,
+                "updated": 0,
+                "already_correct": 0,
+                "ignored": 0,
+                "not_applicable": 0,
+                "returned": 0,
+                "failed": 0,
+                "fetched": False,
+            }
+        members, fetched = await self.members_for_tag_sync()
+        counters: dict[str, int] = {
+            "seen": len(members),
+            "updated": 0,
+            "already_correct": 0,
+            "ignored": 0,
+            "not_applicable": 0,
+            "returned": 0,
+            "failed": 0,
+        }
+        for member in members:
             if await self.ensure_return_request(member):
+                counters["returned"] += 1
+                reservation = self.database.reserved_peace_id_for_user(member.id)
+                has_peace = role_member(member, self.settings.peace_role_id) or any(
+                    str(role.name).casefold().strip() == "peace"
+                    for role in getattr(member, "roles", ())
+                )
+                if reservation is not None and has_peace:
+                    # A pending return has no active ``members`` row by design.
+                    # Repair the live nickname with the reserved ID, but never
+                    # recreate the active Peace record before review approval.
+                    await self.sync_member_tag(
+                        member,
+                        peace_id=int(reservation["peace_id"]),
+                        stats=counters,
+                    )
                 continue
-            await self.sync_member_tag(member)
+            await self.sync_member_tag(member, stats=counters)
+        summary: dict[str, int | bool] = {**counters, "fetched": fetched}
+        log.info(
+            "Sincronização de tags Peace concluída: %s vistos, %s atualizados, "
+            "%s já corretos, %s sem tag, %s retornos pendentes, %s falhas "
+            "(busca completa=%s)",
+            counters["seen"],
+            counters["updated"],
+            counters["already_correct"],
+            counters["not_applicable"],
+            counters["returned"],
+            counters["failed"],
+            "sim" if fetched else "não",
+        )
+        return summary
 
     async def sync_missing_peace_ids(self) -> None:
         if self.guild is None:
             return
-        current_ids = {member.id for member in self.guild.members}
+        # A partial gateway cache can make every uncached member look like a
+        # missing Peace record. Fetch the authoritative member list before any
+        # database mutation; if Discord refuses the fetch, keep the database
+        # untouched and retry on the next startup.
+        current_members = list(self.guild.members)
+        fetch_members = getattr(self.guild, "fetch_members", None)
+        if callable(fetch_members):
+            try:
+                current_members = [member async for member in fetch_members(limit=None)]
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning("Não consegui obter a lista completa de membros; auditoria de IDs não aplicada")
+                return
+        current_ids = {member.id for member in current_members}
+        current_peace_ids = {
+            member.id
+            for member in current_members
+            if role_member(member, self.settings.peace_role_id)
+        }
+        current_peace_ids.update(
+            user_id
+            for user_id in self.database.approved_return_user_ids()
+            if user_id in current_ids
+        )
         reserved = self.database.reserve_missing_peace_members(
             current_user_ids=current_ids,
             peace_role_id=self.settings.peace_role_id,
+            current_peace_user_ids=current_peace_ids,
         )
         if reserved:
             log.info("IDs Peace reservados após auditoria: %s", len(reserved))
@@ -2087,33 +7683,56 @@ class PeaceBot(commands.Bot):
         reservation = self.database.reserved_peace_id_for_user(member.id)
         if reservation is None:
             return False
-        request = self.database.pending_return_request_for_user(member.id)
-        if request is None:
-            request_id = self.database.save_return_request(
-                discord_user_id=member.id,
-                old_peace_id=int(reservation["peace_id"]),
-            )
-            request = self.database.return_request(request_id)
-            if request is not None:
-                await self.publish_return_request(request)
+        latest = self.database.latest_return_request_for_user(member.id)
+        if latest is not None and latest["status"] == "rejected":
+            return True
+        request, created = self.database.get_or_create_return_request(
+            discord_user_id=member.id,
+            old_peace_id=int(reservation["peace_id"]),
+            loss_reason=str(reservation["release_reason"] or "motivo não registrado"),
+            loss_actor_id=reservation["release_actor_id"],
+        )
+        if created:
+            await self.publish_return_request(request)
         return True
 
     @staticmethod
     def return_request_embed(request) -> discord.Embed:
+        actor_id = request["loss_actor_id"]
+        actor = mention(actor_id) if actor_id else "não identificado"
         embed = discord.Embed(
             title="Retorno Peace pendente · scan-only",
             description=(
                 f"**Membro:** {mention(request['discord_user_id'])}\n"
                 f"**ID reservado:** `{int(request['old_peace_id'])}`\n\n"
-                "Este membro voltou ao servidor depois de sair com acesso Peace. "
-                "O ID antigo está reservado e não será usado por outra pessoa.\n\n"
-                "Use **Liberar ID** somente após conferir o retorno. A ação libera o ID antigo "
-                "para o pool e gera um novo ID para este membro."
+                f"**Motivo registrado:** {redact(str(request['loss_reason'] or 'não informado'), limit=500)}\n"
+                f"**Quem retirou:** {actor}\n"
+                f"**Registrado em:** {redact(str(request['created_at']), limit=40)}\n\n"
+                "Este retorno foi enviado diretamente ao scan-only. Não refaça a entrevista de Player. "
+                "Use **Liberar ID** somente após conferir o histórico e a situação atual. A ação libera o ID antigo "
+                "para o pool e registra um novo ID para este membro."
             ),
             color=0xF1C40F,
         )
         embed.set_footer(text=f"peace_return:{request['id']}")
         return embed
+
+    async def stored_return_panel_message(
+        self,
+        channel: discord.TextChannel,
+        request,
+    ) -> discord.Message | None:
+        message_id = request["message_id"]
+        if not message_id or self.user is None:
+            return None
+        try:
+            message = await channel.fetch_message(int(message_id))
+        except discord.NotFound:
+            return None
+        if message.author.id != self.user.id:
+            return None
+        marker = f"peace_return_release_{request['id']}"
+        return message if marker in self.message_custom_ids(message) else None
 
     async def publish_return_request(self, request) -> None:
         if self.guild is None or self.settings.scan_channel_id is None:
@@ -2122,12 +7741,23 @@ class PeaceBot(commands.Bot):
         if not isinstance(channel, discord.TextChannel):
             return
         try:
-            message = await channel.send(
-                embed=self.return_request_embed(request),
-                view=self.return_approval_view(int(request["id"])),
-                allowed_mentions=discord.AllowedMentions(users=True),
-            )
-            self.database.set_return_request_message(int(request["id"]), message.id)
+            async with self.return_mutation_lock(int(request["id"])):
+                current = self.database.return_request(int(request["id"])) or request
+                if current["status"] != "pending":
+                    return
+                existing = await self.stored_return_panel_message(channel, current)
+                if existing is not None:
+                    await existing.edit(
+                        embed=self.return_request_embed(current),
+                        view=self.return_approval_view(int(current["id"])),
+                    )
+                    return
+                message = await channel.send(
+                    embed=self.return_request_embed(current),
+                    view=self.return_approval_view(int(current["id"])),
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
+                self.database.set_return_request_message(int(current["id"]), message.id)
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Não foi possível publicar retorno Peace no scan-only")
 
@@ -2137,12 +7767,19 @@ class PeaceBot(commands.Bot):
         channel = self.guild.get_channel(self.settings.scan_channel_id)
         if not isinstance(channel, discord.TextChannel):
             return
-        try:
-            for request in self.database.pending_return_requests():
+        for request in self.database.pending_return_requests():
+            try:
                 marker = f"peace_return_release_{request['id']}"
                 matches: list[discord.Message] = []
+                stored = await self.stored_return_panel_message(channel, request)
+                if stored is not None:
+                    matches.append(stored)
                 async for message in channel.history(limit=100):
-                    if message.author.id == self.user.id and marker in self.message_custom_ids(message):
+                    if (
+                        message.author.id == self.user.id
+                        and message.id != getattr(stored, "id", None)
+                        and marker in self.message_custom_ids(message)
+                    ):
                         matches.append(message)
                 if matches:
                     await matches[0].edit(
@@ -2153,8 +7790,8 @@ class PeaceBot(commands.Bot):
                         await duplicate.delete()
                 else:
                     await self.publish_return_request(request)
-        except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível sincronizar retornos Peace pendentes")
+            except (discord.Forbidden, discord.HTTPException, ValueError, TypeError):
+                log.info("Não foi possível sincronizar o retorno Peace %s", request["id"])
 
     async def ensure_booster_space(self, member: discord.Member) -> None:
         if self.guild is None or member.bot or self.settings.booster_role_id is None or self.settings.private_call_category_id is None:
@@ -2183,23 +7820,9 @@ class PeaceBot(commands.Bot):
                 mentionable=True,
                 reason="Área privada criada para booster Peace",
             )
-            overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-                self.guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
-                private_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-                member: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-            }
-            if self.guild.me is not None:
-                overwrites[self.guild.me] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    connect=True,
-                    speak=True,
-                    move_members=True,
-                    manage_channels=True,
-                )
             voice = await self.guild.create_voice_channel(
                 name=f"├🎧・{member.name}"[:100],
                 category=category,
-                overwrites=overwrites,
                 reason="Call privada automática de booster Peace",
             )
             ordered = sorted(category.voice_channels, key=lambda channel: channel.position)
@@ -2231,18 +7854,63 @@ class PeaceBot(commands.Bot):
             voice = None
         return private_role, voice
 
-    async def reconcile_visitor_role(self, member: discord.Member) -> None:
-        visitor = member.guild.get_role(self.settings.visitor_role_id or 0)
-        if visitor is None or member.bot:
+    async def reconcile_visitor_role(
+        self,
+        member: discord.Member,
+        *,
+        prefer_reverification: bool = False,
+    ) -> None:
+        """Keep entry roles consistent and allow an explicit reverification reset."""
+        visitor = role_named(
+            member.guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        not_verified = role_named(
+            member.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if visitor is None and not_verified is None:
             return
-        has_peace = role_member(member, self.settings.peace_role_id)
         try:
-            if has_peace and visitor in member.roles:
-                await member.remove_roles(visitor, reason="Membro Peace não é visitante")
-            elif needs_visitor(member, self.settings.peace_role_id) and visitor not in member.roles:
-                await member.add_roles(visitor, reason="Visitante automático para membro sem Peace")
+            status_roles = [
+                role for role in (visitor, not_verified)
+                if role is not None and role in member.roles
+            ]
+            if member.bot:
+                if status_roles:
+                    await member.remove_roles(
+                        *status_roles,
+                        reason="Contas de bot não usam Visitor ou Not Verified",
+                    )
+                return
+            has_peace = role_member(member, self.settings.peace_role_id)
+            if has_peace:
+                if status_roles:
+                    await member.remove_roles(
+                        *status_roles,
+                        reason="Peace member não é visitante nem Not Verified",
+                    )
+            elif visitor is not None and visitor in member.roles:
+                if not_verified is not None and not_verified in member.roles:
+                    if prefer_reverification:
+                        await member.remove_roles(
+                            visitor,
+                            reason="Not Verified reaplicado para exigir nova verificação",
+                        )
+                    else:
+                        await member.remove_roles(not_verified, reason="Visitor já está verificado")
+            elif not_verified is not None and not_verified not in member.roles:
+                await member.add_roles(
+                    not_verified,
+                    reason="Entrada exige verificação antes de Visitor",
+                )
         except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível sincronizar Visitante para %s", member.id)
+            log.info("Não foi possível sincronizar os cargos de entrada para %s", member.id)
 
     async def sync_visitor_roles(self) -> None:
         if self.guild is None:
@@ -2251,14 +7919,14 @@ class PeaceBot(commands.Bot):
             await self.reconcile_visitor_role(member)
 
     def set_approval_embed(self, request) -> discord.Embed:
-        selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer recrutador"
+        selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer Staff ou Management"
         embed = discord.Embed(
             title="Set pendente de aprovação",
             description=(
                 f"**Membro:** {mention(request['discord_user_id'])}\n"
                 f"**Apelido in-game:** `{redact(str(request['in_game_username']), limit=80)}`\n"
                 f"**Onde conheceu:** {redact(str(request['source']), limit=40)}\n"
-                f"**Recrutador selecionado:** {selected}\n\n"
+                f"**Reviewer selecionado:** {selected}\n\n"
                 "Confira os dados e aprove somente se o recrutamento estiver confirmado."
             ),
             color=0x5865F2,
@@ -2266,6 +7934,32 @@ class PeaceBot(commands.Bot):
         embed.add_field(name="Telefone in-game", value=f"`{redact(str(request['telefone_in_game']), limit=100)}`", inline=True)
         embed.add_field(name="RG in-game", value=f"`{redact(str(request['rg_in_game']), limit=100)}`", inline=True)
         embed.set_footer(text=f"set_request:{request['id']}")
+        return embed
+
+    @staticmethod
+    def set_approved_dm_embed(request, recruiter: discord.Member, peace_id: int) -> discord.Embed:
+        """Build the private welcome card sent after a Player set is approved."""
+        approver_name = getattr(recruiter, "display_name", None) or getattr(recruiter, "name", "Staff")
+        avatar = getattr(getattr(recruiter, "display_avatar", None), "url", None)
+        embed = discord.Embed(
+            title="✓ Set aprovado · bem-vindo à Peace",
+            description=(
+                f"Seu acesso de **Player** foi liberado, {redact(str(request['in_game_username']), limit=80)}.\n\n"
+                "O time aprovou sua entrada e seu vínculo já está ativo no servidor. "
+                "Leia as regras, acompanhe os avisos e participe da comunidade."
+            ),
+            color=0x2B2D42,
+        )
+        embed.add_field(name="Seu ID Peace", value=f"`{peace_id}`", inline=True)
+        embed.add_field(name="Aprovado por", value=redact(str(approver_name), limit=80), inline=True)
+        embed.add_field(
+            name="Próximo passo",
+            value="Leia as regras e siga as orientações dos canais de entrada. Se precisar, abra um ticket de suporte.",
+            inline=False,
+        )
+        if avatar:
+            embed.set_thumbnail(url=str(avatar))
+        embed.set_footer(text="Peace · Player set")
         return embed
 
     async def sync_pending_set_panels(self) -> None:
@@ -2302,8 +7996,24 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def developer_request_embed(request) -> discord.Embed:
+        if request["status"] == "pending":
+            decision_instruction = (
+                "Esta é a primeira etapa. Confira o currículo e use "
+                "**Aprovar entrevista** para encaminhar o candidato à entrevista manual na call de suporte. "
+                "Use **Recusar candidatura** se ele não deve seguir."
+            )
+        else:
+            decision_instruction = (
+                "A entrevista manual na call de suporte deve estar concluída. O candidato foi bem? "
+                "Ele fará diferença no time? Use **Aprovar como integrante** para conceder o cargo Dev "
+                "e liberar o acesso da Central. Use **Recusar candidatura** quando a decisão for negativa."
+            )
         embed = discord.Embed(
-            title="Integração dev pendente · scan-only",
+            title=(
+                "Candidatura Dev · aprovar entrevista"
+                if request["status"] == "pending"
+                else "Candidatura Dev · decisão final"
+            ),
             description=(
                 f"**Candidato:** {mention(request['discord_user_id'])}\n"
                 f"**Nome real:** `{redact(str(request['full_name']), limit=100)}`\n"
@@ -2313,47 +8023,69 @@ class PeaceBot(commands.Bot):
                 f"**Tempo de especialização:** {redact(str(request['specialization_time']), limit=180)}\n"
                 f"**Onde atuou/praticou:** {redact(str(request['previous_experience']), limit=1100)}\n"
                 f"**Portfólio:** {redact(str(request['portfolio']) or 'não informado', limit=300)}\n\n"
-                "A integração não concede cargo automaticamente. Analise as respostas e, se aprovar, o candidato receberá no PV os horários do próximo dia útil."
+                f"{decision_instruction}"
             ),
             color=0x5865F2,
         )
         embed.set_footer(text=f"developer_request:{request['id']}")
         return embed
 
-    @staticmethod
-    def next_business_day() -> date:
-        current = datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)
-        while current.weekday() >= 5:
-            current += timedelta(days=1)
-        return current
-
-    async def send_developer_meeting_invite(self, request) -> bool:
+    async def send_developer_interview_notice(self, request) -> bool:
         if self.guild is None:
             return False
         member = await self.member(self.guild, int(request["discord_user_id"]))
         if member is None:
             return False
-        meeting_day = self.next_business_day()
-        embed = discord.Embed(
-            title="Integração dev aprovada · escolha o horário",
-            description=(
-                f"Sua entrevista para a área **{redact(str(request['area']), limit=60)}** foi aprovada para integração.\n\n"
-                f"Escolha um horário no próximo dia útil (**{meeting_day.strftime('%d/%m/%Y')}**, BRT).\n"
-                "As opções estão separadas entre manhã (06:00–13:00) e tarde/noite (14:00–00:00). "
-                "Se nenhum horário funcionar, abra um ticket pelo botão abaixo."
-            ),
-            color=0x57F287,
-        )
         try:
             await member.send(
-                embed=embed,
-                view=DeveloperMeetingView(self, int(request["id"]), meeting_day),
-                allowed_mentions=discord.AllowedMentions.none(),
+                "✅ Sua candidatura foi aprovada para a etapa de entrevista manual!\n\n"
+                f"Área: **{redact(str(request['area']), limit=60)}**\n"
+                "Procure a call de suporte para fazer a entrevista. Depois dela, a equipe decidirá se você entra como integrante do time."
             )
-            return True
         except (discord.Forbidden, discord.HTTPException):
-            log.info("DM fechada para convite de integração dev %s", request["id"])
+            log.info("DM fechada para convite de entrevista dev %s", request["id"])
             return False
+        return True
+
+    async def send_developer_decision_notice(self, request, *, peace_id: int) -> bool:
+        if self.guild is None:
+            return False
+        member = await self.member(self.guild, int(request["discord_user_id"]))
+        if member is None:
+            return False
+        try:
+            await member.send(
+                "✅ Você foi aprovado como integrante do time de desenvolvimento da Peace!\n\n"
+                f"Área: **{redact(str(request['area']), limit=60)}**\n"
+                f"Seu cargo Dev foi aplicado e seu ID Peace é `{peace_id}`.\n"
+                    "Entre no painel da Central com esse ID para solicitar o código de acesso no Discord."
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("DM fechada para decisão da candidatura dev %s", request["id"])
+            return False
+        return True
+
+    async def send_developer_rejection_notice(self, request, *, after_interview: bool) -> bool:
+        if self.guild is None:
+            return False
+        member = await self.member(self.guild, int(request["discord_user_id"]))
+        if member is None:
+            return False
+        try:
+            if after_interview:
+                await member.send(
+                    "Sua candidatura para o time de desenvolvimento não foi aprovada após a entrevista manual.\n\n"
+                    "Se quiser entender os próximos passos, procure a staff."
+                )
+            else:
+                await member.send(
+                    "Sua candidatura não foi aprovada para a etapa de entrevista manual.\n\n"
+                    "Se quiser entender os próximos passos, procure a staff."
+                )
+        except (discord.Forbidden, discord.HTTPException):
+            log.info("DM fechada para recusa da candidatura dev %s", request["id"])
+            return False
+        return True
 
     async def sync_pending_developer_panels(self) -> None:
         if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
@@ -2383,8 +8115,50 @@ class PeaceBot(commands.Bot):
         except (discord.Forbidden, discord.HTTPException):
             log.info("Não foi possível sincronizar entrevistas dev pendentes")
 
-    async def send_log(self, content: str) -> None:
-        await self.send_to_channel(self.settings.log_channel_id, content=content)
+    @staticmethod
+    def log_card(
+        title: str,
+        *,
+        fields: tuple[tuple[str, str], ...],
+        actor: discord.abc.User | None = None,
+        subject: discord.abc.User | None = None,
+    ) -> discord.Embed:
+        embed = discord.Embed(title=title, color=0x2B2D31)
+        for name, value in fields:
+            embed.add_field(name=name, value=value, inline=False)
+        actor_avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
+        subject_avatar = getattr(getattr(subject, "display_avatar", None), "url", None)
+        if subject is not None:
+            actor_name = str(
+                getattr(actor, "display_name", None)
+                or getattr(actor, "name", None)
+                or "membro Peace"
+            )
+            if actor_avatar:
+                embed.set_author(name=f"Ação por {actor_name}", icon_url=str(actor_avatar))
+            else:
+                embed.set_author(name=f"Ação por {actor_name}")
+            if subject_avatar:
+                embed.set_thumbnail(url=str(subject_avatar))
+            elif actor_avatar:
+                embed.set_thumbnail(url=str(actor_avatar))
+        elif actor_avatar:
+            embed.set_thumbnail(url=str(actor_avatar))
+        embed.set_footer(text="Peace · logs")
+        return embed
+
+    async def send_log(
+        self,
+        title: str,
+        *,
+        fields: tuple[tuple[str, str], ...],
+        actor: discord.abc.User | None = None,
+        subject: discord.abc.User | None = None,
+    ) -> bool:
+        return await self.send_to_channel(
+            getattr(self.settings, "log_channel_id", None),
+            embed=self.log_card(title, fields=fields, actor=actor, subject=subject),
+        )
 
     async def send_to_channel(
         self,
@@ -2393,9 +8167,9 @@ class PeaceBot(commands.Bot):
         content: str | None = None,
         embed: discord.Embed | None = None,
         view: discord.ui.View | None = None,
-    ) -> None:
+    ) -> bool:
         if self.guild is None or channel_id is None:
-            return
+            return False
         channel = self.guild.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
             try:
@@ -2405,8 +8179,10 @@ class PeaceBot(commands.Bot):
                     view=view,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
+                return True
             except (discord.Forbidden, discord.HTTPException):
                 log.exception("Falha ao escrever no canal %s", channel_id)
+        return False
 
     async def close_ticket_channel(self, channel: discord.TextChannel, ticket, actor: discord.Member) -> None:
         if ticket["status"] != "open":
@@ -2421,11 +8197,8 @@ class PeaceBot(commands.Bot):
         )
         self.stop_iris(channel.id)
         closed = self.guild.get_channel(self.settings.closed_ticket_category_id or 0) if self.guild else None
-        overwrites = self.closed_ticket_overwrites()
         if isinstance(closed, discord.CategoryChannel):
-            await channel.edit(category=closed, overwrites=overwrites, reason="Ticket encerrado")
-        else:
-            await channel.edit(overwrites=overwrites, reason="Ticket encerrado")
+            await channel.edit(category=closed, reason="Ticket encerrado")
         await self.disable_ticket_controls(channel)
         if ticket["voice_channel_id"]:
             voice = self.guild.get_channel(int(ticket["voice_channel_id"])) if self.guild else None
@@ -2443,34 +8216,6 @@ class PeaceBot(commands.Bot):
         base = clean_name(owner.name if owner is not None else "ticket")
         return f"sup-{base}-t{ticket_id:04d}"[:90]
 
-    def closed_ticket_overwrites(self) -> dict[discord.Role | discord.Member, discord.PermissionOverwrite]:
-        if self.guild is None:
-            return {}
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            self.guild.default_role: discord.PermissionOverwrite(
-                view_channel=False,
-                read_message_history=False,
-                send_messages=False,
-            ),
-        }
-        if self.settings.staff_role_id:
-            staff = self.guild.get_role(self.settings.staff_role_id)
-            if staff is not None:
-                overwrites[staff] = discord.PermissionOverwrite(
-                    view_channel=False,
-                    read_message_history=False,
-                    send_messages=False,
-                )
-        if self.guild.me is not None:
-            overwrites[self.guild.me] = discord.PermissionOverwrite(
-                view_channel=True,
-                read_message_history=True,
-                send_messages=True,
-                manage_channels=True,
-                manage_messages=True,
-            )
-        return overwrites
-
     async def member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
         member = guild.get_member(user_id)
         if member is not None:
@@ -2480,13 +8225,566 @@ class PeaceBot(commands.Bot):
         except discord.NotFound:
             return None
 
+    def mutation_lock(self, user_id: int) -> asyncio.Lock:
+        """Serialize Discord/database mutations for one member in this process."""
+        lock = self.member_mutation_locks.get(int(user_id))
+        if lock is None:
+            lock = asyncio.Lock()
+            self.member_mutation_locks[int(user_id)] = lock
+        return lock
+
+    def return_mutation_lock(self, request_id: int) -> asyncio.Lock:
+        lock = self.return_mutation_locks.get(int(request_id))
+        if lock is None:
+            lock = asyncio.Lock()
+            self.return_mutation_locks[int(request_id)] = lock
+        return lock
+
+    async def authorized_dm_member(
+        self,
+        user_id: int,
+        role_kind: str,
+    ) -> discord.Member | None:
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return None
+        member = await self.member(guild, user_id)
+        if member is None:
+            return None
+        if role_kind == "founder":
+            return member if founder_role_member(member, self.settings) else None
+        if role_kind == "management":
+            return member if management_role_member(member, self.settings) else None
+        return None
+
+    async def delete_peace_candidates(self) -> list[discord.Member]:
+        """Return selectable Peace members from the server, not from the DM context."""
+        guild = self.guild or self.get_guild(self.settings.guild_id)
+        if guild is None:
+            return []
+
+        members_by_id = {
+            member.id: member
+            for member in getattr(guild, "members", ())
+        }
+        fetch_members = getattr(guild, "fetch_members", None)
+        if callable(fetch_members):
+            try:
+                fetched = [member async for member in fetch_members(limit=None)]
+                members_by_id.update({member.id: member for member in fetched})
+            except (discord.Forbidden, discord.HTTPException):
+                log.info("Não consegui buscar todos os membros para o menu Founder; usando o cache")
+
+        candidates = [
+            member
+            for member in members_by_id.values()
+            if not member.bot
+            and member.id != self.settings.founder_user_id
+            and not founder_role_member(member, self.settings)
+            and role_member(member, self.settings.peace_role_id)
+        ]
+        candidates.sort(key=lambda member: (member.display_name.casefold(), member.id))
+        return candidates
+
+    async def start_actions_for(self, user_id: int) -> tuple[str, ...]:
+        """Return the internal actions available to a member in the bot's DM."""
+        actions: list[str] = []
+        if await self.authorized_dm_member(user_id, "founder") is not None:
+            actions.append("delete_user")
+        if await self.authorized_dm_member(user_id, "management") is not None:
+            actions.append("announcement")
+        return tuple(actions)
+
+    async def send_dm_start_menu(self, user_id: int, channel: discord.abc.Messageable) -> bool:
+        """Send the persistent DM fallback used when a client sends ``start`` as text."""
+        actions = await self.start_actions_for(user_id)
+        if not actions:
+            return False
+        await channel.send(
+            "Escolha uma ação. Cada opção valida novamente o cargo antes de executar qualquer alteração.",
+            view=StartActionView(self, user_id, actions),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        return True
+
+    def announcement_channel(self) -> discord.TextChannel | None:
+        guild = self.entry_guild()
+        if guild is None:
+            return None
+        configured_id = getattr(self.settings, "announcement_channel_id", None)
+        if configured_id is not None:
+            configured = guild.get_channel(configured_id)
+            if isinstance(configured, discord.TextChannel):
+                return configured
+        names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
+        return discord.utils.find(
+            lambda channel: isinstance(channel, discord.TextChannel)
+            and (
+                channel.name.casefold() in names
+                or channel.name.casefold().endswith("・announcements")
+                or channel.name.casefold().endswith("・avisos")
+            ),
+            guild.text_channels,
+        )
+
+    @staticmethod
+    def announcement_embed(
+        message: discord.Message,
+        actor: discord.Member,
+        *,
+        image_filename: str | None = None,
+    ) -> discord.Embed:
+        """Render Management announcements as a neutral card, not loose text."""
+        embed = discord.Embed(
+            description=message.content or "\u200b",
+            color=0x2B2D31,
+        )
+        avatar = getattr(getattr(actor, "display_avatar", None), "url", None)
+        if avatar:
+            embed.set_author(name="Peace · Avisos", icon_url=str(avatar))
+        else:
+            embed.set_author(name="Peace · Avisos")
+        if image_filename:
+            embed.set_image(url=f"attachment://{image_filename}")
+        embed.set_footer(text=f"Publicado por {getattr(actor, 'display_name', actor.name)}")
+        return embed
+
+    async def collect_announcement(
+        self,
+        interaction: discord.Interaction,
+        actor: discord.Member,
+    ) -> None:
+        """Collect one real DM message so Markdown and attachments stay intact."""
+        if actor.id in self.announcement_collectors:
+            await respond(interaction, "Já estou aguardando um aviso seu. Envie uma única mensagem no PV atual.")
+            return
+        if interaction.channel_id is None:
+            await respond(interaction, "Não consegui identificar seu PV com o bot.")
+            return
+        self.announcement_collectors.add(actor.id)
+        try:
+            await interaction.response.send_message(
+                "Envie agora a mensagem do aviso neste PV. Markdown, links e anexos serão preservados. "
+                "Aguardo uma mensagem por até 5 minutos.",
+                ephemeral=False,
+            )
+            prompt = None
+            try:
+                prompt = await interaction.original_response()
+            except (discord.HTTPException, discord.NotFound):
+                pass
+
+            def check(message: discord.Message) -> bool:
+                return message.author.id == actor.id and message.channel.id == interaction.channel_id
+
+            try:
+                message = await self.wait_for("message", timeout=300, check=check)
+            except asyncio.TimeoutError:
+                if prompt is not None:
+                    try:
+                        await prompt.edit(content="Tempo esgotado. Nenhum aviso foi publicado.")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+                return
+            if len(message.attachments) > MAX_ANNOUNCEMENT_ATTACHMENTS:
+                if prompt is not None:
+                    await prompt.edit(content=f"Envie no máximo {MAX_ANNOUNCEMENT_ATTACHMENTS} anexos. Nenhum aviso foi publicado.")
+                return
+            if any(attachment.size > MAX_ANNOUNCEMENT_ATTACHMENT_BYTES for attachment in message.attachments):
+                if prompt is not None:
+                    await prompt.edit(content="Um dos anexos ultrapassa o limite de 25 MB. Nenhum aviso foi publicado.")
+                return
+            if len(message.content) > 2000:
+                if prompt is not None:
+                    await prompt.edit(content="A mensagem ultrapassa o limite de 2.000 caracteres do Discord. Nenhum aviso foi publicado.")
+                return
+            if not message.content and not message.attachments:
+                if prompt is not None:
+                    await prompt.edit(content="A mensagem precisa conter texto ou pelo menos um anexo. Nenhum aviso foi publicado.")
+                return
+            current_actor = await self.authorized_dm_member(actor.id, "management")
+            published = (
+                "O cargo Management não está mais presente. Nenhum aviso foi publicado."
+                if current_actor is None
+                else await self.publish_announcement(message, current_actor)
+            )
+            if prompt is not None:
+                try:
+                    await prompt.edit(content=published)
+                except (discord.Forbidden, discord.HTTPException):
+                    await interaction.followup.send(published, ephemeral=True)
+            else:
+                await interaction.followup.send(published, ephemeral=True)
+        finally:
+            self.announcement_collectors.discard(actor.id)
+
+    async def publish_announcement(
+        self,
+        message: discord.Message,
+        actor: discord.Member,
+    ) -> str:
+        current_actor = await self.authorized_dm_member(actor.id, "management")
+        if current_actor is None:
+            return "O cargo Management não está mais presente. Nenhum aviso foi publicado."
+        actor = current_actor
+        channel = self.announcement_channel()
+        if channel is None:
+            return "Não encontrei o canal de avisos configurado. Nenhum aviso foi publicado."
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        if peace_role is None:
+            return "Não encontrei o cargo Peace configurado. Nenhum aviso foi publicado."
+        files: list[discord.File] = []
+        try:
+            for attachment in message.attachments:
+                files.append(await attachment.to_file(use_cached=True))
+            image_filename = next(
+                (
+                    attachment.filename
+                    for attachment in message.attachments
+                    if str(getattr(attachment, "content_type", "") or "").startswith("image/")
+                    or Path(attachment.filename).suffix.casefold() in {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+                ),
+                None,
+            )
+            published = await channel.send(
+                content=peace_role.mention,
+                embed=self.announcement_embed(message, actor, image_filename=image_filename),
+                files=files or [],
+                allowed_mentions=discord.AllowedMentions(
+                    everyone=False,
+                    users=False,
+                    roles=True,
+                    replied_user=False,
+                ),
+            )
+        except (discord.Forbidden, discord.HTTPException, OSError):
+            log.exception("Falha ao publicar aviso no canal %s", channel.id)
+            return "Não consegui publicar o aviso. Nenhuma confirmação de publicação foi registrada."
+        jump_url = getattr(published, "jump_url", None) or (
+            f"https://discord.com/channels/{self.settings.guild_id}/{channel.id}/{published.id}"
+        )
+        await self.send_log(
+            "Aviso publicado",
+            actor=actor,
+            fields=(
+                ("Usuário", actor.mention),
+                ("Canal", channel.mention),
+                ("Anexos", str(len(message.attachments))),
+                ("Mensagem", jump_url),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
+        return f"✓ Aviso publicado em {channel.mention}: {jump_url}"
+
+    async def apply_removed_member_state(
+        self,
+        target: discord.Member,
+        *,
+        peace_role: discord.Role,
+        not_verified: discord.Role,
+        bot_member: discord.Member,
+        reason: str,
+        reset_nickname: bool = True,
+    ) -> None:
+        """Apply the terminal Discord state for a manually removed member."""
+        current_roles = list(target.roles)
+        current_role_ids = {role.id for role in current_roles}
+        if peace_role.id in current_role_ids and not role_is_manageable(peace_role, bot_member):
+            raise RuntimeError("o cargo Peace está acima da hierarquia do bot")
+        if not_verified.id not in current_role_ids and not role_is_manageable(not_verified, bot_member):
+            raise RuntimeError("o cargo Not Verified está acima da hierarquia do bot")
+
+        roles_to_remove = [
+            role
+            for role in current_roles
+            if role.id != not_verified.id and role_is_manageable(role, bot_member)
+        ]
+        desired_roles = [role for role in current_roles if role not in roles_to_remove]
+        if not_verified.id not in {role.id for role in desired_roles}:
+            desired_roles.append(not_verified)
+
+        nick = None if reset_nickname else target.nick
+        role_changed = {role.id for role in desired_roles} != current_role_ids
+        nick_changed = reset_nickname and target.nick is not None
+        if not role_changed and not nick_changed:
+            return
+        # Clear the server nickname first. Discord can accept both fields in
+        # one PATCH, but separating them makes the reset observable and lets a
+        # retry finish safely if the role mutation is rate-limited.
+        if nick_changed:
+            await target.edit(nick=nick, reason=reason)
+        if role_changed:
+            await target.edit(roles=desired_roles, reason=reason)
+
+    async def apply_return_member_state(
+        self,
+        target: discord.Member,
+        *,
+        peace_role: discord.Role,
+        peace_id: int,
+        reason: str,
+    ) -> str:
+        """Apply the complete Discord state for an approved direct return."""
+        visitor_role = role_named(
+            target.guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        not_verified_role = role_named(
+            target.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        current_roles = list(target.roles)
+        removable_status_ids = {
+            role.id
+            for role in (visitor_role, not_verified_role)
+            if role is not None and role.id in {item.id for item in current_roles}
+        }
+        for role in (visitor_role, not_verified_role):
+            if role is not None and role.id in removable_status_ids and not role_is_manageable(role, target.guild.me):
+                raise RuntimeError("um cargo de entrada está acima da hierarquia do bot")
+        if peace_role.id not in {role.id for role in current_roles} and not role_is_manageable(peace_role, target.guild.me):
+            raise RuntimeError("o cargo Peace está acima da hierarquia do bot")
+
+        desired_roles = [role for role in current_roles if role.id not in removable_status_ids]
+        if peace_role.id not in {role.id for role in desired_roles}:
+            desired_roles.append(peace_role)
+        desired_role_names = [role.name for role in desired_roles]
+        desired_nick = self.peace_nickname(
+            target,
+            role_names=desired_role_names,
+            peace_id=peace_id,
+            settings=self.settings,
+            role_positions=role_position_map(desired_roles),
+            role_hoist=role_hoist_map(desired_roles),
+        )
+        if desired_nick is None:
+            raise RuntimeError("não foi possível calcular o apelido Peace")
+        if (
+            {role.id for role in desired_roles} != {role.id for role in current_roles}
+            or target.nick != desired_nick
+        ):
+            await target.edit(roles=desired_roles, nick=desired_nick, reason=reason)
+        self.database.ensure_runtime_member(
+            discord_user_id=target.id,
+            username=target.name,
+            nickname=desired_nick,
+            role_ids=[role.id for role in desired_roles],
+            role_names=desired_role_names,
+            founder_id=self.settings.founder_user_id,
+            role_positions=role_position_map(desired_roles),
+            role_hoist=role_hoist_map(desired_roles),
+        )
+        return desired_nick
+
+    async def sync_released_member_cleanup(self) -> None:
+        """Repair manual deletions left half-applied by an older bot version."""
+        if self.guild is None:
+            return
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        not_verified = role_named(
+            self.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if peace_role is None or not_verified is None or self.guild.me is None:
+            return
+        for release in self.database.manual_peace_releases_for_cleanup():
+            target = await self.member(self.guild, int(release["released_from"]))
+            if target is None or target.bot or self.database.get_member(target.id) is not None:
+                continue
+            async with self.mutation_lock(target.id):
+                self.managed_peace_role_removals.add(target.id)
+                try:
+                    await self.apply_removed_member_state(
+                        target,
+                        peace_role=peace_role,
+                        not_verified=not_verified,
+                        bot_member=self.guild.me,
+                        reason="Regularização de exclusão Peace antiga",
+                    )
+                except (discord.Forbidden, discord.HTTPException, RuntimeError):
+                    log.info("Não foi possível regularizar a exclusão Peace antiga de %s", target.id)
+                finally:
+                    self.managed_peace_role_removals.discard(target.id)
+
+    async def sync_approved_return_requests(self) -> None:
+        """Converge approved return records whose Discord mutation was interrupted."""
+        if self.guild is None:
+            return
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        if peace_role is None:
+            return
+        for request in self.database.approved_return_requests():
+            target = await self.member(self.guild, int(request["discord_user_id"]))
+            record = None if target is None or target.bot else self.database.get_member(target.id)
+            if target is None or target.bot or record is None:
+                continue
+            if int(record["peace_id"]) != int(request["new_peace_id"]):
+                log.info(
+                    "Ignorando a reparação do retorno Peace %s: o membro já possui outro ID ativo",
+                    request["id"],
+                )
+                continue
+            try:
+                await self.apply_return_member_state(
+                    target,
+                    peace_role=peace_role,
+                    peace_id=int(request["new_peace_id"]),
+                    reason="Regularização de retorno Peace aprovado",
+                )
+            except (discord.Forbidden, discord.HTTPException, RuntimeError):
+                log.info("Não foi possível regularizar o retorno Peace %s", request["id"])
+
+    async def delete_peace_users(
+        self,
+        target_ids: tuple[int, ...],
+        actor: discord.Member,
+        *,
+        progress_callback: Callable[[int, int, tuple[str, ...]], Awaitable[None]] | None = None,
+    ) -> list[str]:
+        """Remove Peace state without kicking members or releasing invalid IDs."""
+        if self.guild is None:
+            return ["Servidor indisponível; nenhum vínculo foi alterado."]
+        authorized_actor = await self.authorized_dm_member(actor.id, "founder")
+        if authorized_actor is None:
+            return ["Apenas o cargo Founder pode excluir vínculos Peace; nada foi alterado."]
+        actor = authorized_actor
+        not_verified = role_named(
+            self.guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        bot_member = self.guild.me
+        peace_role = self.guild.get_role(self.settings.peace_role_id)
+        if not_verified is None or peace_role is None or bot_member is None:
+            return ["Cargos de Peace incompletos ou hierarquia indisponível; nenhum vínculo foi alterado."]
+
+        results: list[str] = []
+        unique_target_ids = tuple(dict.fromkeys(target_ids))
+        processed = 0
+
+        async def record_result(result: str) -> None:
+            nonlocal processed
+            results.append(result)
+            processed += 1
+            if progress_callback is not None:
+                await progress_callback(processed, len(unique_target_ids), tuple(results))
+
+        for target_id in unique_target_ids:
+            if await self.authorized_dm_member(actor.id, "founder") is None:
+                results.append("O cargo Founder não está mais presente; os próximos usuários não foram processados.")
+                if progress_callback is not None:
+                    await progress_callback(processed, len(unique_target_ids), tuple(results))
+                break
+            async with self.mutation_lock(int(target_id)):
+                target = await self.member(self.guild, int(target_id))
+                record = self.database.get_member(target_id)
+                if target is None:
+                    await record_result(f"{mention(target_id)}: não está no servidor; nada foi alterado.")
+                    continue
+                released_already = self.database.available_peace_id_for_user(target.id)
+                manual_release = (
+                    released_already is not None
+                    and str(released_already["release_reason"] or "").startswith(
+                        "vínculo Peace removido manualmente por Founder"
+                    )
+                )
+                if record is None or int(record["peace_id"]) <= 0 or int(record["is_founder"]):
+                    if manual_release:
+                        cleanup_ok = True
+                        try:
+                            self.managed_peace_role_removals.add(target.id)
+                            await self.apply_removed_member_state(
+                                target,
+                                peace_role=peace_role,
+                                not_verified=not_verified,
+                                bot_member=bot_member,
+                                reason="Regularização de exclusão Peace já concluída",
+                            )
+                        except (discord.Forbidden, discord.HTTPException, RuntimeError):
+                            cleanup_ok = False
+                            await record_result(f"{target.mention}: ID já liberado, mas a regularização Discord falhou.")
+                        finally:
+                            self.managed_peace_role_removals.discard(target.id)
+                        if cleanup_ok:
+                            await record_result(
+                                f"{target.mention}: exclusão já confirmada; ID `{int(released_already['peace_id'])}` continua liberado."
+                            )
+                    else:
+                        await record_result(f"{target.mention}: registro Peace válido não encontrado; nada foi alterado.")
+                    continue
+                if not role_member(target, peace_role.id):
+                    reserved = await self.reserve_member_peace(
+                        target,
+                        reason="cargo Peace já estava ausente durante a revisão Founder",
+                        actor=actor,
+                    )
+                    if reserved is None:
+                        await record_result(f"{target.mention}: o cargo Peace já não está presente e a reserva não pôde ser criada.")
+                    else:
+                        await record_result(f"{target.mention}: o cargo Peace já não estava presente; ID `{int(reserved['peace_id'])}` ficou reservado para retorno.")
+                    continue
+
+                self.managed_peace_role_removals.add(target.id)
+                try:
+                    await self.apply_removed_member_state(
+                        target,
+                        peace_role=peace_role,
+                        not_verified=not_verified,
+                        bot_member=bot_member,
+                        reason=f"Vínculo Peace removido por Founder {actor.id}",
+                    )
+                    released = self.database.release_peace_member(
+                        target.id,
+                        reason="vínculo Peace removido manualmente por Founder",
+                        actor_user_id=actor.id,
+                    )
+                    if released is None:
+                        released = self.database.available_peace_id_for_user(target.id)
+                        if released is not None and str(released["release_reason"] or "").startswith(
+                            "vínculo Peace removido manualmente por Founder"
+                        ):
+                            await record_result(
+                                f"{target.mention}: exclusão já confirmada; ID `{int(released['peace_id'])}` continua liberado."
+                            )
+                            continue
+                        raise RuntimeError("registro Peace mudou antes da liberação do ID")
+                    await self.send_log(
+                        "Vínculo Peace removido",
+                        actor=actor,
+                        fields=(
+                            ("Usuário", target.mention),
+                            ("ID liberado", f"`{int(released['peace_id'])}`"),
+                            ("Ação", "Cargos gerenciáveis removidos; Not Verified mantido/aplicado; apelido redefinido."),
+                            ("Quem", actor.mention),
+                            ("Horário", f"<t:{now_unix()}:F>"),
+                        ),
+                    )
+                    await record_result(
+                        f"{target.mention}: vínculo removido, apelido redefinido e ID `{int(released['peace_id'])}` liberado."
+                    )
+                except (discord.Forbidden, discord.HTTPException, RuntimeError, sqlite3.Error):
+                    log.exception("Falha ao remover vínculo Peace de %s", target.id)
+                    await record_result(f"{target.mention}: falha no Discord; o ID não foi liberado automaticamente.")
+                finally:
+                    self.managed_peace_role_removals.discard(target.id)
+        return results
+
     async def recruiter_members(self) -> list[discord.Member]:
         if self.guild is None:
             return []
         recruiters = [
             member for member in self.guild.members
-            if role_member(member, self.settings.recruiter_role_id)
-            or any("recrutador" in role.name.casefold() for role in member.roles)
+            if reviewer_member(member, self.settings)
         ]
         if recruiters:
             return recruiters
@@ -2496,8 +8794,7 @@ class PeaceBot(commands.Bot):
             return []
         return [
             member for member in fetched
-            if role_member(member, self.settings.recruiter_role_id)
-            or any("recrutador" in role.name.casefold() for role in member.roles)
+            if reviewer_member(member, self.settings)
         ]
 
     async def notify_claim(self, ticket, staff: discord.Member) -> None:
@@ -2585,17 +8882,6 @@ class PeaceBot(commands.Bot):
         ranked = await self.staff_support_scores(str(ticket["reason"]))
         if ranked:
             staff, score = ranked[0]
-            try:
-                await channel.set_permissions(
-                    staff,
-                    view_channel=True,
-                    read_message_history=True,
-                    send_messages=True,
-                    manage_messages=True,
-                    reason="Íris encaminhou atendimento por especialidade",
-                )
-            except (discord.Forbidden, discord.HTTPException):
-                log.info("Não consegui liberar o ticket %s para o staff %s", channel.id, staff.id)
             await channel.send(
                 f"{staff.mention}, a Íris encaminhou este atendimento para você por histórico de suporte compatível.",
                 allowed_mentions=discord.AllowedMentions(users=True),
@@ -2991,13 +9277,23 @@ class PeaceBot(commands.Bot):
         if member is None:
             await respond(interaction, "Não consegui localizar seu membro no servidor.")
             return
+        reservation = self.database.reserved_peace_id_for_user(member.id)
+        if reservation is not None:
+            await self.ensure_return_request(member)
+            await respond(
+                interaction,
+                "Seu ID Peace continua reservado. O retorno foi enviado diretamente ao scan-only para aprovação; não vou abrir uma entrevista comum.",
+            )
+            return
+        if not application_path_open("player", self.settings):
+            await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
+            return
         peace_role = guild.get_role(self.settings.peace_role_id)
-        novato_role = guild.get_role(self.settings.novato_role_id)
-        if peace_role is None or novato_role is None:
+        if peace_role is None:
             await respond(interaction, "A configuração de cargos Peace está incompleta; procure a staff.")
             return
         if self.database.pending_set_request_for_user(member.id) is not None:
-            await respond(interaction, "Seu pedido já está aguardando aprovação de um recrutador.")
+            await respond(interaction, "Seu pedido já está aguardando aprovação de Staff ou Management.")
             return
         if len(f"N ⎰ {draft.in_game_username} 99999") > 32:
             await respond(interaction, "Esse apelido ultrapassa o limite de 32 caracteres.")
@@ -3021,22 +9317,44 @@ class PeaceBot(commands.Bot):
             view=self.set_approval_view(request_id),
         )
         self.drafts.pop(interaction.user.id, None)
-        await respond(interaction, "Pedido enviado ao scan-only. Um recrutador precisa aprovar o set manualmente antes da liberação.")
+        await respond(interaction, "Pedido enviado ao scan-only. Staff ou Management precisa aprovar o set manualmente antes da liberação.")
 
     def can_approve_set_request(self, request, member: discord.Member) -> bool:
-        selected = request["recruiter_user_id"]
-        return (
-            selected is not None and member.id == int(selected)
-        ) or role_member(member, self.settings.recruiter_role_id)
+        # Historical requests may contain a former recruiter ID, but that ID
+        # never bypasses the current Staff/Management authorization boundary.
+        return reviewer_member(member, self.settings)
 
     async def approve_set_request(self, request, recruiter: discord.Member) -> str:
         guild = recruiter.guild
         member = await self.member(guild, int(request["discord_user_id"]))
         peace_role = guild.get_role(self.settings.peace_role_id)
-        novato_role = guild.get_role(self.settings.novato_role_id)
-        visitor_role = guild.get_role(self.settings.visitor_role_id or 0)
-        if member is None or peace_role is None or novato_role is None:
+        intern_role = role_named(
+            guild,
+            getattr(self.settings, "intern_role_id", None),
+            INTERN_ROLE_NAME,
+            "Intern",
+            "Estagiario",
+        )
+        visitor_role = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        not_verified_role = role_named(
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        if member is None or peace_role is None or intern_role is None:
             return "Não consegui localizar o membro ou os cargos do set."
+        requested_role_objects = list(member.roles)
+        for role in (peace_role, intern_role):
+            if role not in requested_role_objects:
+                requested_role_objects.append(role)
+        requested_role_names = [role.name for role in requested_role_objects]
         existing = self.database.get_member(member.id)
         peace_id = int(existing["peace_id"]) if existing else self.database.ensure_runtime_member(
             discord_user_id=member.id,
@@ -3045,16 +9363,33 @@ class PeaceBot(commands.Bot):
             role_ids=[role.id for role in member.roles],
             role_names=[role.name for role in member.roles],
             founder_id=self.settings.founder_user_id,
+            role_positions=role_position_map(requested_role_objects),
+            role_hoist=role_hoist_map(requested_role_objects),
         )
-        nickname = f"N ⎰ {request['in_game_username']} {peace_id}"
+        prefix = prefix_for_roles(
+            user_id=member.id,
+            role_names=requested_role_names,
+            founder_user_id=self.settings.founder_user_id,
+            founder_role_names=FOUNDER_ROLE_NAMES,
+            default="N",
+            role_positions=role_position_map(requested_role_objects),
+            role_hoist=role_hoist_map(requested_role_objects),
+        ) or "N"
+        nickname = f"{prefix} ⎰ {request['in_game_username']} {peace_id}"
         try:
-            await member.add_roles(peace_role, novato_role, reason=f"Set aprovado manualmente por recrutador {recruiter.id}")
+            await member.add_roles(
+                peace_role,
+                intern_role,
+                reason=f"Set aprovado manualmente por Staff ou Management {recruiter.id}",
+            )
             if visitor_role is not None:
                 await member.remove_roles(visitor_role, reason="Set aprovado: visitante convertido em Peace")
-            await member.edit(nick=nickname, reason="Set aprovado manualmente por recrutador")
+            if not_verified_role is not None:
+                await member.remove_roles(not_verified_role, reason="Set aprovado: membro convertido em Peace")
+            await member.edit(nick=nickname, reason="Set aprovado manualmente por Staff ou Management")
             member_roles = {role.id: role.name for role in member.roles}
             member_roles[peace_role.id] = peace_role.name
-            member_roles[novato_role.id] = novato_role.name
+            member_roles[intern_role.id] = intern_role.name
             self.database.ensure_runtime_member(
                 discord_user_id=member.id,
                 username=member.name,
@@ -3062,25 +9397,89 @@ class PeaceBot(commands.Bot):
                 role_ids=list(member_roles),
                 role_names=list(member_roles.values()),
                 founder_id=self.settings.founder_user_id,
+                role_positions=role_position_map(requested_role_objects),
+                role_hoist=role_hoist_map(requested_role_objects),
             )
             self.database.update_set_request_status(request["id"], "approved")
+            dm_sent = True
             try:
-                await member.send(f"Seu set foi aprovado por {recruiter.display_name}. Seu ID Peace é `{peace_id}`.")
+                await member.send(
+                    embed=self.set_approved_dm_embed(request, recruiter, peace_id),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
             except (discord.Forbidden, discord.HTTPException):
+                dm_sent = False
                 log.info("DM fechado para o membro aprovado %s", member.id)
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
             log.exception("Falha ao aplicar set pendente em %s", member.id)
             return "Não consegui aplicar o set. Verifique permissões, hierarquia e tente novamente."
-        return f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`."
+        logged = await self.send_log(
+            "Set aprovado",
+            actor=recruiter,
+            subject=member,
+            fields=(
+                ("Usuário", member.mention),
+                ("ID Peace", f"`{peace_id}`"),
+                ("Aprovado por", recruiter.mention),
+                ("DM de boas-vindas", "enviada" if dm_sent else "indisponível"),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
+        dm_note = "" if dm_sent else " A DM de boas-vindas está fechada."
+        result = f"Set aprovado por {recruiter.mention}. Membro: {member.mention}. ID Peace: `{peace_id}`.{dm_note}"
+        if not logged:
+            return f"⚠️ {result} O set foi aplicado, mas não consegui registrar o resultado no canal logs."
+        return result
 
-    async def reject_set_request(self, request, recruiter: discord.Member) -> None:
+    async def reject_set_request(self, request, recruiter: discord.Member) -> bool:
         self.database.update_set_request_status(request["id"], "rejected")
         member = await self.member(recruiter.guild, int(request["discord_user_id"]))
         if member is not None:
             try:
-                await member.send("Seu pedido de set foi recusado por um recrutador. Se precisar, abra um ticket para revisar os dados.")
+                await member.send("Seu pedido de set foi recusado por Staff ou Management. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
+        return await self.send_log(
+            "Set recusado",
+            actor=recruiter,
+            subject=member,
+            fields=(
+                ("Usuário", member.mention if member is not None else mention(request["discord_user_id"])),
+                ("Recusado por", recruiter.mention),
+                ("Horário", f"<t:{now_unix()}:F>"),
+            ),
+        )
+
+    async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        ttl_seconds = self.bounded_auth_code_ttl()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=ttl_seconds
+        )
+        challenge_id = self.database.try_create_central_login_challenge(
+            discord_user_id=member.id,
+            peace_id=peace_id,
+            client_id=client_id,
+            code=code,
+            expires_at=expires_at.isoformat(),
+        )
+        if challenge_id is None:
+            return None
+        try:
+            await member.send(
+                embed=self.access_code_embed(member, peace_id, code, ttl_seconds),
+                allowed_mentions=discord.AllowedMentions(
+                    users=True,
+                    roles=False,
+                    everyone=False,
+                    replied_user=False,
+                ),
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            self.database.revoke_central_login_challenges(member.id, client_id)
+            log.info("DM fechada para o código da Central do membro %s", member.id)
+            return False
+        return True
 
     async def open_ticket(self, interaction: discord.Interaction, reason: str, details: str) -> None:
         guild = interaction.guild or self.guild
@@ -3095,19 +9494,9 @@ class PeaceBot(commands.Bot):
         if not isinstance(category, discord.CategoryChannel):
             await respond(interaction, "A categoria de tickets não está configurada.")
             return
-        overwrites: dict[discord.Role | discord.Member, discord.PermissionOverwrite] = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-        }
-        if guild.me is not None:
-            overwrites[guild.me] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)
-        if self.settings.staff_role_id:
-            role = guild.get_role(self.settings.staff_role_id)
-            if role is not None:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
         channel: discord.TextChannel | None = None
         try:
-            channel = await guild.create_text_channel(name="sup-abrindo", category=category, overwrites=overwrites, reason="Novo ticket Peace")
+            channel = await guild.create_text_channel(name="sup-abrindo", category=category, reason="Novo ticket Peace")
             ticket_id = self.database.create_ticket(
                 channel_id=channel.id,
                 owner_user_id=interaction.user.id,
@@ -3140,20 +9529,25 @@ class PeaceBot(commands.Bot):
         await respond(interaction, f"Ticket aberto: {channel.mention}")
 
 
-@app_commands.command(name="painel_set", description="Publica ou atualiza o painel de pedido de set")
-async def panel_set(interaction: discord.Interaction) -> None:
+@app_commands.command(name="start", description="Abre as ações internas da Peace no PV")
+@app_commands.allowed_contexts(guilds=False, dms=True, private_channels=False)
+async def start(interaction: discord.Interaction) -> None:
     bot = interaction.client
-    if not isinstance(bot, PeaceBot) or not isinstance(interaction.user, discord.Member):
+    if not isinstance(bot, PeaceBot):
         return
-    if not staff_member(interaction.user, bot.settings):
-        await respond(interaction, "Apenas a staff pode sincronizar painéis.")
+    actions = await bot.start_actions_for(interaction.user.id)
+    if not actions:
+        # Ordinary members must not learn that an internal menu exists.
+        await ignore_interaction(interaction)
         return
-    if interaction.channel_id != bot.settings.set_channel_id:
-        await respond(interaction, "Use este comando no canal de pedir set.")
+    if interaction.guild is not None:
+        await respond(interaction, "Use o `/start` no PV com o bot.")
         return
-    await interaction.response.defer(ephemeral=True)
-    await bot.sync_one_panel(bot.settings.set_channel_id, "peace_pedir_set_open", bot.set_panel_embed(), SetView(bot), SET_PANEL_ASSET)
-    await interaction.followup.send("Painel de set sincronizado.", ephemeral=True)
+    await interaction.response.send_message(
+        "Escolha uma ação. Cada opção valida novamente o cargo antes de executar qualquer alteração.",
+        view=StartActionView(bot, interaction.user.id, actions),
+        ephemeral=False,
+    )
 
 
 async def booster_owner_context(interaction: discord.Interaction):
@@ -3278,10 +9672,18 @@ async def farm(interaction: discord.Interaction, entregou: discord.Member, receb
     await interaction.response.defer(ephemeral=True)
     bot.database.save_farm(delivered_by=entregou.id, received_by=recebeu.id, delivered_value=valor_entregue, counted_value=valor_contado, goals_paid=metas, paid_days=dias, proof_url=prova, created_by=interaction.user.id)
     await bot.send_log(
-        f"**Farme confirmado**\nEntregou: {entregou.mention}\nRecebeu: {recebeu.mention}\n"
-        f"Valor entregue: `{valor_entregue}`\nValor contado: `{valor_contado}`\n"
-        f"Metas pagas: `{metas}`\nDias quitados: `{dias}`\nProva: {prova or 'não informada'}\n"
-        f"Horário: <t:{now_unix()}:F>"
+        "Farme confirmado",
+        actor=interaction.user,
+        fields=(
+            ("Entregou", entregou.mention),
+            ("Recebeu", recebeu.mention),
+            ("Valor entregue", str(valor_entregue)),
+            ("Valor contado", str(valor_contado)),
+            ("Metas pagas", str(metas)),
+            ("Dias quitados", dias),
+            ("Prova", prova or "não informada"),
+            ("Horário", f"<t:{now_unix()}:F>"),
+        ),
     )
     await interaction.followup.send("Farme registrado nos logs.", ephemeral=True)
 
@@ -3295,8 +9697,8 @@ def run() -> None:
         raise SystemExit(2) from error
     bot = PeaceBot(settings)
     guild = discord.Object(id=settings.guild_id)
+    bot.tree.add_command(start)
     for command in (
-        panel_set,
         sync_panels,
         absence,
         farm,

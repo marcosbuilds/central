@@ -1,0 +1,58 @@
+/* Media feed: keep public media readable, playable when supported, and linkable when a provider blocks embedding. */
+.hero-secondary-action { display: inline-flex; min-height: 3.1rem; align-items: center; gap: 0.55rem; padding: 0.7rem 0.2rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+.hero-secondary-action:hover, .hero-secondary-action:focus-visible { color: var(--text); }
+.media-feed { grid-template-columns: 1fr; gap: clamp(3rem, 6vw, 5rem); }
+.media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.media-card-visual { position: relative; aspect-ratio: 16 / 10; min-height: 12rem; background: #091015; }
+.media-card-video, .media-card-embed, .media-card-image { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
+.media-card-embed { background: #050607; }
+.media-card-visual[data-provider="TikTok"] { aspect-ratio: 9 / 12; }
+.media-source-fallback, .media-card-source-preview { display: flex; min-height: 100%; flex-direction: column; justify-content: center; gap: 0.75rem; padding: 1.1rem; background: radial-gradient(circle at 50% 30%, rgba(185, 202, 211, 0.15), transparent 62%), #091015; text-align: center; }
+.media-source-fallback-image { width: 100%; max-height: 9rem; object-fit: cover; opacity: 0.82; }
+.media-source-fallback-copy { display: grid; gap: 0.45rem; place-items: center; }
+.media-source-fallback-provider { color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.media-source-fallback-title { max-width: 28rem; color: var(--text); font-size: 0.82rem; font-weight: 600; line-height: 1.35; }
+.media-source-fallback-link { color: var(--accent); font-size: 0.76rem; font-weight: 700; }
+.media-source-fallback-link:hover, .media-source-fallback-link:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 0.16em; }
+.media-card-media-button { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.media-card-media-button:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: -3px; }
+.media-card-expand { position: absolute; right: 0.65rem; bottom: 0.65rem; z-index: 2; min-height: 2.2rem; padding: 0.55rem 0.65rem; border: 1px solid rgba(238, 241, 243, 0.28); border-radius: 0.45rem; background: rgba(5, 6, 7, 0.72); color: var(--text); cursor: pointer; font-size: 0.63rem; font-weight: 700; backdrop-filter: blur(10px); }
+.media-card-expand:hover, .media-card-expand:focus-visible { border-color: var(--accent); background: rgba(5, 6, 7, 0.9); }
+.media-card-badge { max-width: calc(100% - 1rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-card-copy { min-width: 0; padding: 0.9rem 1rem 1rem; }
+.media-card-meta { margin-bottom: 0.45rem; }
+.media-card-caption { min-height: 2.5rem; overflow-wrap: anywhere; }
+.media-card-provider-title { margin: 0.45rem 0 0; overflow: hidden; color: var(--quiet); font-size: 0.68rem; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.media-card-author { display: flex; min-width: 0; align-items: center; gap: 0.45rem; margin-top: 0.85rem; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+.media-card-author-avatar { display: grid; width: 1.45rem; height: 1.45rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 50%; background: #17232a; color: var(--accent); font-size: 0.6rem; }
+.media-card-author-image { width: 100%; height: 100%; object-fit: cover; }
+.media-card-author-name, .media-card-author-handle { min-width: 0; overflow-wrap: anywhere; }
+.media-card-author-handle { color: var(--quiet); font-weight: 500; }
+.media-card-source { display: inline-flex; max-width: 100%; margin-top: 0.65rem; color: var(--accent); font-size: 0.65rem; font-weight: 700; overflow-wrap: anywhere; }
+.media-card-source:hover, .media-card-source:focus-visible { color: var(--text); }
+.media-lightbox { width: min(92vw, 70rem); max-width: none; padding: 1rem; border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--surface-raised); color: var(--text); box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.5); overscroll-behavior: contain; }
+.media-lightbox::backdrop { background: rgba(2, 3, 4, 0.82); backdrop-filter: blur(8px); }
+.media-lightbox[hidden] { display: none; }
+.media-lightbox-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 0 0 0.85rem; }
+.media-lightbox-head > div { min-width: 0; }
+.media-lightbox-head h2 { max-width: 48rem; margin: 0; overflow-wrap: anywhere; font-size: 1rem; font-weight: 600; }
+.media-lightbox-meta { display: flex; flex-wrap: wrap; gap: 0.35rem 0.7rem; margin: 0.4rem 0 0; color: var(--quiet); font-size: 0.68rem; }
+.media-lightbox-provider-title { width: 100%; color: var(--muted); }
+.media-lightbox-content { display: grid; min-height: min(60vh, 38rem); place-items: center; overflow: hidden; background: #050607; }
+.media-lightbox-media { display: block; width: 100%; max-height: 72vh; border: 0; object-fit: contain; }
+.media-lightbox iframe { aspect-ratio: 16 / 9; height: auto; }
+.media-lightbox-fallback { min-height: min(60vh, 38rem); width: 100%; }
+.media-lightbox-content[data-provider="TikTok"] .media-lightbox-media { width: min(72vw, 28rem); aspect-ratio: 9 / 16; }
+
+@media (max-width: 840px) {
+  .media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .hero-actions { align-items: center; flex-direction: column; }
+  .hero-actions .button { width: 100%; }
+  .hero-secondary-action { min-height: 2.4rem; }
+  .media-grid { grid-template-columns: 1fr; }
+  .media-card-visual { min-height: 14rem; }
+  .media-lightbox { width: calc(100vw - 1rem); padding: 0.6rem; }
+}

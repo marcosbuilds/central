@@ -8,6 +8,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 using Central.Desktop.Models;
+using Central.Desktop.Services;
 using Central.Desktop.ViewModels;
 using Central.Desktop.Views;
 
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     private readonly DashboardView _dashboardView;
     private readonly ProjectsView _projectsView;
     private readonly ProjectView _projectView;
+    private readonly CentralAccessClient _centralAccessClient = new();
     private bool _isSidebarCollapsed = true;
     private bool _isSettingsOpen;
     private bool _reduceMotion;
@@ -29,6 +31,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _viewModel = new CentralViewModel();
+        _viewModel.SetCentralAccessClient(_centralAccessClient);
         DataContext = _viewModel;
 
         _dashboardView = new DashboardView { DataContext = _viewModel };
@@ -42,6 +45,8 @@ public partial class MainWindow : Window
         _reduceMotion = !SystemParameters.ClientAreaAnimation;
         ReducedMotionCheckBox.IsChecked = _reduceMotion;
         _dashboardView.SetReducedMotion(_reduceMotion);
+        CentralAuthOverlay.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => CentralPeaceIdTextBox.Focus()));
 
         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -239,6 +244,41 @@ public partial class MainWindow : Window
         await _viewModel.CheckGatewayAsync();
     }
 
+    private async void RequestCentralCode_Click(object sender, RoutedEventArgs e)
+    {
+        RequestCentralCodeButton.IsEnabled = false;
+        CentralAuthStatusText.Text = "Validando o ID com o bot…";
+        var result = await _centralAccessClient.RequestCodeAsync(CentralPeaceIdTextBox.Text);
+        CentralAuthStatusText.Text = result.Message;
+        if (result.Success)
+        {
+            CentralCodeHint.Visibility = Visibility.Visible;
+            CentralCodeBox.Visibility = Visibility.Visible;
+            VerifyCentralCodeButton.Visibility = Visibility.Visible;
+            CentralCodeBox.Focus();
+        }
+        RequestCentralCodeButton.IsEnabled = true;
+    }
+
+    private async void VerifyCentralCode_Click(object sender, RoutedEventArgs e)
+    {
+        VerifyCentralCodeButton.IsEnabled = false;
+        CentralAuthStatusText.Text = "Validando o código…";
+        var result = await _centralAccessClient.VerifyCodeAsync(CentralPeaceIdTextBox.Text, CentralCodeBox.Password);
+        CentralAuthStatusText.Text = result.Message;
+        if (result.Success)
+        {
+            var session = await _centralAccessClient.ValidateSessionAsync();
+            CentralAuthStatusText.Text = session.Message;
+            if (session.Success)
+            {
+                CentralAuthOverlay.Visibility = Visibility.Collapsed;
+                ContentHost.Focus();
+            }
+        }
+        VerifyCentralCodeButton.IsEnabled = true;
+    }
+
     private async void ConnectSync_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.SetSyncPassword(SyncPasswordBox.Password);
@@ -252,6 +292,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
+        await _centralAccessClient.RevokeSessionAsync();
         await _viewModel.ShutdownAsync();
     }
 
