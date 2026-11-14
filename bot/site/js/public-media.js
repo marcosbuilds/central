@@ -88,11 +88,27 @@
       return "link";
     }
 
+    function cleanMediaText(value) {
+      var text = String(value || "")
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+        .replace(/\[([^\]]+)\]\(([^)]*)\)/g, function (match, label, url) {
+          // Empty Markdown links are common in imported Discord/Medal text.
+          // Keep useful labels only when the source actually has a URL.
+          return String(url || "").trim() ? label : "";
+        })
+        .replace(/(\*\*|__)(.*?)\1/g, "$2")
+        .replace(/[\*_`~]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      return text;
+    }
+
     function mediaDisplayText(item) {
-      if (item && item.caption) return item.caption;
-      if (item && item.provider_title) return item.provider_title;
-      if (item && item.provider_author) return item.provider_author;
-      return item && item.type === "video" ? "Um clip compartilhado na comunidade." : "Um momento compartilhado na comunidade.";
+      var fallback = item && item.type === "video"
+        ? "Um clip compartilhado na comunidade."
+        : "Um momento compartilhado na comunidade.";
+      var raw = item && (item.caption || item.provider_title || item.provider_author);
+      return cleanMediaText(raw) || fallback;
     }
 
     function mediaSourceLabel(item) {

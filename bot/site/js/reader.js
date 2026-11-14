@@ -70,7 +70,21 @@
       if (linkIndex === index) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
-    if (focus && pages[index]) pages[index].scrollIntoView({ behavior: "smooth", block: "start" });
+    // A table-of-contents choice is a precise navigation command. Smooth
+    // scrolling lets the observer report the previous page for a moment,
+    // which makes the selected chapter look wrong and makes the context card
+    // disagree with the requested destination. Jump directly to the page so
+    // the image, active item and explanation change as one state.
+    if (focus && pages[index]) {
+      // The global shell uses smooth scrolling for ordinary anchors. Keep
+      // that visual language elsewhere, but make a TOC selection atomic so
+      // the observer cannot expose an intermediate page.
+      var rootStyle = document.documentElement.style;
+      var previousScrollBehavior = rootStyle.scrollBehavior;
+      rootStyle.scrollBehavior = "auto";
+      pages[index].scrollIntoView({ behavior: "auto", block: "start" });
+      rootStyle.scrollBehavior = previousScrollBehavior;
+    }
   }
 
   if (toc) {
@@ -102,7 +116,7 @@
   pages.forEach(function (page) { if (observer) observer.observe(page); });
 
   var hashIndex = pages.findIndex(function (page) { return page.id === window.location.hash.slice(1); });
-  update(hashIndex >= 0 ? hashIndex : 0, false);
+  update(hashIndex >= 0 ? hashIndex : 0, hashIndex >= 0);
 
   // This is a light copy-deterrent for the visual reader, not a security
   // promise. Visible content can never be protected from screenshots or OCR.

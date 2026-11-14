@@ -393,6 +393,18 @@ body[data-page="candidatura"] [data-entry-connect] { min-width: 15rem; }
 @keyframes quiet-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.75); } 50% { opacity: 1; transform: scale(1); } }
 
 .flow-header { min-height: 4.25rem; padding-block: 0.7rem; border-bottom: 1px solid rgba(185, 202, 211, 0.08); }
+.flow-header {
+  position: sticky;
+  z-index: 50;
+  top: 0;
+  width: 100%;
+  margin: 0;
+  padding-inline: max(1.25rem, calc((100% - var(--content)) / 2));
+  background: rgba(5, 6, 7, 0.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.14);
+}
 .flow-header .brand-mark { width: 2.1rem; height: 2.1rem; }
 .flow-header .brand-mark img { width: 2.1rem; height: 2.1rem; }
 .flow-header .brand-lockup strong { font-size: 0.9rem; }
@@ -429,6 +441,10 @@ body[data-page="candidatura"] .stage-lede { max-width: 36rem; font-size: 0.9rem;
 body[data-page="candidatura"] [data-entry-connect] { min-width: 0; }
 body[data-page="candidatura"] .stage-actions { gap: 0.9rem; margin-top: 1.35rem; }
 body[data-page="candidatura"] .stage-note { margin-top: 0.85rem; font-size: 0.68rem; }
+
+@media (max-width: 560px) {
+  .flow-header { padding-inline: 1rem; }
+}
 .entry-invite-panel { gap: 0.8rem; margin-top: 1.15rem; padding: 1rem; border-radius: var(--container-radius); background: rgba(14, 20, 25, 0.52); box-shadow: none; }
 .entry-invite-heading { gap: 0.7rem; }
 .entry-invite-heading .eyebrow { margin-bottom: 0.25rem; }

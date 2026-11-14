@@ -20,10 +20,10 @@
       .then(function (response) { return response.json(); });
   }
   function setMessage(node, text, tone) { setText(node, text || ""); if (node) node.dataset.state = tone || "pending"; }
-  function showGate(message) {
+  function showGate(messageText) {
     if (gate) gate.hidden = false;
     if (workspace) workspace.hidden = true;
-    setMessage(messageNode, message, "error");
+    setMessage(message, messageText, "error");
     var connect = gate && gate.querySelector("[data-manager-connect]");
     if (connect) connect.hidden = true;
     var title = gate && gate.querySelector("h2");

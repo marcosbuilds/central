@@ -1478,10 +1478,31 @@ def test_public_site_files_are_complete():
     assert 'class="menu-toggle-arrow"' in menu_control
     assert menu_control.count('<i></i>') == 2
     assert 'menu-toggle-lines' not in homepage
-    header_cta = homepage.split('class="button button--outline header-cta"', 1)[1].split("</a>", 1)[0]
     hero_cta = homepage.split('class="button button--light button--large"', 1)[1].split("</a>", 1)[0]
-    assert "peace-icon" in header_cta and "discord-icon" not in header_cta
     assert "peace-icon" in hero_cta and "discord-icon" not in hero_cta
+    homepage_nav = homepage.split('<nav class="site-nav"', 1)[1].split("</nav>", 1)[0]
+    assert "Como entrar" not in homepage_nav
+    assert "Entrar para Peace" not in homepage_nav
+    assert "header-login" not in homepage
+    assert "header-cta" not in homepage
+    assert "navigationIcons" in script
+    assert "nav-option-icon" in script
+    for relative_path in (
+        "estudos/index.html",
+        "estudos/civil/index.html",
+        "estudos/peace/index.html",
+        "estudos/civil/leitor/index.html",
+        "estudos/peace/leitor/index.html",
+        "meu-processo/index.html",
+        "avisos/index.html",
+        "parceiros/index.html",
+        "prova/index.html",
+        "gerencia/provas/index.html",
+    ):
+        header = (site_root / relative_path).read_text(encoding="utf-8").split("</header>", 1)[0]
+        assert "Como entrar" not in header
+        assert "href=\"/acessar/\"" not in header
+        assert "Entrar para Peace" not in header
 
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
@@ -1578,10 +1599,17 @@ def test_public_site_files_are_complete():
     assert 'grid-template-columns: repeat(2, minmax(0, 1fr))' in stylesheet
     assert 'border-radius: var(--container-radius)' in stylesheet
     assert 'backdrop-filter: var(--container-blur)' in stylesheet
-    assert '-webkit-backdrop-filter: var(--container-blur)' in stylesheet
+    assert 'backdrop-filter: var(--menu-blur)' in stylesheet
+    assert '-webkit-backdrop-filter: var(--menu-blur)' in stylesheet
+    assert '.nav-option-icon { display: none; }' in stylesheet
     assert '.menu-toggle-arrow i:first-child' in stylesheet
     assert '.menu-toggle-arrow i:last-child' in stylesheet
     assert '.site-header { display: grid;' in stylesheet
+    assert '.site-header {' in stylesheet and 'position: sticky;' in stylesheet
+    assert '.flow-header {' in stylesheet and 'position: sticky;' in stylesheet
+    assert '@media (min-width: 841px) and (max-width: 1080px)' in stylesheet
+    assert 'matchMedia("(max-width: 1080px)")' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
+    assert '.js-ready [data-reveal] { opacity: 1;' in stylesheet
     assert '.flow-copy,' in stylesheet and '.application-stage,' in stylesheet
     assert 'body[data-page="candidatura"] .flow-header { display: grid; }' in stylesheet
     studies_html = (site_root / "estudos" / "index.html").read_text(encoding="utf-8")
@@ -1706,6 +1734,8 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "Intl.DateTimeFormat" in member_script
     assert "data.updated_at" in member_script
     public_media_script = (site_root / "js" / "public-media.js").read_text(encoding="utf-8")
+    assert "cleanMediaText" in public_media_script
+    assert "Empty Markdown links" in public_media_script
     assert "thumbnail.width = 320" in public_media_script
     assert "avatarImage.width = 32" in public_media_script
     assert "Última leitura · uma fonte está desatualizada" in public_media_script

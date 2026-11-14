@@ -7,7 +7,7 @@
   var navigation = header && header.querySelector(".site-nav, .flow-header-nav");
   var revealItems = Array.prototype.slice.call(document.querySelectorAll("[data-reveal]"));
   var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var mobileNavigation = window.matchMedia("(max-width: 840px)");
+  var mobileNavigation = window.matchMedia("(max-width: 1080px)");
   var memberSessionStorageKey = "peace.member.session.v1";
 
   function readMemberSessionToken() {
@@ -29,6 +29,42 @@
   document.querySelectorAll('a[href^="/discord"], a[href^="../discord"]').forEach(function (link) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
+  });
+
+  var navigationIcons = {
+    peace: '<path d="M12 3.5c1.5 2.8 4.4 4.1 7.3 4.5-1.1 4.7-3.7 8.8-7.3 11-3.6-2.2-6.2-6.3-7.3-11 2.9-.4 5.8-1.7 7.3-4.5Z"></path><path d="M8.8 12.2h6.4M12 9v6"></path>',
+    study: '<path d="M4.2 5.2c2.9-.8 5.4-.3 7.8 1.4v12c-2.4-1.7-4.9-2.2-7.8-1.4v-12ZM19.8 5.2c-2.9-.8-5.4-.3-7.8 1.4v12c2.4-1.7 4.9-2.2 7.8-1.4v-12Z"></path><path d="M12 6.6v12"></path>',
+    process: '<circle cx="12" cy="12" r="8.5"></circle><path d="m8.3 12.3 2.4 2.4 4.9-5"></path>',
+    notice: '<path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path>',
+    partner: '<circle cx="8" cy="8.2" r="2.5"></circle><circle cx="16" cy="15.8" r="2.5"></circle><path d="m10 9.8 4 4.4"></path><path d="M5.5 15.5a3.6 3.6 0 0 1 5.1-1.8M13.4 10.3a3.6 3.6 0 0 1 5.1 1.8"></path>'
+  };
+
+  function navigationIconKey(link) {
+    var href = link.getAttribute("href") || "";
+    if (href === "/#sobre" || href === "#sobre") return "peace";
+    if (href === "/estudos/" || href.indexOf("/estudos/civil/") === 0 || href.indexOf("/estudos/peace/") === 0) return "study";
+    if (href === "/meu-processo/") return "process";
+    if (href === "/avisos/") return "notice";
+    if (href === "/parceiros/") return "partner";
+    return null;
+  }
+
+  document.querySelectorAll(".site-nav a, .flow-header-nav a").forEach(function (link) {
+    if (link.querySelector(".nav-option-icon")) return;
+    var key = navigationIconKey(link);
+    if (!key) return;
+    var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.classList.add("nav-option-icon");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.setAttribute("focusable", "false");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "1.6");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("stroke-linejoin", "round");
+    icon.innerHTML = navigationIcons[key];
+    link.prepend(icon);
   });
 
   document.querySelectorAll("a[href]").forEach(function (link) {

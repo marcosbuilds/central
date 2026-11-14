@@ -58,7 +58,10 @@
           return child.hasAttribute && child.hasAttribute("data-manager-logout");
         });
         actions = createElement("div", "flow-header-actions");
-        if (directLogout) directLogout.replaceWith(actions);
+        if (directLogout) {
+          directLogout.replaceWith(actions);
+          actions.appendChild(directLogout);
+        }
         else header.appendChild(actions);
       }
     }
@@ -70,7 +73,6 @@
       var replacesIdentity = child.hasAttribute("data-discord-connect")
         || child.hasAttribute("data-manager-connect")
         || child.hasAttribute("data-member-discord-connect")
-        || child.hasAttribute("data-manager-logout")
         || child.classList.contains("member-header-discord");
       if (replacesIdentity) child.remove();
     });
@@ -259,6 +261,12 @@
       if (menu) menu.hidden = true;
     });
   });
+
+  // Render a stable disconnected state before the asynchronous session check.
+  // This keeps the header width and action order unchanged while the API is
+  // resolving, so navigation does not jump between an empty action area and
+  // the final Discord control.
+  render(null);
 
   site.discordSessionPromise = site.attemptEndpoint("/api/auth/discord/session", {
     headers: { Accept: "application/json" }

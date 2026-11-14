@@ -110,6 +110,7 @@
       setText(membershipNode, membership.state === "peace" ? "Sim, cargo Peace confirmado." : membership.state === "member" ? "Está no servidor; cargo Peace ainda não confirmado." : membership.state === "not_member" ? "Ainda não está no servidor." : "Confirmação do servidor indisponível agora.");
     }
     if (membershipNoteNode) {
+      membershipNoteNode.hidden = false;
       var membershipCopy = membership.state === "peace"
         ? "Sua conta já está vinculada ao servidor Peace. O painel público pode mostrar o processo e a prova atribuída."
         : membership.state === "member"
@@ -136,8 +137,11 @@
     setText(idNode, "Aguardando conexão.");
     setText(usernameNode, "Identificação visual.");
     setText(membershipNode, "Será confirmado pelo servidor.");
-    setText(membershipNoteNode, "Conecte o Discord para confirmar se sua conta está no servidor e qual é o próximo passo.");
-    if (membershipNoteNode) membershipNoteNode.dataset.state = "pending";
+    if (membershipNoteNode) {
+      membershipNoteNode.textContent = "";
+      membershipNoteNode.hidden = true;
+      membershipNoteNode.dataset.state = "pending";
+    }
     if (setLink) setLink.hidden = true;
     if (scorePanel) scorePanel.hidden = true;
     if (logoutButton) logoutButton.hidden = true;
