@@ -75,6 +75,7 @@ PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a
 PUBLIC_API_RATE_LIMITS = {
     "/api/status": (120, 60),
     "/api/media": (12, 60),
+    "/api/clips": (60, 60),
     "/api/notices": (30, 60),
     "/api/entry/start": (12, 60),
     "/api/entry/status": (60, 60),
@@ -136,6 +137,7 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/exams/start",
         "/api/exams/submit",
         "/api/exams/assignments",
+        "/api/clips",
     }
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
@@ -4804,11 +4806,8 @@ class PeaceBot(commands.Bot):
         return items
 
     @staticmethod
-    def select_public_media(
-        items: list[dict[str, object]],
-        channel_kind: str,
-        seed: int,
-    ) -> list[dict[str, object]]:
+    def unique_public_media(items: list[dict[str, object]]) -> list[dict[str, object]]:
+        """Deduplicate media by provider identity while keeping newest first."""
         sorted_items = sorted(
             items,
             key=lambda item: int(item.get("created_at_unix", 0) or 0),
@@ -4831,6 +4830,15 @@ class PeaceBot(commands.Bot):
                 continue
             seen_content.add(content_key)
             ordered.append(item)
+        return ordered
+
+    @staticmethod
+    def select_public_media(
+        items: list[dict[str, object]],
+        channel_kind: str,
+        seed: int,
+    ) -> list[dict[str, object]]:
+        ordered = PeaceBot.unique_public_media(items)
         if not ordered:
             return []
         selected: list[dict[str, object]] = []
@@ -4879,6 +4887,185 @@ class PeaceBot(commands.Bot):
             selected.append(item)
             selected_ids.add(item_id)
         return selected[:PUBLIC_MEDIA_SELECTION_LIMIT]
+
+    @staticmethod
+    def public_clips_search_text(item: dict[str, object]) -> str:
+        author = item.get("author") if isinstance(item.get("author"), dict) else {}
+        values = (
+            item.get("caption"),
+            item.get("provider_title"),
+            item.get("provider_description"),
+            item.get("provider_author"),
+            item.get("provider"),
+            item.get("source_url"),
+            author.get("display_name") if isinstance(author, dict) else "",
+            author.get("username") if isinstance(author, dict) else "",
+        )
+        return " ".join(str(value or "") for value in values).casefold()
+
+    async def public_clips_viewer(
+        self,
+        request: web.Request,
+    ) -> tuple[dict[str, object], object | None, object | None]:
+        token, session = await self.public_discord_session_context(request)
+        if token is None or session is None:
+            return {"state": "anonymous", "can_interact": False}, None, None
+        member, state = await self.public_discord_member_state(session["discord_user_id"])
+        if state == "unavailable":
+            return {"state": "unavailable", "can_interact": False}, session, None
+        if member is None:
+            return {"state": "not_member", "can_interact": False}, session, None
+        if not self.public_member_has_peace_role(member):
+            return {"state": "peace_required", "can_interact": False}, session, member
+        return {"state": "peace_member", "can_interact": True}, session, member
+
+    async def public_api_clips(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+
+        (clips, clips_available), = await asyncio.gather(
+            self.public_media_items_with_state("clips"),
+        )
+        unique_clips = self.unique_public_media(clips)
+        if request.method == "POST":
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError):
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PAYLOAD", "message": "A interação do clipe é inválida."},
+                    status=400,
+                )
+            media_id = str(payload.get("media_id") or "").strip()
+            if not media_id or len(media_id) > 240 or not any(str(item.get("id")) == media_id for item in unique_clips):
+                return web.json_response(
+                    {"ok": False, "code": "CLIP_NOT_FOUND", "message": "Esse clipe não está mais disponível."},
+                    status=404,
+                )
+            viewer, session, member = await self.public_clips_viewer(request)
+            if session is None:
+                return web.json_response(
+                    {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para interagir."},
+                    status=401,
+                )
+            if viewer["state"] == "unavailable":
+                return web.json_response(
+                    {"ok": False, "code": "PEACE_MEMBERSHIP_UNAVAILABLE", "message": "Não foi possível confirmar seu cargo Peace agora."},
+                    status=503,
+                )
+            if not viewer["can_interact"] or member is None:
+                return web.json_response(
+                    {"ok": False, "code": "PEACE_ROLE_REQUIRED", "message": "Curtir e comentar estão disponíveis para membros Peace."},
+                    status=403,
+                )
+            action = str(payload.get("action") or "").strip().casefold()
+            if action == "like":
+                try:
+                    result = self.database.toggle_public_media_like(
+                        media_id=media_id,
+                        discord_user_id=session["discord_user_id"],
+                    )
+                except (sqlite3.Error, OSError):
+                    log.warning("Não consegui alternar curtida pública do clipe", exc_info=True)
+                    return web.json_response(
+                        {"ok": False, "code": "CLIP_SOCIAL_UNAVAILABLE", "message": "Não consegui salvar sua curtida agora."},
+                        status=503,
+                    )
+                return web.json_response({"ok": True, "action": "like", **result})
+            if action == "comment":
+                comment = str(payload.get("text") or "").strip()
+                if not 1 <= len(comment) <= 500:
+                    return web.json_response(
+                        {"ok": False, "code": "INVALID_COMMENT", "message": "O comentário precisa ter entre 1 e 500 caracteres."},
+                        status=400,
+                    )
+                author_name = str(
+                    getattr(member, "display_name", None)
+                    or getattr(member, "global_name", None)
+                    or getattr(member, "name", "Membro")
+                ).strip()[:80] or "Membro"
+                author_avatar = self.public_avatar_url(member) or self.public_discord_avatar_url(
+                    session["discord_user_id"],
+                    session["avatar_hash"],
+                )
+                try:
+                    saved = self.database.save_public_media_comment(
+                        media_id=media_id,
+                        discord_user_id=session["discord_user_id"],
+                        author_name=author_name,
+                        author_avatar_url=author_avatar,
+                        body=comment,
+                    )
+                except (sqlite3.Error, OSError):
+                    log.warning("Não consegui salvar comentário público do clipe", exc_info=True)
+                    return web.json_response(
+                        {"ok": False, "code": "CLIP_SOCIAL_UNAVAILABLE", "message": "Não consegui publicar seu comentário agora."},
+                        status=503,
+                    )
+                return web.json_response({"ok": True, "action": "comment", "comment": saved})
+            return web.json_response(
+                {"ok": False, "code": "INVALID_CLIP_ACTION", "message": "Ação de clipe não reconhecida."},
+                status=400,
+            )
+
+        query = str(request.query.get("q", "") or "").strip()[:80].casefold()
+        author_query = str(request.query.get("author", "") or "").strip()[:80].casefold()
+        filtered = [
+            item
+            for item in unique_clips
+            if (not query or query in self.public_clips_search_text(item))
+            and (
+                not author_query
+                or author_query in self.public_clips_search_text(item)
+            )
+        ]
+        try:
+            offset = max(0, min(500, int(request.query.get("offset", "0") or 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limit = max(1, min(60, int(request.query.get("limit", "60") or 60)))
+        except (TypeError, ValueError):
+            limit = 60
+        viewer, session, _member = await self.public_clips_viewer(request)
+        viewer_id = session["discord_user_id"] if viewer["can_interact"] and session is not None else None
+        selected = filtered[offset:offset + limit]
+        ids = [str(item.get("id", "")) for item in selected]
+        try:
+            social = self.database.public_media_social_summary(ids, discord_user_id=viewer_id)
+            comments = self.database.public_media_comments(ids)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui carregar interações públicas dos clipes", exc_info=True)
+            social = {media_id: {"like_count": 0, "comment_count": 0, "liked": False} for media_id in ids}
+            comments = {media_id: [] for media_id in ids}
+        response_items = []
+        for item in selected:
+            item_copy = dict(item)
+            media_id = str(item_copy.get("id", ""))
+            item_copy["social"] = social.get(media_id, {"like_count": 0, "comment_count": 0, "liked": False})
+            item_copy["comments"] = comments.get(media_id, [])
+            response_items.append(item_copy)
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        source_state = "ready" if unique_clips else ("empty" if clips_available else "unavailable")
+        return web.json_response(
+            {
+                "ok": True,
+                "updated_at": refreshed_at if clips_available else None,
+                "clips": response_items,
+                "total": len(filtered),
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(response_items) < len(filtered),
+                "viewer": viewer,
+                "source": {
+                    "state": source_state,
+                    "available": clips_available,
+                    "history_limit": PUBLIC_MEDIA_HISTORY_LIMIT,
+                },
+            }
+        )
 
     async def public_api_media(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
@@ -5806,6 +5993,7 @@ class PeaceBot(commands.Bot):
             "/api/exams/start",
             "/api/exams/submit",
             "/api/exams/assignments",
+        "/api/clips",
         }
         if (
             request.method == "POST"
@@ -5935,6 +6123,8 @@ class PeaceBot(commands.Bot):
         app.router.add_get("/healthz", self.public_api_health)
         app.router.add_get("/api/status", self.public_api_status)
         app.router.add_get("/api/media", self.public_api_media)
+        app.router.add_get("/api/clips", self.public_api_clips)
+        app.router.add_post("/api/clips", self.public_api_clips)
         app.router.add_get("/api/notices", self.public_api_notices)
         app.router.add_post("/api/entry/start", self.public_api_entry_start)
         app.router.add_get("/api/entry/status", self.public_api_entry_status)
@@ -5961,6 +6151,7 @@ class PeaceBot(commands.Bot):
         for route in (
             "/api/status",
             "/api/media",
+            "/api/clips",
             "/api/notices",
             "/api/entry/start",
             "/api/entry/status",

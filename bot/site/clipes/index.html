@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR" data-page="clips">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Clipes publicados pela comunidade Peace, com busca, curtidas e comentários.">
+    <title>Clipes — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261114-04">
+    <script defer src="/script.js?v=20261114-04"></script>
+  </head>
+  <body data-page="clips">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page public-context-page">
+      <main id="conteudo" class="flow-main flow-main--public clips-main" tabindex="-1">
+        <section class="clips-hero" data-reveal aria-labelledby="clips-title">
+          <div>
+            <p class="eyebrow">05 / Clipes da comunidade</p>
+            <h1 id="clips-title">Veja o que a comunidade <em>compartilhou.</em></h1>
+            <p class="flow-lede">Um feed público para encontrar clipes por título, vídeo ou autor. A origem continua no provedor original; as interações ficam ligadas à conta Peace.</p>
+          </div>
+          <div class="clips-hero-note">
+            <span class="clips-hero-note-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H8l-4 3v-13Z"></path><path d="M8 9.5h8M8 12.5h5"></path></svg>
+            </span>
+            <strong>Origem + comunidade</strong>
+            <p>Clipes são lidos do canal público configurado no Discord. Curtidas e comentários exigem cargo Peace.</p>
+          </div>
+        </section>
+
+        <section class="clips-feed" aria-labelledby="clips-feed-title">
+          <div class="clips-feed-heading">
+            <div>
+              <p class="eyebrow">Biblioteca de vídeos</p>
+              <h2 id="clips-feed-title">Todos os clipes.</h2>
+            </div>
+            <p data-clips-status role="status" aria-live="polite">Preparando a busca…</p>
+          </div>
+
+          <form class="clips-search" data-clips-search role="search">
+            <label for="clips-query">Pesquisar por vídeo ou autor</label>
+            <div class="clips-search-row">
+              <input id="clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Ex.: corrida, nome do autor ou provedor">
+              <button class="button button--light" data-clips-submit type="submit">Pesquisar</button>
+            </div>
+          </form>
+
+          <div class="clips-grid" data-clips-list role="list" aria-busy="true" aria-label="Clipes publicados"></div>
+          <p class="clips-empty" data-clips-empty hidden role="status"></p>
+        </section>
+      </main>
+
+      <div class="site-toast clips-toast" data-clips-toast role="status" aria-live="polite" hidden></div>
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>PEACE</small></span></a><p>Clipes públicos, conversa responsável.</p><a class="footer-link" href="/estudos/">Estudos <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

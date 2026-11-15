@@ -7,14 +7,24 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Painel Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261114-03">
-    <script defer src="../script.js?v=20261114-03"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261114-04">
+    <script defer src="../script.js?v=20261114-04"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
 
     <main id="conteudo" class="member-page" tabindex="-1">
-      <section class="member-gate" data-member-gate aria-labelledby="gate-title">
+      <noscript>
+        <section class="member-gate member-gate--noscript" aria-labelledby="noscript-gate-title">
+          <div class="gate-copy">
+            <p class="eyebrow">Painel Peace</p>
+            <h2 id="noscript-gate-title">Ative o JavaScript para validar sua conta.</h2>
+            <p>O painel precisa confirmar a sessão Discord e o cargo Peace antes de liberar qualquer conteúdo.</p>
+            <a class="button button--light button--large" href="../acessar/?return_to=%2Farea%2F">Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a>
+          </div>
+        </section>
+      </noscript>
+      <section class="member-gate" data-member-gate hidden aria-labelledby="gate-title">
         <div class="gate-copy">
           <p class="eyebrow">Painel Peace</p>
           <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
@@ -27,7 +37,7 @@
         </aside>
       </section>
 
-      <section class="member-workspace" data-member-workspace hidden aria-busy="true" aria-labelledby="workspace-title">
+      <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="workspace-title">
         <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Carregando painel Peace">
           <div class="member-skeleton-sidebar"><span></span><span></span><span></span><span></span><span></span></div>
           <div class="member-skeleton-content"><span></span><span></span><span></span><span></span><span></span></div>
@@ -37,32 +47,29 @@
             <aside class="member-sidebar" id="member-sidebar" data-member-sidebar aria-label="Navegação do painel Peace" inert>
               <div class="member-sidebar-inner">
                 <div class="member-sidebar-topline">
-                  <a class="member-sidebar-brand" href="/area/#overview" aria-label="Peace — visão geral do painel">
+                  <a class="member-sidebar-brand" href="/area/" aria-label="Peace — visão geral do painel">
                     <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
                     <span class="brand-lockup"><strong>PEACE</strong><small>PAINEL</small></span>
                   </a>
                   <button class="member-sidebar-close" type="button" data-member-sidebar-close aria-label="Fechar menu" title="Fechar menu">×</button>
                 </div>
 
-                <div class="member-sidebar-profile" data-member-sidebar-profile>
-                  <div class="member-sidebar-avatar-wrap"><img data-member-sidebar-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-sidebar-avatar-fallback hidden aria-hidden="true"></span></div>
-                  <div class="member-sidebar-profile-copy"><strong data-member-sidebar-name>membro</strong><span data-member-sidebar-username>@discord</span><small><span class="status-mark" aria-hidden="true"></span><span data-member-sidebar-state>Membro Peace confirmado</span></small></div>
-                </div>
-
                 <nav class="member-nav" aria-label="Seções do painel">
-                  <a aria-current="page" data-member-nav-link href="#overview">Visão geral</a>
-                  <a data-member-nav-link href="#member-materials">Área de estudos</a>
-                  <a data-member-nav-link href="#member-notices">Avisos</a>
-                  <a data-member-nav-link href="#member-partners">Parceiros</a>
-                  <a data-member-nav-link href="#member-clips">Clipes e momentos</a>
-                  <a data-member-nav-link href="#member-process">Meu processo</a>
-                  <a data-member-nav-link href="https://discord.gg/qUkQH8XmcN" target="_blank" rel="noopener noreferrer">Discord <span class="button-icon" aria-hidden="true">↗</span></a>
+                  <a aria-current="page" data-member-nav-link href="/area/">Visão geral</a>
+                  <a data-member-nav-link href="/estudos/">Área de estudos</a>
+                  <a data-member-nav-link href="/avisos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg>Avisos</a>
+                  <a data-member-nav-link href="/parceiros/">Parceiros</a>
+                  <a data-member-nav-link href="/clipes/">Clipes</a>
+                  <a data-member-nav-link href="/meu-processo/">Meu processo</a>
                   <a data-member-nav-link data-member-manager href="/gerencia/provas/" hidden>Gerenciar provas</a>
                 </nav>
 
                 <div class="member-sidebar-bottom">
-                  <p class="member-sidebar-note">Cada seção confirma seu acesso novamente. O painel não usa a página pública como rota de retorno.</p>
-                  <button class="member-sidebar-logout" data-member-logout type="button">Sair da conta</button>
+                  <div class="member-sidebar-profile" data-member-sidebar-profile>
+                    <div class="member-sidebar-avatar-wrap"><img data-member-sidebar-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-sidebar-avatar-fallback hidden aria-hidden="true"></span></div>
+                    <div class="member-sidebar-profile-copy"><strong data-member-sidebar-name>membro</strong><span data-member-sidebar-username>@discord</span><small><span class="status-mark" aria-hidden="true"></span><span data-member-sidebar-state>Membro Peace confirmado</span></small></div>
+                  </div>
+                  <button class="member-sidebar-logout" data-member-logout type="button"><svg class="member-logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg><span>Sair da conta</span></button>
                 </div>
               </div>
             </aside>
@@ -78,13 +85,12 @@
                   <p class="eyebrow">Área autenticada</p>
                   <h1 id="workspace-title">Visão geral.</h1>
                 </div>
-                <button class="button button--outline member-refresh" data-member-refresh type="button">Atualizar</button>
               </div>
 
               <div class="member-welcome" id="overview">
                 <div class="member-avatar-wrap"><img data-member-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
                 <div>
-                  <p class="eyebrow">Sessão confirmada pelo Discord</p>
+                  <p class="eyebrow">Visão geral</p>
                   <h2>Olá, <span data-member-name>membro</span>.</h2>
                   <p>Esta é uma visão resumida. Ações e suporte continuam no servidor.</p>
                 </div>
@@ -93,10 +99,6 @@
               <div class="member-next-action" data-member-next-action></div>
 
               <div class="member-overview-grid" data-member-overview>
-                <section class="member-data-block member-data-block--wide" data-member-block="announcements" data-member-title="Avisos recentes"></section>
-                <section class="member-data-block" id="media" data-member-block="media" data-member-title="Mídias recentes"></section>
-                <section class="member-data-block" data-member-block="active_members" data-member-title="Membros ativos"></section>
-                <section class="member-data-block" data-member-block="partners" data-member-title="Parceiros"></section>
                 <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden></section>
               </div>
             </div>

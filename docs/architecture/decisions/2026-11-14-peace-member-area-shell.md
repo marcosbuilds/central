@@ -21,11 +21,14 @@ widths it becomes a drawer: opening it moves the content instead of covering
 the reading order, marks the closed rail `inert`, moves focus to the first
 control, and returns focus to the toggle on close or `Escape`.
 
-Sidebar items target panel fragments (`#overview`, `#member-materials`,
-`#member-notices`, `#member-partners`, `#member-clips`, and `#member-process`).
-They do not point back to the public Home or use public routes as a substitute
-for the authenticated shell. Full-resource links inside the cards may still
-open public study, notice, partner, or media pages. The Discord destination is
+Each sidebar item is a real route, not a panel fragment:
+`/area/`, `/estudos/`, `/avisos/`, `/parceiros/`, `/clipes/`, and
+`/meu-processo/`. The current route is exposed with `aria-current`, and the
+public pages retain a contextual return link based on browser history. The
+panel does not send a connected member back to the public Home; Home resolves
+the same session and redirects to `/area/` for Peace members or `/entrar/` for
+connected accounts without the Peace role. Full-resource links may still open
+public study, notice, partner, or media routes. The Discord destination is
 explicitly external and opens in a separate tab.
 
 ## Authentication and state

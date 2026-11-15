@@ -28,7 +28,6 @@
     var connection = workspace && workspace.querySelector("[data-member-connection]");
     var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
     var logout = workspace && workspace.querySelector("[data-member-logout]");
-    var refresh = workspace && workspace.querySelector("[data-member-refresh]");
     var retry = gate && gate.querySelector("[data-member-retry]");
     var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
@@ -42,7 +41,10 @@
       return request("/api/auth/discord/session");
     }
     function setConnection(message, tone) {
-      if (connection) { connection.textContent = message; connection.dataset.state = tone || "ready"; }
+      if (!connection) return;
+      connection.textContent = message || "";
+      connection.dataset.state = tone || "ready";
+      connection.hidden = !message;
     }
     function date(value) {
       if (!value) return "—";
@@ -111,10 +113,11 @@
     }
 
     function syncSidebarLocation() {
-      var hash = window.location.hash || "#overview";
+      var path = window.location.pathname.replace(/\/+$/, "/") || "/";
       sidebarLinks.forEach(function (link) {
-        if (!link.getAttribute("href").startsWith("#")) return;
-        if (link.getAttribute("href") === hash) link.setAttribute("aria-current", "page");
+        var href = link.getAttribute("href") || "";
+        if (!href.startsWith("/")) return;
+        if (href.replace(/\/+$/, "/") === path) link.setAttribute("aria-current", "page");
         else link.removeAttribute("aria-current");
       });
     }
@@ -147,7 +150,6 @@
       var data = process || {};
       var identity = data.identity || session.identity || {};
       var profile = data.profile || {};
-      var updatedAt = data.updated_at || null;
       var assignments = Array.isArray(data.assignments) ? data.assignments : [];
       overview.textContent = "";
 
@@ -157,7 +159,7 @@
       progress.innerHTML = "<p class=\"eyebrow\">Meu progresso</p><h3>Seu processo, em um só lugar.</h3>";
       var summary = document.createElement("div");
       summary.className = "member-progress-grid";
-      [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Identidade", "Discord confirmado"]].forEach(function (entry) {
+      [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Status", profile.passed ? "Aprovado" : assignments.length ? "Em andamento" : "Sem prova"]].forEach(function (entry) {
         var item = document.createElement("div");
         var label = document.createElement("small");
         label.textContent = entry[0];
@@ -208,8 +210,8 @@
       var materialCovers = document.createElement("div");
       materialCovers.className = "member-material-covers";
       [
-        { href: "/estudos/civil/", src: "/assets/studies/civil/civil-cover-01.png", alt: "Capa da Apostila Civil", kicker: "01 / Civil", title: "Apostila Civil", description: "Investigação, patrulhamento e preparação.", meta: "18 páginas · leitura pública" },
-        { href: "/estudos/peace/", src: "/assets/studies/peace/a-peace-cover-1.png", alt: "Capa do manual A Peace", kicker: "02 / Convivência", title: "Manual da Peace", description: "Paz, respeito e responsabilidade.", meta: "8 páginas · leitura pública" }
+        { href: "/estudos/", src: "/assets/studies/civil/civil-cover-01.png", alt: "Capa da Apostila Civil", kicker: "01 / Civil", title: "Apostila Civil", description: "Investigação, patrulhamento e preparação.", meta: "18 páginas · biblioteca pública" },
+        { href: "/estudos/", src: "/assets/studies/peace/a-peace-cover-1.png", alt: "Capa do manual A Peace", kicker: "02 / Convivência", title: "Manual da Peace", description: "Paz, respeito e responsabilidade.", meta: "8 páginas · biblioteca pública" }
       ].forEach(function (item) {
         var link = document.createElement("a");
         link.className = "member-material-card";
@@ -242,27 +244,6 @@
       overview.appendChild(materials);
       if (typeof site.initMaterialCovers === "function") site.initMaterialCovers(materials);
 
-      var shortcuts = document.createElement("div");
-      shortcuts.className = "member-section-shortcuts";
-      [
-        { id: "member-notices", kicker: "Avisos", title: "Fique por dentro.", copy: "Os avisos oficiais continuam sendo publicados pela equipe nos canais da Peace.", href: "/avisos/", label: "Abrir avisos" },
-        { id: "member-partners", kicker: "Parceiros", title: "Rede da comunidade.", copy: "Consulte os parceiros publicados pela Peace em uma rota dedicada.", href: "/parceiros/", label: "Ver parceiros" },
-        { id: "member-clips", kicker: "Clipes e momentos", title: "O que aconteceu por aqui.", copy: "Momentos e clipes públicos ficam reunidos no feed da comunidade.", href: "/#momentos", label: "Ver momentos" }
-      ].forEach(function (item) {
-        var card = document.createElement("section");
-        card.className = "member-section-card";
-        card.id = item.id;
-        card.innerHTML = "<div><p class=\"eyebrow\"></p><h3></h3><p></p></div><a></a>";
-        card.querySelector(".eyebrow").textContent = item.kicker;
-        card.querySelector("h3").textContent = item.title;
-        card.querySelector("div > p:last-child").textContent = item.copy;
-        var link = card.querySelector("a");
-        link.href = item.href;
-        link.textContent = item.label + " →";
-        shortcuts.appendChild(card);
-      });
-      overview.appendChild(shortcuts);
-
       if (nextAction) {
         nextAction.textContent = "";
         var nextTitle = document.createElement("strong");
@@ -278,8 +259,7 @@
       renderAvatar(identity);
       renderSidebarProfile(identity);
       syncSidebarLocation();
-      if (updatedAt) setConnection("Atualizado em " + date(updatedAt), "ready");
-      else setConnection("Sessão e processo confirmados pelo Discord", "ready");
+      setConnection("", "ready");
     }
 
     function configureGate(mode, message) {
@@ -368,7 +348,6 @@
         .finally(function () { loading = false; });
     }
 
-    if (refresh) refresh.addEventListener("click", load);
     if (retry) retry.addEventListener("click", load);
     if (sidebarToggle) sidebarToggle.addEventListener("click", function () {
       var open = shell && shell.dataset.sidebarOpen === "true";
@@ -377,13 +356,9 @@
     if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
     sidebarLinks.forEach(function (link) {
       link.addEventListener("click", function () {
-        if (link.getAttribute("href").startsWith("#")) {
-          syncSidebarLocation();
-          setSidebarOpen(false, false);
-        }
+        setSidebarOpen(false, false);
       });
     });
-    window.addEventListener("hashchange", syncSidebarLocation);
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape" && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches) {
         event.preventDefault();
@@ -397,6 +372,7 @@
       else if (sidebarMedia.addListener) sidebarMedia.addListener(syncSidebarMode);
     }
     if (logout) logout.addEventListener("click", function () {
+      if (!window.confirm("Sair da conta Discord e fechar o Painel Peace?")) return;
       logout.disabled = true;
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
         .then(function () { window.location.replace("/acessar/?status=logged-out"); })

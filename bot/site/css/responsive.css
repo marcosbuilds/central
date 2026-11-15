@@ -391,7 +391,7 @@ body[data-page="member"] .member-workspace {
 
 body[data-page="member"] .member-workspace-skeleton {
   display: grid;
-  grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr);
+  grid-template-columns: minmax(18rem, 20rem) minmax(0, 1fr);
   gap: clamp(1.5rem, 4vw, 4rem);
   min-height: 100svh;
   max-width: none;
@@ -435,7 +435,7 @@ body[data-page="member"] .member-workspace-skeleton {
 .member-skeleton-content span:last-child { width: 70%; height: 8rem; }
 
 .member-workspace-shell {
-  --member-sidebar-width: 17.25rem;
+  --member-sidebar-width: 20rem;
   display: grid;
   grid-template-columns: var(--member-sidebar-width) minmax(0, 1fr);
   min-height: 100svh;
@@ -460,8 +460,12 @@ body[data-page="member"] .member-workspace-skeleton {
 
 .member-sidebar-inner {
   display: flex;
-  width: 17.25rem;
+  width: var(--member-sidebar-width);
+  height: 100%;
   min-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   flex-direction: column;
   padding: 1.35rem 1rem 1.15rem;
 }
@@ -545,8 +549,9 @@ body[data-page="member"] .member-workspace-skeleton {
 
 .member-sidebar-bottom { display: grid; gap: 0.8rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
 .member-sidebar-note { margin: 0; }
-.member-sidebar-logout { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.68rem; font-weight: 700; }
-.member-sidebar-logout:hover, .member-sidebar-logout:focus-visible { color: var(--text); }
+.member-sidebar-logout { display: inline-flex; min-height: 2.65rem; align-items: center; justify-content: center; gap: 0.55rem; justify-self: stretch; padding: 0.55rem 0.7rem; border: 1px solid rgba(217, 133, 142, 0.32); border-radius: 0.6rem; background: rgba(217, 133, 142, 0.08); color: var(--danger); cursor: pointer; font-size: 0.68rem; font-weight: 700; }
+.member-sidebar-logout:hover, .member-sidebar-logout:focus-visible { border-color: var(--danger); background: rgba(217, 133, 142, 0.16); color: #f6c4c8; outline: none; }
+.member-logout-icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
 
 .member-workspace-main {
   min-width: 0;

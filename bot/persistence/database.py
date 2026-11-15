@@ -346,6 +346,29 @@ CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_user
 CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_expiry
     ON discord_oauth_sessions(expires_at, revoked_at);
 
+CREATE TABLE IF NOT EXISTS public_media_likes (
+    media_id TEXT NOT NULL,
+    discord_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (media_id, discord_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_media_likes_media
+    ON public_media_likes(media_id);
+
+CREATE TABLE IF NOT EXISTS public_media_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    media_id TEXT NOT NULL,
+    discord_user_id TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_avatar_url TEXT,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_media_comments_media
+    ON public_media_comments(media_id, id DESC);
+
 """
 
 
@@ -1227,6 +1250,147 @@ class PeaceDatabase:
             return connection.execute(
                 "SELECT * FROM members WHERE peace_id = ?", (int(peace_id),)
             ).fetchone()
+
+    def public_media_social_summary(
+        self,
+        media_ids: Iterable[str],
+        *,
+        discord_user_id: int | str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return bounded like/comment counts for the public clip feed."""
+        ids = list(dict.fromkeys(str(media_id) for media_id in media_ids if str(media_id)))[:200]
+        summary = {
+            media_id: {"like_count": 0, "comment_count": 0, "liked": False}
+            for media_id in ids
+        }
+        if not ids:
+            return summary
+        self.initialize()
+        placeholders = ", ".join("?" for _ in ids)
+        with self.connect() as connection:
+            like_rows = connection.execute(
+                f"SELECT media_id, COUNT(*) AS count FROM public_media_likes WHERE media_id IN ({placeholders}) GROUP BY media_id",
+                ids,
+            ).fetchall()
+            comment_rows = connection.execute(
+                f"SELECT media_id, COUNT(*) AS count FROM public_media_comments WHERE media_id IN ({placeholders}) GROUP BY media_id",
+                ids,
+            ).fetchall()
+            for row in like_rows:
+                summary[str(row["media_id"])]["like_count"] = int(row["count"])
+            for row in comment_rows:
+                summary[str(row["media_id"])]["comment_count"] = int(row["count"])
+            if discord_user_id is not None:
+                liked_rows = connection.execute(
+                    f"SELECT media_id FROM public_media_likes WHERE discord_user_id = ? AND media_id IN ({placeholders})",
+                    [str(discord_user_id), *ids],
+                ).fetchall()
+                for row in liked_rows:
+                    if str(row["media_id"]) in summary:
+                        summary[str(row["media_id"])]["liked"] = True
+        return summary
+
+    def toggle_public_media_like(
+        self,
+        *,
+        media_id: str,
+        discord_user_id: int | str,
+    ) -> dict[str, object]:
+        """Toggle one idempotent like and return the resulting aggregate."""
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT 1 FROM public_media_likes WHERE media_id = ? AND discord_user_id = ?",
+                (str(media_id), str(discord_user_id)),
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    "INSERT INTO public_media_likes (media_id, discord_user_id, created_at) VALUES (?, ?, ?)",
+                    (str(media_id), str(discord_user_id), now_iso()),
+                )
+                liked = True
+            else:
+                connection.execute(
+                    "DELETE FROM public_media_likes WHERE media_id = ? AND discord_user_id = ?",
+                    (str(media_id), str(discord_user_id)),
+                )
+                liked = False
+            count = connection.execute(
+                "SELECT COUNT(*) AS count FROM public_media_likes WHERE media_id = ?",
+                (str(media_id),),
+            ).fetchone()
+            connection.commit()
+        return {"liked": liked, "like_count": int(count["count"]) if count else 0}
+
+    def public_media_comments(
+        self,
+        media_ids: Iterable[str],
+        *,
+        per_media_limit: int = 3,
+    ) -> dict[str, list[dict[str, object]]]:
+        ids = list(dict.fromkeys(str(media_id) for media_id in media_ids if str(media_id)))[:200]
+        comments = {media_id: [] for media_id in ids}
+        if not ids:
+            return comments
+        self.initialize()
+        placeholders = ", ".join("?" for _ in ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, media_id, author_name, author_avatar_url, body, created_at
+                FROM public_media_comments
+                WHERE media_id IN ({placeholders})
+                ORDER BY id DESC
+                """,
+                ids,
+            ).fetchall()
+        for row in rows:
+            media_id = str(row["media_id"])
+            if media_id not in comments or len(comments[media_id]) >= max(1, min(10, int(per_media_limit))):
+                continue
+            comments[media_id].append(
+                {
+                    "id": int(row["id"]),
+                    "author_name": str(row["author_name"]),
+                    "author_avatar_url": row["author_avatar_url"],
+                    "body": str(row["body"]),
+                    "created_at": str(row["created_at"]),
+                }
+            )
+        for values in comments.values():
+            values.reverse()
+        return comments
+
+    def save_public_media_comment(
+        self,
+        *,
+        media_id: str,
+        discord_user_id: int | str,
+        author_name: str,
+        author_avatar_url: str | None,
+        body: str,
+    ) -> dict[str, object]:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO public_media_comments (
+                    media_id, discord_user_id, author_name, author_avatar_url, body, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (str(media_id), str(discord_user_id), str(author_name)[:80], author_avatar_url, str(body), timestamp),
+            )
+            connection.commit()
+            comment_id = int(cursor.lastrowid)
+        return {
+            "id": comment_id,
+            "author_name": str(author_name)[:80],
+            "author_avatar_url": author_avatar_url,
+            "body": str(body),
+            "created_at": timestamp,
+        }
 
     def create_central_login_challenge(
         self,

@@ -4,9 +4,10 @@
 
   var currentScript = document.currentScript;
   var baseUrl = new URL("./", currentScript ? currentScript.src : document.baseURI);
-  var assetVersion = "20261114-03";
+  var assetVersion = "20261114-04";
   var pageModules = {
     home: ["js/public-media.js"],
+    clips: ["js/clips.js"],
     notices: ["js/notices.js"],
     candidatura: ["js/candidature.js"],
     entry: ["js/entry.js"],

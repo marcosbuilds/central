@@ -2,6 +2,103 @@
   "use strict";
 
   var body = document.body;
+  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process"];
+  var routeLabels = {
+    "/": "Início",
+    "/area/": "Painel Peace",
+    "/estudos/": "Estudos",
+    "/estudos/civil/": "Apostila Civil",
+    "/estudos/peace/": "Manual da Peace",
+    "/estudos/civil/leitor/": "Leitor Civil",
+    "/estudos/peace/leitor/": "Leitor Peace",
+    "/avisos/": "Avisos",
+    "/parceiros/": "Parceiros",
+    "/clipes/": "Clipes",
+    "/meu-processo/": "Meu processo",
+    "/entrar/": "Entrada Peace",
+    "/acessar/": "Conectar Discord"
+  };
+
+  function routePath() {
+    return window.location.pathname + window.location.search;
+  }
+
+  function labelForRoute(path) {
+    var pathname = String(path || "").split("?", 1)[0] || "/";
+    if (routeLabels[pathname]) return routeLabels[pathname];
+    if (pathname.indexOf("/estudos/") === 0) return "Estudos";
+    return "página anterior";
+  }
+
+  function safeStoredRoute() {
+    try {
+      var raw = window.sessionStorage.getItem("peace.route.previous.v1");
+      var value = raw ? JSON.parse(raw) : null;
+      if (!value || typeof value.path !== "string" || value.path.charAt(0) !== "/" || value.path.indexOf("//") === 0) return null;
+      if (value.timestamp && Date.now() - Number(value.timestamp) > 30 * 60 * 1000) return null;
+      return value;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function setupPublicContextBar() {
+    if (publicContextPages.indexOf(body.dataset.page) < 0) return;
+    body.classList.add("public-context-page");
+    document.documentElement.classList.add("public-context-page");
+    var shell = document.querySelector(".site-shell");
+    if (!shell || shell.querySelector(".public-context-bar")) return;
+    var bar = document.createElement("div");
+    bar.className = "public-context-bar";
+    bar.setAttribute("role", "navigation");
+    bar.setAttribute("aria-label", "Navegação contextual");
+    var back = document.createElement("a");
+    back.className = "public-context-back";
+    back.setAttribute("data-public-return", "");
+    var stored = safeStoredRoute();
+    var current = routePath();
+    var referrer;
+    try {
+      referrer = document.referrer ? new URL(document.referrer) : null;
+    } catch (error) {
+      referrer = null;
+    }
+    var previous = stored && stored.path !== current ? stored : referrer && referrer.origin === window.location.origin
+      ? { path: referrer.pathname + referrer.search, label: labelForRoute(referrer.pathname) }
+      : { path: "/area/", label: "Painel Peace" };
+    var canUseHistory = Boolean(stored || (referrer && referrer.origin === window.location.origin));
+    back.href = previous.path || "/area/";
+    back.setAttribute("aria-label", "Voltar para " + (previous.label || labelForRoute(previous.path)));
+    var backIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    backIcon.setAttribute("viewBox", "0 0 24 24");
+    backIcon.setAttribute("fill", "none");
+    backIcon.setAttribute("stroke", "currentColor");
+    backIcon.setAttribute("stroke-width", "1.6");
+    backIcon.setAttribute("stroke-linecap", "round");
+    backIcon.setAttribute("stroke-linejoin", "round");
+    backIcon.setAttribute("aria-hidden", "true");
+    backIcon.innerHTML = '<path d="M19 12H5M11 6l-6 6 6 6"></path>';
+    back.appendChild(backIcon);
+    var backLabel = document.createElement("span");
+    backLabel.textContent = "Voltar para " + (previous.label || labelForRoute(previous.path));
+    back.appendChild(backLabel);
+    back.addEventListener("click", function (event) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      try { window.sessionStorage.removeItem("peace.route.previous.v1"); } catch (error) { /* optional */ }
+      if (!canUseHistory || window.history.length <= 1) return;
+      event.preventDefault();
+      body.classList.add("is-leaving");
+      window.setTimeout(function () { window.history.back(); }, 150);
+    });
+    bar.appendChild(back);
+    var actions = document.createElement("div");
+    actions.className = "public-context-actions";
+    bar.appendChild(actions);
+    shell.insertBefore(bar, shell.firstElementChild);
+    try { window.sessionStorage.removeItem("peace.route.previous.v1"); } catch (error) { /* optional */ }
+  }
+
+  setupPublicContextBar();
   var header = document.querySelector(".site-header, .flow-header");
   var menuButton = header && header.querySelector(".menu-toggle");
   var navigation = header && header.querySelector(".site-nav, .flow-header-nav");
@@ -74,6 +171,12 @@
       var destination;
       try { destination = new URL(link.href, window.location.href); } catch (error) { return; }
       if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
+      try {
+        window.sessionStorage.setItem(
+          "peace.route.previous.v1",
+          JSON.stringify({ path: routePath(), label: labelForRoute(window.location.pathname), timestamp: Date.now() })
+        );
+      } catch (error) { /* optional */ }
       event.preventDefault();
       document.body.classList.add("is-leaving");
       window.setTimeout(function () { window.location.assign(destination.href); }, 150);
@@ -329,6 +432,42 @@
     });
   }
 
+  var toastTimer = null;
+  function showToast(message, tone) {
+    if (!message) return;
+    var toast = document.querySelector("[data-site-toast]");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "site-toast";
+      toast.setAttribute("data-site-toast", "");
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
+      document.body.appendChild(toast);
+    }
+    toast.replaceChildren();
+    var copy = document.createElement("span");
+    copy.textContent = String(message);
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "site-toast-close";
+    close.setAttribute("aria-label", "Fechar aviso");
+    close.textContent = "×";
+    close.addEventListener("click", function () {
+      toast.hidden = true;
+      toast.classList.remove("is-visible");
+    }, { once: true });
+    toast.appendChild(copy);
+    toast.appendChild(close);
+    toast.dataset.state = tone || "info";
+    toast.hidden = false;
+    window.clearTimeout(toastTimer);
+    window.requestAnimationFrame(function () { toast.classList.add("is-visible"); });
+    toastTimer = window.setTimeout(function () {
+      toast.classList.remove("is-visible");
+      window.setTimeout(function () { toast.hidden = true; }, 220);
+    }, 5200);
+  }
+
   function initMaterialCovers(root) {
     var scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll("[data-material-cover]").forEach(function (cover) {
@@ -378,6 +517,7 @@
     setButtonBusy: setButtonBusy,
     friendlyError: friendlyError,
     attemptEndpoint: attemptEndpoint,
+    showToast: showToast,
     initMaterialCovers: initMaterialCovers
   };
 })();

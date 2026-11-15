@@ -1644,7 +1644,7 @@ def test_public_site_files_are_complete():
     assert "header-cta" not in homepage
     assert "navigationIcons" in script
     assert "nav-option-icon" in script
-    for relative_path in (
+    public_route_pages = (
         "estudos/index.html",
         "estudos/civil/index.html",
         "estudos/peace/index.html",
@@ -1653,10 +1653,19 @@ def test_public_site_files_are_complete():
         "meu-processo/index.html",
         "avisos/index.html",
         "parceiros/index.html",
+        "clipes/index.html",
+    )
+    for relative_path in public_route_pages:
+        page_html = (site_root / relative_path).read_text(encoding="utf-8")
+        assert "<header" not in page_html
+        assert 'data-page=' in page_html
+
+    for relative_path in (
         "prova/index.html",
         "gerencia/provas/index.html",
     ):
         header = (site_root / relative_path).read_text(encoding="utf-8").split("</header>", 1)[0]
+        assert "<header" in header
         assert "Como entrar" not in header
         assert "href=\"/acessar/\"" not in header
         assert "Entrar para Peace" not in header
@@ -1737,8 +1746,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261114-03"' in opening_html
-    assert 'src="/script.js?v=20261114-03"' in opening_html
+    assert 'href="/styles.css?v=20261114-04"' in opening_html
+    assert 'src="/script.js?v=20261114-04"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1781,9 +1790,15 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261114-03"' in html
-        assert 'src="/script.js?v=20261114-03"' in html
-        assert 'aria-label="Páginas públicas"' in html
+        assert 'href="/styles.css?v=20261114-04"' in html
+        assert 'src="/script.js?v=20261114-04"' in html
+        assert '<header' not in html
+    clips_html = (site_root / "clipes" / "index.html").read_text(encoding="utf-8")
+    assert 'data-page="clips"' in clips_html
+    assert 'data-clips-search' in clips_html
+    assert 'data-clips-list' in clips_html
+    assert 'data-clips-query' in clips_html
+    assert 'aria-label="Páginas públicas"' not in clips_html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
     assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
     assert "Disponível para estudo" in civil_html and "Disponível para estudo" in peace_html
@@ -1817,8 +1832,7 @@ def test_public_site_files_are_complete():
     assert "showUnavailable" in process_script
     assert "data-manager-retry" in manager_html
     assert "showUnavailable" in manager_script
-    assert 'aria-current="location">Estudos</a>' in civil_html
-    assert 'aria-current="location">Estudos</a>' in peace_html
+    assert '<header' not in civil_html and '<header' not in peace_html
     assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
     assert 'class="study-reader" id="capitulos" tabindex="-1"' in civil_html
     assert 'class="study-reader" id="manual" tabindex="-1"' in peace_html
@@ -1837,9 +1851,16 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261114-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261114-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261114-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261114-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
+    assert 'data-notices-bell' in notices_html
+    assert 'data-notices-badge' in notices_html
+    assert 'is-new' in (site_root / "js" / "notices.js").read_text(encoding="utf-8")
+    assert 'public-context-bar' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
+    assert 'window.history.back()' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
     reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
     assert 'page.matches("figure.reader-page")' in reader_script
     civil_notes = reader_script.split("civil: [", 1)[1].split("peace: [", 1)[0]
@@ -1888,21 +1909,26 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
     assert 'class="member-sidebar"' in member_html
-    assert 'href="#member-clips"' in member_html
-    assert 'href="#member-materials"' in member_html
-    assert 'href="#member-notices"' in member_html
-    assert 'href="#member-partners"' in member_html
-    assert 'href="#member-process"' in member_html
-    assert 'href="/area/#overview"' in member_html
+    assert 'href="/area/"' in member_html
+    assert 'href="/estudos/"' in member_html
+    assert 'href="/avisos/"' in member_html
+    assert 'href="/parceiros/"' in member_html
+    assert 'href="/clipes/"' in member_html
+    assert 'href="/meu-processo/"' in member_html
+    assert 'href="#member-' not in member_html
     assert 'data-member-retry' in member_html
     assert 'data-member-workspace-skeleton' in member_html
-    assert '/clipes/' not in member_html
     assert "data-member-preview" not in member_html
     assert "data-preview-toggle" not in member_html
     assert "data-preview-screen" not in member_html
     assert "prévia" not in member_html.lower()
     assert "member-header" not in member_html
     assert "member-sidebar-profile" in member_html
+    assert "Membro Peace confirmado" in member_html
+    assert "member-logout-icon" in member_html
+    assert "member-nav-icon" in member_html
+    assert ".member-nav-icon" in member_stylesheet
+    assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html
     assert "site-header site-header--area" not in member_html
     assert 'data-workspace-menu' not in member_html
@@ -1919,7 +1945,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
-    assert "data.updated_at" in member_script
+    assert "setConnection(\"\", \"ready\")" in member_script
     assert 'requestedReturn === "/area/"' in (site_root / "js" / "login.js").read_text(encoding="utf-8")
     assert "getDiscordSession" in member_script
     assert "is_peace_member" in member_script
@@ -1952,6 +1978,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/discord/ https://discord.gg/qUkQH8XmcN 302!" in redirect_lines
     assert "/estudos /estudos/ 301" in redirect_lines
     assert "/meu-processo /meu-processo/ 301" in redirect_lines
+    assert "/clipes /clipes/ 301" in redirect_lines
     assert "/estudos/civil /estudos/civil/ 301" in redirect_lines
     assert "/estudos/peace /estudos/peace/ 301" in redirect_lines
     assert "/estudos/a-peace /estudos/peace/ 301" in redirect_lines
@@ -2027,6 +2054,7 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/acessar", 301, "/acessar/"),
             ("/avisos", 301, "/avisos/"),
             ("/parceiros", 301, "/parceiros/"),
+            ("/clipes", 301, "/clipes/"),
             ("/estudos", 301, "/estudos/"),
             ("/estudos/civil", 301, "/estudos/civil/"),
             ("/estudos/peace", 301, "/estudos/peace/"),
@@ -2038,6 +2066,7 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/acessar/", 200, None),
             ("/avisos/", 200, None),
             ("/parceiros/", 200, None),
+            ("/clipes/", 200, None),
             ("/estudos/", 200, None),
             ("/estudos/civil/", 200, None),
             ("/estudos/peace/", 200, None),

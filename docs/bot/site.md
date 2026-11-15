@@ -120,6 +120,20 @@ tracking. These pages do not require a Peace role. The reader publishes
 rendered page images from the supplied PDFs rather than the original files, and
 the process page reads only records bound to the authenticated Discord ID.
 
+The route boundary is explicit:
+
+- Public static pages: `/`, `/estudos/`, both study detail pages and readers,
+  `/avisos/`, `/parceiros/`, `/clipes/`, `/meu-processo/`, `/entrar/`,
+  `/candidatura/`, and `/acessar/`.
+- Public pages with private data/actions: `/meu-processo/` and `/prova/`.
+  Their APIs require the authenticated Discord identity and return only the
+  candidate's own process; they do not require the Peace role.
+- Peace role required: `/area/`. The static shell may be delivered by the
+  public host, but the workspace remains hidden until the live Discord session,
+  Peace role, profile, and process response all pass their server-side checks.
+- Gerência role required: `/gerencia/provas/` and its assignment API. A menu
+  item or static HTML page is never an authorization boundary.
+
 The public shell makes the selection contract visible and active: the Civil
 page explains that the question bank is shared while the per-attempt order may
 differ, and the process page separates the authenticated Discord ID from the
@@ -177,14 +191,15 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/acessar/` | serves the member Peace ID + code login UI |
 | Netlify `/avisos/` | serves the dedicated public notices interface |
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
+| Netlify `/clipes/` | serves the public clip library; GET is public, interactions require the Peace role |
 | Netlify `/estudos/` | serves the public study library and material cards |
 | Netlify `/estudos/civil/` | serves the Civil study reader and rendered pages |
 | Netlify `/estudos/peace/` | serves the Peace convivencia reader and rendered pages |
 | Netlify `/meu-processo/` | serves the candidate-owned Discord-linked process shell |
 | Netlify `/estudos/a-peace` | redirects to `/estudos/peace/` as a readable alias |
-| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo` | normalize to their trailing-slash routes |
+| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
-| Netlify `/area/` | serves the gated member-area UI shell; its Peace panel is revealed only after the Discord session, live Peace role, and candidate process are all confirmed |
+| Netlify `/area/` | serves the gated member-area UI shell; its Peace panel is revealed only after the Discord session, live Peace role, complete profile/avatar, and candidate process are all confirmed |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | Netlify `/api/media` | proxies the bounded public Discord media feed |
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
@@ -235,28 +250,35 @@ rule.
 The authenticated `/area/` panel uses a responsive side navigation. It is a
 navigation aid, not an authorization boundary: every destination must keep its
 own server-side checks and a hidden menu item must not be treated as protection.
-The sidebar stays inside the authenticated panel. Its destinations are local
-fragment targets for the content already rendered in `/area/`:
+The sidebar stays inside the authenticated panel and uses real routes:
 
-- `#overview` — the confirmed Peace overview;
-- `#member-materials` — study covers and links to the public readers;
-- `#member-notices` — the notices summary and its public route link;
-- `#member-partners` — the partners summary and its public route link;
-- `#member-clips` — the clips/moments summary and its public feed link;
-- `#member-process` — the candidate process summary;
-- the Discord invite — an explicitly external destination opened in a new tab;
+- `/area/` — the overview and member-owned process summary;
+- `/estudos/` — public study library;
+- `/avisos/` — public notices;
+- `/parceiros/` — public partner directory;
+- `/clipes/` — public YouTube-inspired clip library;
+- `/meu-processo/` — candidate-owned process view;
 - `/gerencia/provas/` — shown only for the manager capability and still guarded
   by the server.
 
-The cards may link to public study, notices, partners, or media pages for the
-full resource. Those links are content actions, not sidebar navigation, and
-the authenticated panel never uses them as an authorization boundary.
+There is no Discord category in the sidebar. Discord remains an explicit
+external action in the account control and in entry flows. Public destinations
+keep the connected account control on the right and a contextual return link
+on the left; the return label comes from the previous same-origin route and
+uses browser history when that route is available. Opening a public route
+directly falls back to `/area/`, which remains gated.
 
 While the Discord session, live membership result, or process response is
 pending, the panel content remains behind a skeleton. A `401` offers an
 explicit connection action, a connected account without the Peace role offers
 the public setagem flow, and an inconclusive Discord/API response offers a
 retry without starting a second login.
+
+The overview intentionally does not expose a session-confirmation banner or a
+manual refresh button after the workspace is ready. The authenticated identity
+is shown once in the welcome area and again in the sidebar footer, where the
+official Discord avatar, `Membro Peace confirmado`, and the red confirmed
+logout action remain available.
 
 The same `material-cover` component is reused for the home learning previews,
 the study library, each reader cover, and the authenticated panel's public

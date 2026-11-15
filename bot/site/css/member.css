@@ -14,7 +14,7 @@
 .member-header .brand-lockup small { font-size: 0.4rem; }
 .member-progress-card h3, .member-data-block h3 { margin: 0.35rem 0 0; color: var(--text); font-size: 1.15rem; letter-spacing: -0.04em; }
 .member-progress-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin-top: 1.2rem; }
-.member-progress-grid > div { min-width: 0; padding: 0.85rem; border: 1px solid var(--border); border-radius: 0.65rem; background: rgba(10, 14, 18, 0.48); }
+.member-progress-grid > div { min-width: 0; padding: 0.75rem 0; border-top: 1px solid var(--border); background: transparent; }
 .member-progress-grid small { display: block; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.55rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .member-progress-grid strong { display: block; margin-top: 0.4rem; color: var(--text); font-size: 1rem; overflow-wrap: anywhere; }
 .member-progress-copy, .member-data-block > p:not(.eyebrow) { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.65; }
@@ -99,6 +99,7 @@
 .member-live-status { max-width: 18rem; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.62rem; line-height: 1.5; text-align: right; }
 .member-nav { display: grid; gap: 0.25rem; margin-top: 0.8rem; }
 .member-nav a { display: flex; min-height: 2.5rem; align-items: center; padding: 0.55rem 0.65rem; border: 1px solid transparent; border-radius: 0.55rem; color: var(--muted); font-size: 0.72rem; font-weight: 700; line-height: 1.25; text-decoration: none; }
+.member-nav-icon { width: 1rem; height: 1rem; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
 .member-nav a:hover, .member-nav a:focus-visible, .member-nav a[aria-current="page"] { border-color: var(--border); background: rgba(185, 202, 211, 0.08); color: var(--text); }
 .member-welcome { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 2.2rem 0; border-bottom: 1px solid var(--border); }
 .member-avatar-wrap { display: grid; width: 3rem; height: 3rem; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); }
@@ -110,8 +111,8 @@
 .member-next-action { display: grid; gap: 0.35rem; margin-top: 1.5rem; padding: 1rem 1.1rem; border-left: 2px solid var(--accent); background: rgba(185, 202, 211, 0.06); }
 .member-next-action strong { font-size: 0.85rem; }
 .member-next-action p { margin: 0; color: var(--muted); font-size: 0.76rem; line-height: 1.6; }
-.member-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
-.member-data-block { min-width: 0; min-height: 11rem; padding: 1.15rem; border: 1px solid var(--border); border-radius: var(--container-radius); background: rgba(14, 20, 25, 0.54); }
+.member-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-top: 1.5rem; border-top: 1px solid var(--border); }
+.member-data-block { min-width: 0; min-height: 0; padding: 1.35rem 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; }
 .member-data-block--wide { grid-column: 1 / -1; }
 .member-data-block h3 { margin: 0 0 0.9rem; font-size: 0.95rem; letter-spacing: -0.02em; }
 .member-block-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }

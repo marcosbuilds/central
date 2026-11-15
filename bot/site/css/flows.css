@@ -234,6 +234,12 @@
 .public-hero-mark { align-self: stretch; display: flex; flex-direction: column; justify-content: end; min-height: 13rem; padding: 1.3rem; }
 .public-hero-mark .flow-symbol { margin: 0 0 auto; }
 .public-hero-mark .flow-symbol--peace { width: 3rem; height: 3rem; object-fit: contain; filter: grayscale(1) brightness(1.3); }
+.notice-bell { position: relative; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; margin: 0 0 auto; border: 1px solid var(--border); border-radius: 0.7rem; background: rgba(185, 202, 211, 0.05); color: var(--quiet); }
+.notice-bell svg { width: 1.35rem; height: 1.35rem; }
+.notice-bell.is-new { border-color: rgba(223, 190, 125, 0.65); background: rgba(223, 190, 125, 0.1); color: var(--warning); }
+.notice-bell[data-notices-bell]::after { position: absolute; top: 0.45rem; right: 0.45rem; width: 0.38rem; height: 0.38rem; border-radius: 50%; background: var(--warning); content: ""; opacity: 0; transform: scale(0.5); transition: opacity 180ms var(--ease-fast), transform 180ms var(--ease-fast); }
+.notice-bell.is-new::after { opacity: 1; transform: scale(1); }
+.notice-bell [data-notices-badge] { position: absolute; top: -0.45rem; right: -0.5rem; display: grid; min-width: 1.3rem; min-height: 1.3rem; place-items: center; padding: 0 0.25rem; border: 2px solid var(--canvas); border-radius: 999px; background: var(--warning); color: var(--canvas); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.5rem; font-weight: 800; line-height: 1; }
 .public-hero-mark strong { margin-top: 1.5rem; color: var(--text); font-size: 0.9rem; }
 .public-hero-mark p { max-width: 20rem; margin: 0.45rem 0 1.2rem; color: var(--muted); font-size: 0.77rem; line-height: 1.65; }
 .notice-board, .partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); }

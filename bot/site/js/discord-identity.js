@@ -44,7 +44,7 @@
     var host = header.querySelector(".discord-identity-host");
     if (host) return host;
 
-    var actions = header.querySelector(".header-actions, .flow-header-actions, .member-header-actions");
+    var actions = header.querySelector(".header-actions, .flow-header-actions, .member-header-actions, .public-context-actions");
     if (!actions) {
       var directCta = Array.prototype.slice.call(header.children).find(function (child) {
         return child.classList && child.classList.contains("flow-header-cta");
@@ -82,7 +82,7 @@
   }
 
   function allHeaderHosts() {
-    return Array.prototype.slice.call(document.querySelectorAll(".site-header, .flow-header, .member-header"))
+    return Array.prototype.slice.call(document.querySelectorAll(".site-header, .flow-header, .member-header, .public-context-bar"))
       .map(headerHost)
       .filter(Boolean);
   }
@@ -187,7 +187,7 @@
     else menuLink(menu, "Verificar status", "/meu-processo/");
     if (server.is_manager === true) menuLink(menu, "Gerenciar provas", "/gerencia/provas/");
     menuLink(menu, "Entrar no Discord", "/discord");
-    var logout = createElement("button", "discord-identity-menu-logout", "Sair");
+    var logout = createElement("button", "discord-identity-menu-logout", "Sair da conta");
     logout.type = "button";
     logout.setAttribute("role", "menuitem");
     menu.appendChild(logout);
@@ -227,6 +227,7 @@
       if (event.target.closest && event.target.closest("a")) close();
     });
     logout.addEventListener("click", function () {
+      if (!window.confirm("Sair da conta Discord?")) return;
       logout.disabled = true;
       site.attemptEndpoint("/api/auth/discord/logout", {
         method: "POST",
@@ -366,6 +367,9 @@
         return null;
       }
       render(payload);
+      if (document.body.dataset.page === "home" && payload.server && window.location.pathname === "/") {
+        window.location.replace(payload.server.is_peace_member === true ? "/area/" : "/entrar/");
+      }
       return payload;
     }).catch(function (error) {
       site.discordSessionError = error;
