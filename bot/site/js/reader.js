@@ -13,6 +13,7 @@
   var noteTitle = document.querySelector("[data-reader-note-title]");
   var noteCopy = document.querySelector("[data-reader-note-copy]");
   var noteProgress = document.querySelector("[data-reader-note-progress]");
+  var startLink = document.querySelector("[data-reader-start]");
   var total = pages.length;
   var activeIndex = -1;
 
@@ -105,6 +106,18 @@
         update(index, true);
         window.history.replaceState({}, document.title, "#" + page.id);
       });
+    });
+  }
+
+  if (startLink && pageContainer) {
+    startLink.addEventListener("click", function (event) {
+      event.preventDefault();
+      var reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search + "#paginas");
+      var target = document.getElementById("paginas");
+      if (!target) return;
+      target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+      target.focus({ preventScroll: true });
     });
   }
 

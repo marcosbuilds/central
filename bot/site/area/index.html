@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Painel Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261115-04">
-    <script defer src="../script.js?v=20261115-04"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261115-06">
+    <script defer src="../script.js?v=20261115-06"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -39,9 +39,19 @@
 
       <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="member-workspace-label">
         <span class="sr-only" id="member-workspace-label">Painel Peace autenticado</span>
+        <span class="sr-only" data-member-loading-status role="status" aria-live="polite"></span>
         <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Validando sua sessão no painel Peace">
-          <div class="member-skeleton-sidebar" aria-hidden="true"><span class="member-skeleton-brand"></span><span class="member-skeleton-profile"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span></div>
-          <div class="member-skeleton-content" aria-hidden="true"><span class="member-skeleton-toolbar"></span><span class="member-skeleton-profile-card"></span><span class="member-skeleton-list"></span></div>
+          <aside class="member-skeleton-sidebar" aria-hidden="true">
+            <span class="member-skeleton-brand"></span>
+            <div class="member-skeleton-nav"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="member-skeleton-sidebar-bottom"><span class="member-skeleton-profile"></span><span class="member-skeleton-logout"></span></div>
+          </aside>
+          <div class="member-skeleton-content" aria-hidden="true">
+            <div class="member-skeleton-toolbar"><span class="member-skeleton-icon"></span><span class="member-skeleton-context"></span><span class="member-skeleton-icon"></span></div>
+            <div class="member-skeleton-profile-row"><span class="member-skeleton-avatar"></span><div class="member-skeleton-profile-copy"><span></span><span></span><span></span></div><span class="member-skeleton-status"></span></div>
+            <div class="member-skeleton-metrics"><div><span></span><span></span></div><div><span></span><span></span></div><div><span></span><span></span></div></div>
+            <div class="member-skeleton-assignments"><span></span><span></span></div>
+          </div>
         </div>
         <div data-member-workspace-content hidden>
           <div class="member-workspace-shell" data-member-shell data-sidebar-open="false">
@@ -52,7 +62,7 @@
                     <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
                     <span class="brand-lockup"><strong>PEACE</strong><small>PAINEL</small></span>
                   </a>
-
+                  <button class="member-sidebar-close" type="button" data-member-sidebar-close aria-label="Fechar menu"><span aria-hidden="true">×</span></button>
                 </div>
 
                 <nav class="member-nav" aria-label="Seções do painel">

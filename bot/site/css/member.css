@@ -346,7 +346,6 @@
    view changes in place. Keep the rail wide enough for labels, but remove the
    old card gutters that made the panel look off-center. */
 .member-workspace-shell {
-  --member-sidebar-width: 18.5rem;
   grid-template-columns: var(--member-sidebar-width) minmax(0, 1fr);
 }
 .member-sidebar { width: var(--member-sidebar-width); }
@@ -381,8 +380,6 @@
 .member-next-action p { margin: 0; }
 
 @media (max-width: 900px) {
-  .member-workspace-shell { --member-sidebar-width: 0rem; }
-  .member-workspace-shell[data-sidebar-open="true"] { --member-sidebar-width: min(18.5rem, 86vw); }
   .member-sidebar-inner { width: var(--member-sidebar-width); }
   .member-workspace-toolbar { grid-template-columns: minmax(6rem, 1fr) auto minmax(3rem, 1fr); }
 }

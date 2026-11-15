@@ -1748,8 +1748,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261115-04"' in opening_html
-    assert 'src="/script.js?v=20261115-04"' in opening_html
+    assert 'href="/styles.css?v=20261115-06"' in opening_html
+    assert 'src="/script.js?v=20261115-06"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1793,8 +1793,8 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261115-04"' in html
-        assert 'src="/script.js?v=20261115-04"' in html
+        assert 'href="/styles.css?v=20261115-06"' in html
+        assert 'src="/script.js?v=20261115-06"' in html
         assert '<header' not in html
     clips_html = (site_root / "clipes" / "index.html").read_text(encoding="utf-8")
     assert 'data-page="clips"' in clips_html
@@ -1865,10 +1865,10 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "clips.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
     assert 'data-notices-bell' in notices_html
     assert 'data-notices-badge' in notices_html

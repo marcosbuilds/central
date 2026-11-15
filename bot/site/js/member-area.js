@@ -16,7 +16,9 @@
     var workspaceMain = workspace && workspace.querySelector(".member-workspace-main");
     var sidebarToggle = workspace && workspace.querySelector("[data-member-sidebar-toggle]");
     var sidebarToggleIcon = workspace && workspace.querySelector("[data-member-sidebar-toggle-icon]");
+    var sidebarClose = workspace && workspace.querySelector("[data-member-sidebar-close]");
     var sidebarScrim = workspace && workspace.querySelector("[data-member-sidebar-scrim]");
+    var loadingStatus = workspace && workspace.querySelector("[data-member-loading-status]");
     var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
     var memberViews = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-view]")) : [];
     var memberContextTitle = workspace && workspace.querySelector("[data-member-context-title]");
@@ -58,6 +60,9 @@
       connection.textContent = message || "";
       connection.dataset.state = tone || "ready";
       connection.hidden = !message;
+    }
+    function setLoadingStatus(message) {
+      if (loadingStatus) loadingStatus.textContent = message || "";
     }
     function date(value) {
       if (!value) return "—";
@@ -205,6 +210,9 @@
     function setNotificationsOpen(open, moveFocus) {
       if (!notificationPanel || !notificationTrigger) return;
       var nextOpen = Boolean(open);
+      if (nextOpen && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia && window.matchMedia("(max-width: 900px)").matches) {
+        setSidebarOpen(false, false);
+      }
       notificationPanel.hidden = !nextOpen;
       notificationTrigger.setAttribute("aria-expanded", String(nextOpen));
       if (nextOpen) {
@@ -225,14 +233,36 @@
       try { window.sessionStorage.removeItem(shellReadyStorageKey); } catch (error) { /* optional */ }
     }
 
+    function resetReusableSurface() {
+      if (memberName) memberName.textContent = "membro";
+      if (memberUsername) memberUsername.textContent = "@discord";
+      if (memberRoles) {
+        memberRoles.textContent = "";
+        memberRoles.hidden = true;
+      }
+      if (memberAvatar) memberAvatar.hidden = true;
+      if (memberAvatarFallback) memberAvatarFallback.hidden = true;
+      if (sidebarName) sidebarName.textContent = "membro";
+      if (sidebarUsername) sidebarUsername.textContent = "@discord";
+      if (sidebarState) sidebarState.textContent = "Validando conta…";
+      if (sidebarAvatar) sidebarAvatar.hidden = true;
+      if (sidebarAvatarFallback) sidebarAvatarFallback.hidden = true;
+      var managerLink = workspace && workspace.querySelector("[data-member-manager]");
+      if (managerLink) managerLink.hidden = true;
+      if (overview) overview.textContent = "";
+    }
+
     function setSidebarOpen(open, moveFocus) {
       if (!shell || !sidebar) return;
       var compact = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
       var nextOpen = compact ? Boolean(open) : true;
       shell.dataset.sidebarOpen = String(nextOpen);
       sidebarToggle && sidebarToggle.setAttribute("aria-expanded", String(nextOpen));
-      if (sidebarToggle) sidebarToggle.setAttribute("aria-label", nextOpen ? "Fechar menu" : "Abrir menu");
-      if (sidebarToggleIcon) sidebarToggleIcon.textContent = nextOpen ? "×" : "☰";
+      if (sidebarToggle) sidebarToggle.setAttribute("aria-label", "Abrir menu");
+      if (sidebarToggleIcon) sidebarToggleIcon.textContent = "☰";
+      if (compact && nextOpen && notificationPanel && !notificationPanel.hidden) setNotificationsOpen(false, false);
+      document.documentElement.classList.toggle("member-menu-open", compact && nextOpen);
+      document.body.classList.toggle("member-menu-open", compact && nextOpen);
       if (workspaceMain) {
         if (compact && nextOpen) workspaceMain.setAttribute("inert", "");
         else workspaceMain.removeAttribute("inert");
@@ -240,7 +270,7 @@
       if (nextOpen) {
         sidebar.removeAttribute("inert");
         if (moveFocus && compact) {
-          var first = sidebar.querySelector(".member-nav a");
+          var first = sidebar.querySelector("[data-member-sidebar-close], .member-nav a");
           if (first) first.focus();
         }
       } else {
@@ -292,7 +322,7 @@
           target = activeView.querySelector("h1, h2");
           if (target) target.setAttribute("tabindex", "-1");
         }
-        if (target) target.focus({ preventScroll: true });
+        if (target) target.focus({ preventScroll: false });
       }
     }
 
@@ -386,6 +416,7 @@
 
     function configureGate(mode, message) {
       clearShellReady();
+      setLoadingStatus("");
       if (workspace) workspace.hidden = true;
       if (gate) gate.hidden = false;
       var gateText = gate && gate.querySelector("[data-member-gate-message]");
@@ -416,7 +447,9 @@
     function showWorkspaceLoading() {
       if (gate) gate.hidden = true;
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "true"); }
+      setLoadingStatus("Validando sessão, cargo Peace e processo…");
       if (hasReusableShell()) {
+        resetReusableSurface();
         if (skeleton) skeleton.hidden = true;
         if (content) content.hidden = false;
         setSidebarOpen(false, false);
@@ -432,6 +465,7 @@
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "false"); }
       if (skeleton) skeleton.hidden = true;
       if (content) content.hidden = false;
+      setLoadingStatus("");
       markShellReady();
       setSidebarOpen(false, false);
       setMemberView(requestedView(), true, false);
@@ -468,6 +502,7 @@
       var open = shell && shell.dataset.sidebarOpen === "true";
       setSidebarOpen(!open, true);
     });
+    if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
     if (sidebarScrim) sidebarScrim.addEventListener("click", function () { setSidebarOpen(false, true); });
     if (notificationTrigger) notificationTrigger.addEventListener("click", function () {
       var open = notificationTrigger.getAttribute("aria-expanded") === "true";
@@ -479,11 +514,28 @@
       if (!target || !workspace.contains(target)) return;
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      setMemberView(target.dataset.memberViewLink, false, true);
       setSidebarOpen(false, false);
+      setMemberView(target.dataset.memberViewLink, false, true);
     }, true);
-    window.addEventListener("popstate", function () { setMemberView(requestedView(), true, false); });
+    window.addEventListener("popstate", function () { setMemberView(requestedView(), true, true); });
     document.addEventListener("keydown", function (event) {
+      if (event.key === "Tab" && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches && sidebar && sidebar.contains(document.activeElement)) {
+        var focusable = Array.prototype.filter.call(sidebar.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])") , function (node) {
+          return !node.hidden && node.getClientRects().length > 0;
+        });
+        if (focusable.length) {
+          var firstFocusable = focusable[0];
+          var lastFocusable = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === firstFocusable) {
+            event.preventDefault();
+            lastFocusable.focus();
+          } else if (!event.shiftKey && document.activeElement === lastFocusable) {
+            event.preventDefault();
+            firstFocusable.focus();
+          }
+        }
+        return;
+      }
       if (event.key !== "Escape") return;
       if (notificationPanel && !notificationPanel.hidden) {
         event.preventDefault();
@@ -502,7 +554,14 @@
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");
-      var syncSidebarMode = function () { setSidebarOpen(sidebarMedia.matches ? shell.dataset.sidebarOpen === "true" : true, false); };
+      var syncSidebarMode = function () {
+        if (sidebarMedia.matches) {
+          var focusInsideSidebar = sidebar && sidebar.contains(document.activeElement);
+          setSidebarOpen(false, focusInsideSidebar);
+        } else {
+          setSidebarOpen(true, false);
+        }
+      };
       if (sidebarMedia.addEventListener) sidebarMedia.addEventListener("change", syncSidebarMode);
       else if (sidebarMedia.addListener) sidebarMedia.addListener(syncSidebarMode);
     }

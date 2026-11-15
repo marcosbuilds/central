@@ -569,7 +569,7 @@
 @media (max-width: 560px) {
   .reader-hero { grid-template-columns: 5.25rem minmax(0, 1fr); gap: 0.85rem; }
   .reader-cover-frame { width: 5.25rem; }
-  .reader-hero .study-actions { align-items: flex-start; flex-direction: row; }
+  .reader-hero .study-actions { align-items: flex-start; flex-direction: column; }
   .reader-hero .study-actions .button { width: auto; }
   .reader-hero .flow-secondary-action { font-size: 0.66rem; }
 }
@@ -624,7 +624,7 @@
 .manager-loading-status { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.65rem; color: var(--muted); font-size: 0.76rem; }
 .manager-loading-status .status-mark { animation: quiet-pulse 1.4s ease-in-out infinite; }
 .manager-gate,
-.manager-workspace { padding-block: 1.1rem; }
+.manager-workspace { padding-block: 0; border-top: 0; }
 .manager-assignment-panel { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .manager-assignment-panel summary {
   display: flex;
@@ -646,6 +646,8 @@
 .manager-summary-meta { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--muted); font-size: 0.72rem; }
 .manager-form { max-width: 58rem; margin: 0; padding: 0.9rem 0 1rem; }
 .manager-form-type { display: grid; grid-template-columns: minmax(12rem, 20rem) minmax(0, 1fr); align-items: end; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.manager-form-type > div { display: grid; gap: 0.25rem; min-width: 0; }
+.manager-type-label { color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .manager-form-type .field { margin: 0; }
 .manager-form-type select,
 .manager-filter select { width: 100%; min-height: 2.65rem; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 0.55rem; background: var(--surface-soft); color: var(--text); font: inherit; font-size: 0.75rem; }
