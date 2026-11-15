@@ -5384,7 +5384,7 @@ class PeaceBot(commands.Bot):
                 },
                 status=503,
             )
-        location = f"{DISCORD_OAUTH_AUTHORIZE_URL}?{urlencode({
+        oauth_params = {
             'response_type': 'code',
             'client_id': config['client_id'],
             'scope': DISCORD_OAUTH_SCOPE,
@@ -5392,7 +5392,8 @@ class PeaceBot(commands.Bot):
             'redirect_uri': redirect_uri,
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256',
-        })}"
+        }
+        location = f"{DISCORD_OAUTH_AUTHORIZE_URL}?{urlencode(oauth_params)}"
         response = web.HTTPFound(location)
         response.set_cookie(
             PUBLIC_DISCORD_OAUTH_STATE_COOKIE,
