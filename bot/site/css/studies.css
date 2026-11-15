@@ -286,6 +286,14 @@
 .manager-hero-aside strong { display: block; color: var(--text); font-size: 1rem; }
 .manager-hero-aside p:last-child { max-width: 20rem; margin: 0.5rem 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.65; }
 .manager-gate, .manager-workspace { margin-top: 1.25rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--container-background); box-shadow: var(--container-shadow); }
+.manager-loading { display: grid; min-height: 12rem; align-items: center; margin-top: 1.25rem; padding: clamp(1.25rem, 4vw, 2.5rem); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.manager-loading[hidden] { display: none; }
+.manager-loading-skeleton { display: grid; gap: 0.85rem; width: min(100%, 35rem); }
+.manager-loading-skeleton span { display: block; border-radius: 0.45rem; background: linear-gradient(100deg, rgba(185, 202, 211, 0.08), rgba(185, 202, 211, 0.2), rgba(185, 202, 211, 0.08)); background-size: 220% 100%; animation: skeleton-shimmer 1.2s linear infinite; }
+.manager-loading-kicker { width: 34%; height: 0.65rem; }
+.manager-loading-title { width: 72%; height: 3.5rem; }
+.manager-loading-line { width: 85%; height: 0.9rem; }
+.manager-loading-line--short { width: 54%; }
 .manager-gate h2, .manager-workspace h2 { max-width: 42rem; margin: 0 0 0.65rem; font-size: clamp(1.8rem, 4vw, 3.5rem); letter-spacing: -0.07em; line-height: 0.96; }
 .manager-gate > p:not(.eyebrow):not(.form-status), .manager-workspace-heading + p { max-width: 42rem; margin: 0 0 1.4rem; color: var(--muted); font-size: 0.82rem; line-height: 1.7; }
 .manager-workspace-heading { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; }

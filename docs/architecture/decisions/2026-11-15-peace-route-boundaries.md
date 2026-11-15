@@ -53,6 +53,12 @@ Peace membership, and Peace process payload are all ready. Missing, expired,
 non-Peace, and unavailable states have distinct recovery copy; no state starts
 a new OAuth flow automatically.
 
+The Gerência workspace follows the same fail-closed loading contract: its
+assignment form remains hidden behind a skeleton until the Discord session,
+current Gerência role, and assignment-list response are all valid. A denied or
+incomplete assignment response returns to the gate/unavailable state without
+briefly exposing the form.
+
 Public data pages keep their own loading, empty, stale/unavailable, and retry
 states. Notices use a local seen-key ledger so a newly returned public item can
 produce an accessible toast without claiming a real-time guarantee. Clips

@@ -1830,6 +1830,11 @@ def test_public_site_files_are_complete():
     assert "Conecte o Discord para abrir seu processo." in process_html
     assert "data-process-retry" in process_html
     assert "showUnavailable" in process_script
+    assert 'data-manager-loading' in manager_html
+    assert 'data-manager-gate hidden' in manager_html
+    assert 'data-manager-loading' in manager_script
+    assert 'hideLoading' in manager_script
+    assert 'payload.ok !== true' in manager_script
     assert "data-manager-retry" in manager_html
     assert "showUnavailable" in manager_script
     assert '<header' not in civil_html and '<header' not in peace_html

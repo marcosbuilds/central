@@ -4,6 +4,7 @@
   var site = window.PeaceSite;
   if (!site) return;
   var gate = document.querySelector("[data-manager-gate]");
+  var loadingPanel = document.querySelector("[data-manager-loading]");
   var workspace = document.querySelector("[data-manager-workspace]");
   var message = document.querySelector("[data-manager-message]");
   var formMessage = document.querySelector("[data-manager-form-message]");
@@ -21,7 +22,22 @@
       .then(function (response) { return response.json(); });
   }
   function setMessage(node, text, tone) { setText(node, text || ""); if (node) node.dataset.state = tone || "pending"; }
+  function hideLoading() {
+    if (!loadingPanel) return;
+    loadingPanel.hidden = true;
+    loadingPanel.setAttribute("aria-busy", "false");
+  }
+  function showLoading() {
+    if (loadingPanel) {
+      loadingPanel.hidden = false;
+      loadingPanel.setAttribute("aria-busy", "true");
+    }
+    if (gate) gate.hidden = true;
+    if (workspace) workspace.hidden = true;
+    if (logoutButton) logoutButton.hidden = true;
+  }
   function showGate(messageText) {
+    hideLoading();
     if (gate) gate.hidden = false;
     if (workspace) workspace.hidden = true;
     setMessage(message, messageText, "error");
@@ -32,6 +48,7 @@
     if (title) title.textContent = "Discord conectado; cargo de Gerência necessário.";
   }
   function showUnavailable(messageText) {
+    hideLoading();
     if (gate) gate.hidden = false;
     if (workspace) workspace.hidden = true;
     var connect = gate && gate.querySelector("[data-manager-connect]");
@@ -91,10 +108,18 @@
     if (status === "issuer-error" || status === "identity-error") setMessage(message, "Não foi possível confirmar a identidade no Discord. Tente conectar novamente.", "error");
   }
   function openWorkspace() {
-    if (gate) gate.hidden = true;
-    if (workspace) workspace.hidden = false;
-    if (logoutButton) logoutButton.hidden = false;
-    return request("/api/exams/assignments").then(function (payload) { renderList(payload.assignments || []); });
+    return request("/api/exams/assignments").then(function (payload) {
+      if (!payload || payload.ok !== true || !Array.isArray(payload.assignments)) {
+        var incomplete = new Error("A lista de atribuições não está pronta.");
+        incomplete.status = 503;
+        throw incomplete;
+      }
+      renderList(payload.assignments);
+      hideLoading();
+      if (gate) gate.hidden = true;
+      if (workspace) workspace.hidden = false;
+      if (logoutButton) logoutButton.hidden = false;
+    });
   }
 
   if (form) {
@@ -132,6 +157,7 @@
     });
   }
   function loadManager() {
+    showLoading();
     if (retryButton) { retryButton.disabled = true; retryButton.hidden = true; }
     request("/api/auth/discord/session")
       .then(function (session) {
@@ -170,5 +196,6 @@
 
   if (retryButton) retryButton.addEventListener("click", loadManager);
   cleanStatus();
+  showLoading();
   loadManager();
 })();
