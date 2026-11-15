@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#050607">
     <meta name="description" content="Área autenticada da comunidade Peace.">
-    <title>Painel Peace</title>
+    <title>Área de membros — Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261115-06">
-    <script defer src="../script.js?v=20261115-06"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261115-07">
+    <script defer src="../script.js?v=20261115-07"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -17,16 +17,16 @@
       <noscript>
         <section class="member-gate member-gate--noscript" aria-labelledby="noscript-gate-title">
           <div class="gate-copy">
-            <p class="eyebrow">Painel Peace</p>
+            <p class="eyebrow">Área de membros</p>
             <h2 id="noscript-gate-title">Ative o JavaScript para validar sua conta.</h2>
-            <p>O painel precisa confirmar a sessão Discord e o cargo Peace antes de liberar qualquer conteúdo.</p>
+            <p>A área precisa confirmar a sessão Discord e o cargo Peace antes de liberar qualquer conteúdo.</p>
             <a class="button button--light button--large" href="../acessar/?return_to=%2Farea%2F">Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a>
           </div>
         </section>
       </noscript>
       <section class="member-gate" data-member-gate hidden aria-labelledby="gate-title">
         <div class="gate-copy">
-          <p class="eyebrow">Painel Peace</p>
+          <p class="eyebrow">Área de membros</p>
           <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
           <p data-member-gate-message>Conecte seu Discord para acompanhar progresso, materiais e informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
           <div class="gate-actions"><a class="button button--light button--large" href="../acessar/?return_to=%2Farea%2F" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><button class="text-button" type="button" data-member-retry hidden>Tentar validar novamente</button><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
@@ -38,9 +38,9 @@
       </section>
 
       <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="member-workspace-label">
-        <span class="sr-only" id="member-workspace-label">Painel Peace autenticado</span>
+        <span class="sr-only" id="member-workspace-label">Área de membros autenticada</span>
         <span class="sr-only" data-member-loading-status role="status" aria-live="polite"></span>
-        <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Validando sua sessão no painel Peace">
+        <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Validando sua sessão na área de membros">
           <aside class="member-skeleton-sidebar" aria-hidden="true">
             <span class="member-skeleton-brand"></span>
             <div class="member-skeleton-nav"><span></span><span></span><span></span><span></span><span></span><span></span></div>
@@ -55,23 +55,33 @@
         </div>
         <div data-member-workspace-content hidden>
           <div class="member-workspace-shell" data-member-shell data-sidebar-open="false">
-            <aside class="member-sidebar" id="member-sidebar" data-member-sidebar aria-label="Navegação do painel Peace" inert>
+            <aside class="member-sidebar" id="member-sidebar" data-member-sidebar aria-label="Navegação da área de membros" inert>
               <div class="member-sidebar-inner">
                 <div class="member-sidebar-topline">
-                  <a class="member-sidebar-brand" href="/area/" aria-label="Peace — visão geral do painel">
+                  <a class="member-sidebar-brand" href="/area/" aria-label="Peace — área de membros">
                     <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
-                    <span class="brand-lockup"><strong>PEACE</strong><small>PAINEL</small></span>
+                    <span class="brand-lockup"><strong>PEACE</strong><small>MEMBROS</small></span>
                   </a>
                   <button class="member-sidebar-close" type="button" data-member-sidebar-close aria-label="Fechar menu"><span aria-hidden="true">×</span></button>
                 </div>
 
-                <nav class="member-nav" aria-label="Seções do painel">
-                  <a aria-current="page" data-member-nav-link data-member-view-link="overview" href="/area/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>Visão geral</a>
-                  <a data-member-nav-link data-member-view-link="library" href="/estudos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.2 5.2c2.9-.8 5.4-.3 7.8 1.4v12c-2.4-1.7-4.9-2.2-7.8-1.4v-12ZM19.8 5.2c-2.9-.8-5.4-.3-7.8 1.4v12c2.4-1.7 4.9-2.2-7.8 1.4v-12Z"></path><path d="M12 6.6v12"></path></svg>Biblioteca</a>
-                  <a data-member-nav-link href="/parceiros/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="8" cy="8.2" r="2.5"></circle><circle cx="16" cy="15.8" r="2.5"></circle><path d="m10 9.8 4 4.4"></path><path d="M5.5 15.5a3.6 3.6 0 0 1 5.1-1.8M13.4 10.3a3.6 3.6 0 0 1 5.1 1.8"></path></svg>Parceiros</a>
-                  <a data-member-nav-link data-member-view-link="clips" href="/clipes/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m10 9 5 3-5 3V9Z"></path></svg>Clipes</a>
-                  <a data-member-nav-link href="/meu-processo/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.3 12.3 2.4 2.4 4.9-5"></path></svg>Meu processo</a>
-                  <a data-member-nav-link data-member-manager href="/gerencia/provas/" hidden>Gerenciar provas</a>
+                <nav class="member-nav" aria-label="Seções da área de membros">
+                  <div class="member-nav-group">
+                    <p class="member-nav-label">Peace</p>
+                  <a aria-current="page" data-member-nav-link data-member-view-link="overview" href="/area/">Visão geral</a>
+                  <a data-member-nav-link data-member-view-link="library" href="/estudos/">Biblioteca</a>
+                  <a data-member-nav-link data-member-view-link="partners" href="/parceiros/">Parceiros</a>
+                  <a data-member-nav-link data-member-view-link="clips" href="/clipes/"><span>Clipes</span><span class="member-nav-count" data-member-nav-count="clips" hidden>0</span></a>
+                  <a data-member-nav-link href="/meu-processo/"><span>Processo e provas</span><span class="member-nav-count" data-member-nav-count="proofs" hidden>0</span></a>
+                  </div>
+                  <div class="member-nav-group member-nav-group--management" data-member-management-group hidden>
+                    <p class="member-nav-label">Gerência</p>
+                    <a data-member-nav-link data-member-manager href="/gerencia/provas/"><span>Gerenciar provas</span></a>
+                  </div>
+                  <div class="member-nav-group member-nav-group--staff">
+                    <p class="member-nav-label">Staff</p>
+                    <p class="member-nav-note">Controles internos continuam no Discord.</p>
+                  </div>
                 </nav>
 
                 <div class="member-sidebar-bottom">
@@ -88,8 +98,8 @@
             <div class="member-workspace-main">
               <div class="member-workspace-toolbar">
                 <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false" aria-label="Abrir menu"><span class="member-sidebar-toggle-icon" data-member-sidebar-toggle-icon aria-hidden="true">☰</span></button>
-                <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title>Visão geral</strong><div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div></div>
-                <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
+                <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title>Visão geral</strong><div class="member-live-status" data-member-connection role="status" aria-live="polite" hidden>Validando sessão…</div></div>
+                <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
               </div>
 
               <div class="member-view member-view--overview" data-member-view="overview">
@@ -101,7 +111,7 @@
                     <p class="member-profile-handle" data-member-username>@discord</p>
                     <div class="member-profile-roles" data-member-roles aria-label="Cargos confirmados"><span class="member-role-chip">Membro Peace</span></div>
                   </div>
-                  <div class="member-profile-status"><span class="status-mark" aria-hidden="true"></span><strong>Conta conectada</strong><small>Discord confirmado</small></div>
+                  <div class="member-profile-metrics" aria-label="Resumo do perfil"><div><small>Score</small><strong data-member-score>—</strong></div><div><small>Provas</small><strong data-member-assignment-count>0</strong></div></div>
                 </div>
 
                 <div class="member-overview-grid" data-member-overview>
@@ -139,6 +149,14 @@
                   </article>
                 </div>
                 <p class="study-library-empty" data-study-empty role="status" hidden>Nenhum material corresponde à busca.</p>
+              </section>
+
+              <section class="member-view member-partners-view" data-member-view="partners" hidden aria-labelledby="member-partners-title">
+                <h1 id="member-partners-title">Parceiros</h1>
+                <p class="member-view-lede">Projetos aprovados pela gestão, com o contexto necessário para a comunidade entender por que estão aqui.</p>
+                <div class="member-partner-list" data-member-partners-list role="list" aria-live="polite">
+                  <p class="member-block-state">Consultando parceiros publicados…</p>
+                </div>
               </section>
 
               <section class="member-view member-clips-view" data-member-view="clips" hidden aria-labelledby="member-clips-title">

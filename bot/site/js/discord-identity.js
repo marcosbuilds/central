@@ -109,7 +109,7 @@
 
   function setConnectionState(state) {
     document.body.dataset.discordState = state;
-    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-connect]");
+    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]");
     controls.forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       if (state === "loading" || state === "connected") node.hidden = true;
@@ -163,7 +163,17 @@
     } else {
       showFallback();
     }
-    var arrow = createElement("span", "discord-identity-arrow", "⌄");
+    var arrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    arrow.classList.add("discord-identity-arrow");
+    arrow.setAttribute("viewBox", "0 0 12 8");
+    arrow.setAttribute("fill", "none");
+    arrow.setAttribute("stroke", "currentColor");
+    arrow.setAttribute("stroke-width", "1.5");
+    arrow.setAttribute("stroke-linecap", "round");
+    arrow.setAttribute("stroke-linejoin", "round");
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.setAttribute("focusable", "false");
+    arrow.innerHTML = '<path d="m1 1.5 5 5 5-5"></path>';
     trigger.appendChild(name);
     trigger.appendChild(avatar);
     trigger.appendChild(fallback);
@@ -182,7 +192,7 @@
     menuLink(menu, "Meu processo", "/meu-processo/");
 
     var server = session.server || {};
-    if (server.is_peace_member === true) menuLink(menu, "Painel Peace", "/area/");
+    if (server.is_peace_member === true) menuLink(menu, "Área de membros", "/area/");
     else if (server.state === "member" || server.state === "not_member") menuLink(menu, "Solicitar setagem", "/entrar/");
     else menuLink(menu, "Verificar status", "/meu-processo/");
     if (server.is_manager === true) menuLink(menu, "Gerenciar provas", "/gerencia/provas/");
@@ -280,7 +290,7 @@
   }
 
   function hideConnectedDuplicates(connected, state) {
-    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-connect]").forEach(function (node) {
+    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       node.hidden = connected || state === "loading" || state === "retry";
     });
@@ -312,7 +322,6 @@
       payload && payload.ok === true
       && identity
       && /^[0-9]{15,25}$/.test(String(identity.discord_id || ""))
-      && identity.avatar_url
       && payload.profile
       && server
       && server.state
@@ -367,9 +376,6 @@
         return null;
       }
       render(payload);
-      if (document.body.dataset.page === "home" && payload.server && window.location.pathname === "/") {
-        window.location.replace(payload.server.is_peace_member === true ? "/area/" : "/entrar/");
-      }
       return payload;
     }).catch(function (error) {
       site.discordSessionError = error;

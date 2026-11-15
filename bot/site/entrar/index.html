@@ -7,8 +7,8 @@
     <meta name="description" content="Comece o fluxo para fazer parte da Peace.">
     <title>Entrar para a Peace — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261115-06">
-    <script defer src="/script.js?v=20261115-06"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261115-07">
+    <script defer src="/script.js?v=20261115-07"></script>
   </head>
   <body data-page="entry">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -28,15 +28,16 @@
             <h1 id="entry-page-title">Entre na <em>Peace.</em></h1>
             <p class="flow-lede">Comece pelo Discord. O convite, a verificação e a candidatura acontecem em sequência, com um próximo passo visível por vez.</p>
             <div class="flow-actions">
-              <a class="button button--light button--large" href="/candidatura/">
+              <a class="button button--light button--large" href="/candidatura/" data-entry-start>
                 <img class="peace-icon" src="/assets/peace-bird.png" alt="" aria-hidden="true" width="1254" height="1254">
-                <span>Começar entrada</span>
+                <span data-entry-start-label>Começar entrada</span>
                 <span class="button-icon" aria-hidden="true">→</span>
               </a>
               <a class="flow-secondary-action" href="/acessar/">Já sou membro <span aria-hidden="true">↗</span></a>
               <a class="flow-secondary-action" href="/estudos/">Ver estudos públicos <span aria-hidden="true">↗</span></a>
             </div>
             <p class="flow-footnote"><span class="status-mark" aria-hidden="true"></span><span>Você não precisa criar senha. O acesso de membro usa um código enviado pelo Discord.</span></p>
+            <p class="flow-footnote" data-entry-session-state role="status" aria-live="polite" hidden><span class="status-mark" aria-hidden="true"></span><span data-entry-session-copy></span></p>
           </div>
           <div class="entry-route" data-reveal aria-label="Resumo da entrada">
             <span>Discord</span><i aria-hidden="true">→</i><span>Verificação</span><i aria-hidden="true">→</i><span>Candidatura</span>

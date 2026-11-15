@@ -667,10 +667,39 @@
 .manager-review { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
 .manager-review-content { margin-top: 1rem; }
 
+/* The assignment action is always visible; avoid a collapsed details panel
+   and keep the form hierarchy readable without a divider between every field. */
+.manager-assignment-panel { padding: clamp(1.15rem, 3vw, 2rem); border: 1px solid var(--container-border); border-radius: var(--container-radius); background: var(--container-background); box-shadow: var(--container-shadow); }
+.manager-assignment-heading { align-items: start; }
+.manager-assignment-heading h2 { margin-top: 0.25rem; }
+.manager-assignment-heading .manager-summary-meta { max-width: 18rem; padding-top: 0.35rem; text-align: right; }
+.manager-assignment-panel .manager-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 1rem; max-width: none; margin-top: 1.2rem; padding: 0; }
+.manager-assignment-panel .manager-form-type { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(12rem, 22rem) minmax(0, 1fr); align-items: start; gap: 0.55rem 1rem; margin: 0 0 0.2rem; padding: 0; border: 0; }
+.manager-assignment-panel .manager-form-type > span,
+.manager-assignment-panel .manager-form-type > select { grid-column: 1; }
+.manager-assignment-panel .manager-form-type > small { grid-column: 2; grid-row: 1 / span 2; align-self: center; margin: 0; }
+.manager-assignment-panel .manager-field-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1rem; }
+.manager-assignment-panel .manager-field-grid .field { margin-top: 0.9rem; }
+.manager-assignment-panel .manager-form > .field:not(.manager-form-type) { margin-top: 0.9rem; }
+.manager-assignment-panel .manager-deadline { grid-column: 1; }
+.manager-assignment-panel .manager-form-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+.manager-assignment-panel .manager-form-actions .form-status { margin: 0; }
+.manager-assignment-panel .manager-generated { margin-top: 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+
 @media (max-width: 720px) {
   .manager-form-type { grid-template-columns: 1fr; gap: 0.45rem; }
   .manager-section-heading,
   .manager-review-heading { align-items: flex-start; flex-direction: column; }
   .manager-filter { width: min(18rem, 100%); }
   .manager-summary-meta { display: inline-flex; }
+  .manager-assignment-heading .manager-summary-meta { padding-top: 0; text-align: left; }
+  .manager-assignment-panel .manager-form { grid-template-columns: 1fr; }
+  .manager-assignment-panel .manager-form-type,
+  .manager-assignment-panel .manager-field-grid,
+  .manager-assignment-panel .manager-form-actions { grid-column: 1; }
+  .manager-assignment-panel .manager-form-type { grid-template-columns: 1fr; }
+  .manager-assignment-panel .manager-form-type > span,
+  .manager-assignment-panel .manager-form-type > select,
+  .manager-assignment-panel .manager-form-type > small { grid-column: 1; grid-row: auto; }
+  .manager-assignment-panel .manager-field-grid { grid-template-columns: 1fr; }
 }

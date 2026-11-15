@@ -1376,6 +1376,44 @@ def test_peace_process_route_rechecks_live_peace_role_without_changing_candidate
     assert unavailable["code"] == "PEACE_MEMBERSHIP_UNAVAILABLE"
 
 
+def test_public_discord_session_accepts_default_avatar_and_reports_live_verification(tmp_path):
+    bot = make_bot(tmp_path)
+    discord_user_id = 12345678901234567
+    token = bot.database.create_discord_oauth_session(
+        discord_user_id=str(discord_user_id),
+        username="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        avatar_hash=None,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    visitor = SimpleNamespace(id=200, name="Visitante")
+    member = SimpleNamespace(id=discord_user_id, roles=[visitor])
+    bot.guild = SimpleNamespace(get_member=lambda user_id: member if user_id == discord_user_id else None)
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/auth/discord/session",
+        cookies={"peace_discord_session": token},
+    )
+
+    assert status == 200
+    assert payload["identity"]["avatar_url"].startswith("https://cdn.discordapp.com/")
+    assert payload["server"]["is_member"] is True
+    assert payload["server"]["is_verified"] is True
+
+    member.roles = []
+    status, refreshed = run_configured_api(
+        bot,
+        "/api/auth/discord/session",
+        cookies={"peace_discord_session": token},
+    )
+
+    assert status == 200
+    assert refreshed["server"]["is_member"] is True
+    assert refreshed["server"]["is_verified"] is False
+
+
 def test_public_candidature_persists_pending_request_and_repairs_scan_card_idempotently(tmp_path):
     bot = make_bot(tmp_path)
     bot.settings.set_vagas_abertas = True
@@ -1403,9 +1441,7 @@ def test_public_candidature_persists_pending_request_and_repairs_scan_card_idemp
         "nickname": "candidate",
         "discovery": "Conheci a Peace por uma indicação de amigos.",
         "motivation": "Quero participar da comunidade com respeito, aprender as regras e contribuir com uma presença consistente.",
-        "terms_city": True,
-        "terms_discord": True,
-        "terms_conduct": True,
+        "terms_peace": True,
     }
 
     status, first = run_configured_api(
@@ -1464,9 +1500,7 @@ def test_public_candidature_requires_verified_visitor_and_discord_session(tmp_pa
         "nickname": "candidate",
         "discovery": "Conheci a Peace por uma indicação de amigos.",
         "motivation": "Quero participar da comunidade com respeito, aprender as regras e contribuir com uma presença consistente.",
-        "terms_city": True,
-        "terms_discord": True,
-        "terms_conduct": True,
+        "terms_peace": True,
     }
 
     status, rejected = run_configured_api(
@@ -1569,7 +1603,7 @@ def test_public_site_files_are_complete():
     assert headers.startswith("/*\n  Content-Security-Policy:")
     assert "*/" not in headers
     assert (member_root / "index.html").is_file()
-    for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros"):
+    for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros", "termos"):
         assert (site_root / route / "index.html").is_file()
     for route in ("estudos", "estudos/civil", "estudos/peace", "meu-processo"):
         assert (site_root / route / "index.html").is_file()
@@ -1674,6 +1708,7 @@ def test_public_site_files_are_complete():
 
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
+    terms_html = (site_root / "termos" / "index.html").read_text(encoding="utf-8")
     login_html = (site_root / "acessar" / "index.html").read_text(encoding="utf-8")
     assert "Começar entrada" in entry_html
     assert "flow-secondary-action" in entry_html
@@ -1707,6 +1742,10 @@ def test_public_site_files_are_complete():
     assert "Acesso web em preparação" not in script
     assert "discord-identity-menu" in script
     assert "avatar_url" in script
+    identity_script = (site_root / "js" / "discord-identity.js").read_text(encoding="utf-8")
+    assert "&& identity.avatar_url" not in identity_script
+    assert "data-entry-connect]" not in identity_script
+    assert "window.location.replace(payload.server.is_peace_member" not in identity_script
     assert "initMaterialCovers" in script
     assert "material-cover-fallback" in script
     assert "status unavailable" not in script
@@ -1715,6 +1754,12 @@ def test_public_site_files_are_complete():
     assert 'data-button-label' in login_html and 'button-spinner' in login_html
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert 'data-candidature-toast' in candidature_html
+    assert 'name="terms-peace"' in candidature_html
+    assert 'href="/termos/"' in candidature_html
+    assert "terms_city" not in candidature_html and "terms_discord" not in candidature_html and "terms_conduct" not in candidature_html
+    assert 'data-wizard-track' in candidature_html and 'role="progressbar"' in candidature_html
+    assert 'data-page="terms"' in terms_html
+    assert "Termos de Uso" in terms_html and "Privacidade" in terms_html and "Coleta de Dados" in terms_html
     assert 'Candidatura pronta para revisão.' not in script
     assert 'showCandidatureToast' in script
     assert 'firstLink.focus()' in script
@@ -1748,8 +1793,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261115-06"' in opening_html
-    assert 'src="/script.js?v=20261115-06"' in opening_html
+    assert 'href="/styles.css?v=20261115-07"' in opening_html
+    assert 'src="/script.js?v=20261115-07"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1793,8 +1838,8 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261115-06"' in html
-        assert 'src="/script.js?v=20261115-06"' in html
+        assert 'href="/styles.css?v=20261115-07"' in html
+        assert 'src="/script.js?v=20261115-07"' in html
         assert '<header' not in html
     clips_html = (site_root / "clipes" / "index.html").read_text(encoding="utf-8")
     assert 'data-page="clips"' in clips_html
@@ -1845,6 +1890,11 @@ def test_public_site_files_are_complete():
     assert 'payload.ok !== true' in manager_script
     assert "data-manager-retry" in manager_html
     assert "showUnavailable" in manager_script
+    assert 'name="exam_type"' in manager_html
+    assert 'value="tier_i"' in manager_html
+    assert 'value="tier_i_extra" disabled' in manager_html
+    assert "<details" not in manager_html
+    assert "exam_type: examType" in manager_script
     assert '<header' not in civil_html and '<header' not in peace_html
     assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
     assert 'class="study-reader" id="capitulos" tabindex="-1"' in civil_html
@@ -1865,10 +1915,10 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "clips.css?v=20261115-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
     notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
     assert 'data-notices-bell' in notices_html
     assert 'data-notices-badge' in notices_html
@@ -1943,8 +1993,8 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "data-member-sidebar-username" in member_html
     assert "Membro Peace confirmado" in member_html
     assert "member-logout-icon" in member_html
-    assert "member-nav-icon" in member_html
-    assert ".member-nav-icon" in member_stylesheet
+    assert "member-nav-icon" not in member_html
+    assert ".member-nav-icon" not in member_stylesheet
     assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html
     assert "site-header site-header--area" not in member_html
@@ -1958,7 +2008,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
-    assert member_html.count("<h1") == 4  # gate, overview, library and clips accessible headings
+    assert member_html.count("<h1") == 5  # gate, overview, library, partners and clips accessible headings
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
@@ -1966,6 +2016,8 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'requestedReturn === "/area/"' in (site_root / "js" / "login.js").read_text(encoding="utf-8")
     assert "getDiscordSession" not in member_script
     assert "is_peace_member" in member_script
+    assert "is_verified" in (site_root / "js" / "entry.js").read_text(encoding="utf-8")
+    assert "is_verified" in (site_root / "js" / "candidature.js").read_text(encoding="utf-8")
     assert "showConnectedNonMember" in member_script
     assert "showUnavailable" in member_script
     assert "showWorkspaceLoading" in member_script
@@ -1996,6 +2048,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/estudos /estudos/ 301" in redirect_lines
     assert "/meu-processo /meu-processo/ 301" in redirect_lines
     assert "/clipes /clipes/ 301" in redirect_lines
+    assert "/termos /termos/ 301" in redirect_lines
     assert "/estudos/civil /estudos/civil/leitor/ 301!" in redirect_lines
     assert "/estudos/civil/ /estudos/civil/leitor/ 301!" in redirect_lines
     assert "/estudos/peace /estudos/peace/leitor/ 301!" in redirect_lines
@@ -2007,7 +2060,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
-    for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros"):
+    for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros", "/termos"):
         assert f"{route} {route}/ 301!" not in redirects
 
 
@@ -2073,6 +2126,7 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/acessar", 301, "/acessar/"),
             ("/avisos", 301, "/avisos/"),
             ("/parceiros", 301, "/parceiros/"),
+            ("/termos", 301, "/termos/"),
             ("/clipes", 301, "/clipes/"),
             ("/estudos", 301, "/estudos/"),
             ("/estudos/civil", 301, "/estudos/civil/leitor/"),
@@ -2087,6 +2141,7 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/acessar/", 200, None),
             ("/avisos/", 200, None),
             ("/parceiros/", 200, None),
+            ("/termos/", 200, None),
             ("/clipes/", 200, None),
             ("/estudos/", 200, None),
             ("/estudos/civil/leitor/", 200, None),

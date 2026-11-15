@@ -5,7 +5,7 @@
   var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process", "exam"];
   var routeLabels = {
     "/": "Início",
-    "/area/": "Painel Peace",
+    "/area/": "Área de membros",
     "/estudos/": "Estudos",
     "/estudos/civil/": "Apostila Civil",
     "/estudos/peace/": "Manual da Peace",
@@ -14,6 +14,7 @@
     "/avisos/": "Avisos",
     "/parceiros/": "Parceiros",
     "/clipes/": "Clipes",
+    "/termos/": "Termos e privacidade",
     "/meu-processo/": "Meu processo",
     "/entrar/": "Entrada Peace",
     "/acessar/": "Conectar Discord"
@@ -362,11 +363,11 @@
       ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
       ENTRY_NOT_VERIFIED: "Conclua a verificação humana no Discord antes de enviar a candidatura.",
       DISCORD_IDENTITY_MISMATCH: "A conta conectada não corresponde à entrada identificada.",
-      PEACE_MEMBER: "Sua conta já possui o cargo Peace. Abrindo o painel.",
+      PEACE_MEMBER: "Sua conta já possui o cargo Peace. Abrindo a área de membros.",
       APPLICATION_CLOSED: "As vagas de Player estão fechadas no momento.",
       INVALID_IN_GAME_USERNAME: "O apelido precisa ter de 3 a 32 caracteres e uma única palavra.",
       INVALID_APPLICATION_FIELDS: "Revise os textos da candidatura e tente novamente.",
-      TERMS_REQUIRED: "Aceite os três termos para enviar a candidatura.",
+      TERMS_REQUIRED: "Aceite os Termos de Uso, Privacidade e Coleta de Dados para enviar a candidatura.",
       SET_REVIEW_UNAVAILABLE: "O pedido ainda não foi confirmado no scan-only. Tente novamente em instantes.",
       APPLICATION_UNAVAILABLE: "Não consegui registrar sua candidatura agora. Tente novamente em instantes.",
       OAUTH_NOT_CONFIGURED: "A conexão com Discord ainda não foi configurada neste ambiente.",
@@ -375,7 +376,7 @@
       OAUTH_STATE_INVALID: "A conexão expirou. Inicie novamente.",
       OAUTH_STATE_EXPIRED: "A conexão expirou. Inicie novamente.",
       PROCESS_UNAVAILABLE: "Não consegui consultar seu processo agora. Tente novamente em instantes.",
-      PEACE_ROLE_REQUIRED: "O painel Peace está disponível somente para contas com cargo Peace.",
+      PEACE_ROLE_REQUIRED: "A área de membros está disponível somente para contas com cargo Peace.",
       PEACE_MEMBERSHIP_UNAVAILABLE: "Não consegui confirmar seu cargo Peace agora. Tente novamente em instantes.",
       EXAM_LINK_NOT_FOUND: "Esse link de prova não existe ou expirou.",
       EXAM_IDENTITY_MISMATCH: "Este link pertence a outra conta Discord.",
@@ -385,6 +386,7 @@
       MANAGER_REQUIRED: "Somente Gerência pode acessar esta área.",
       INVALID_DEADLINE: "Escolha um prazo futuro para a prova.",
       DEADLINE_TOO_LONG: "O prazo escolhido ultrapassa o limite da equipe.",
+      EXAM_TYPE_UNAVAILABLE: "Este tipo de prova ainda não está disponível. Escolha Tier I.",
       EXAM_ASSIGNMENT_UNAVAILABLE: "Não consegui gerar a prova agora.",
       CANDIDATE_IDENTITY_MISMATCH: "O username informado não corresponde ao Discord ID encontrado no servidor."
     };

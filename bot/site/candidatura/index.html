@@ -7,8 +7,8 @@
     <meta name="description" content="Fluxo de candidatura para fazer parte da Peace.">
     <title>Entrar na Peace — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261115-06">
-    <script defer src="/script.js?v=20261115-06"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261115-07">
+    <script defer src="/script.js?v=20261115-07"></script>
   </head>
   <body data-page="candidatura">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -18,7 +18,7 @@
           <span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span>
           <span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>
         </a>
-        <a class="flow-header-link" href="/entrar/"><span aria-hidden="true">←</span> Entrada</a>
+        <a class="flow-header-link" href="/entrar/?from=candidature" data-public-return-direct aria-label="Voltar para Conte o necessário"><span aria-hidden="true">←</span> Conte o necessário</a>
       </header>
 
       <main id="conteudo" class="flow-main flow-main--application" tabindex="-1">
@@ -110,6 +110,7 @@
 
               <div class="wizard" data-wizard>
                 <div class="wizard-topline"><span data-wizard-label>Passo 1 de 4</span><span class="wizard-progress-text" data-wizard-progress>25%</span></div>
+                <div class="wizard-track" role="progressbar" aria-label="Entrevista concluída" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25"><span data-wizard-track></span></div>
                 <section class="wizard-panel is-active" data-wizard-panel="1" aria-labelledby="wizard-profile-title">
                   <p class="eyebrow">Seu apelido</p>
                   <h3 id="wizard-profile-title" tabindex="-1">Como devemos chamar você?</h3>
@@ -131,9 +132,7 @@
                   <h3 id="wizard-review-title" tabindex="-1">Tudo certo para enviar?</h3>
                   <dl class="review-list"><div><dt>Apelido</dt><dd data-review-nickname>Ainda não preenchido.</dd></div><div><dt>Como conheceu</dt><dd data-review-discovery>Ainda não preenchido.</dd></div><div><dt>Por que você</dt><dd data-review-motivation>Ainda não preenchido.</dd></div></dl>
                   <div class="terms-list" aria-label="Termos da candidatura">
-                    <label class="check-field"><input type="checkbox" name="terms-city" required><span>Li e aceito os termos da cidade parceira.</span></label>
-                    <label class="check-field"><input type="checkbox" name="terms-discord" required><span>Li e aceito os <a href="https://discord.com/terms" target="_blank" rel="noreferrer">Termos do Discord</a>.</span></label>
-                    <label class="check-field"><input type="checkbox" name="terms-conduct" required><span>Comprometo-me com a boa conduta na Peace.</span></label>
+                    <label class="check-field"><input type="checkbox" name="terms-peace" required><span>Li e aceito os três documentos da Peace: <a href="/termos/" target="_blank" rel="noreferrer">Termos de Uso, Privacidade e Coleta de Dados</a>.</span></label>
                   </div>
                   <button class="button button--light" type="button" data-application-submit>Enviar candidatura</button>
                   <p class="stage-note" data-application-result role="status" aria-live="polite"></p>

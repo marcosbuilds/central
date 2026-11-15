@@ -145,6 +145,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/avisos",
             "/parceiros",
             "/clipes",
+            "/termos",
             "/estudos",
             "/meu-processo",
             "/prova",

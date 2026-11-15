@@ -7,14 +7,14 @@
     <meta name="description" content="Gerência Peace — atribuição e revisão de provas.">
     <title>Gerar uma prova — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261115-06">
-    <script defer src="/script.js?v=20261115-06"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261115-07">
+    <script defer src="/script.js?v=20261115-07"></script>
   </head>
   <body data-page="manager">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
     <div class="site-shell manager-page">
       <div class="public-context-bar manager-topbar" role="banner" aria-label="Gerência de provas">
-        <a class="public-context-back" href="/area/" aria-label="Voltar ao painel Peace">
+        <a class="public-context-back" href="/area/" aria-label="Voltar à área de membros">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
           <span>Voltar</span>
         </a>
@@ -34,16 +34,16 @@
         <section class="manager-gate" data-manager-gate hidden aria-labelledby="manager-gate-title"><p class="eyebrow">Acesso restrito</p><h2 id="manager-gate-title">Conecte o Discord para verificar seu cargo.</h2><p>Somente o cargo de Gerência, conferido no servidor pelo bot, pode operar esta área.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fgerencia%2Fprovas%2F" data-manager-connect><span data-manager-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><button class="text-button" type="button" data-manager-retry hidden>Tentar validar novamente</button><p class="form-status" data-manager-message role="status" aria-live="polite"></p></section>
 
         <section class="manager-workspace" data-manager-workspace hidden aria-labelledby="assignment-form-title">
-          <details class="manager-assignment-panel">
-            <summary><strong id="assignment-form-title">Atribuir prova</strong><span class="manager-summary-meta">Prova de ingresso</span></summary>
+          <section class="manager-assignment-panel" aria-labelledby="assignment-form-title">
+            <div class="manager-section-heading manager-assignment-heading"><div><p class="eyebrow">Nova atribuição</p><h2 id="assignment-form-title">Gerar uma prova</h2></div><span class="manager-summary-meta">A ação fica registrada no histórico da Gerência.</span></div>
             <form class="manager-form" data-manager-form novalidate>
-              <div class="manager-form-type" aria-label="Tipo de atribuição"><div><span class="manager-type-label">Tipo de atribuição</span><strong>Prova de ingresso</strong></div><p class="manager-type-note">Tipo inicial disponível nesta versão.</p></div>
+              <label class="field manager-form-type"><span>Tipo de prova</span><select name="exam_type" required aria-describedby="exam-type-note"><option value="tier_i">Tier I — ingresso</option><option value="tier_i_extra" disabled>Tier I Extra — em breve</option><option value="tier_ii" disabled>Tier II — em breve</option><option value="promotion" disabled>Subida de cargo — em breve</option><option value="specialty" disabled>Especialidade — em breve</option></select><small id="exam-type-note">Somente Tier I está disponível nesta fase. Os demais tipos aparecem para deixar a evolução do fluxo explícita.</small></label>
               <div class="manager-field-grid"><label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" minlength="15" maxlength="25" required placeholder="000000000000000000"></label><label class="field"><span>Username no Discord</span><input name="candidate_username" maxlength="80" required placeholder="nome-do-candidato"></label></div>
-              <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required></label>
+              <label class="field manager-deadline"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required></label>
               <div class="manager-form-actions"><button class="button button--light" type="submit" data-manager-submit>Gerar atribuição <span class="button-icon" aria-hidden="true">→</span></button><p class="form-status" data-manager-form-message role="status" aria-live="polite"></p></div>
             </form>
             <section class="manager-generated" data-manager-generated hidden aria-labelledby="generated-title"><p class="eyebrow">Link pronto</p><h2 id="generated-title">Envie ao candidato.</h2><div class="manager-link-row"><code id="generated-link" data-manager-generated-link></code><button class="button button--outline" type="button" data-copy-target="#generated-link">Copiar link</button></div><p class="copy-status" data-copy-status role="status" aria-live="polite"></p></section>
-          </details>
+          </section>
 
           <section class="manager-history" aria-labelledby="history-title"><div class="manager-section-heading"><h2 id="history-title">Minhas atribuições</h2><span class="manager-history-type">Prova de ingresso</span></div><div class="manager-assignment-list" data-manager-list></div></section>
         </section>

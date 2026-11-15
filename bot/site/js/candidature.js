@@ -99,6 +99,11 @@
       return wizard && wizard.querySelector('[name="' + name + '"]');
     }
 
+    function termsAccepted() {
+      var field = getField("terms-peace");
+      return Boolean(field && field.checked);
+    }
+
     function readEntryToken() {
       try {
         var token = window.localStorage.getItem(entryStorageKey);
@@ -393,7 +398,7 @@
       ) {
         connectResult.textContent = inviteOpened
           ? "Convite aberto. Entre na Peace por ele; esta página acompanha sua entrada."
-          : "Convite gerado. Abra o Discord no painel abaixo para continuar.";
+          : "Convite gerado. Abra o Discord no bloco abaixo para continuar.";
       }
 
       if (payload.status === "verified") {
@@ -541,9 +546,7 @@
           motivation: getField("motivation") ? getField("motivation").value : ""
         },
         terms: {
-          city: Boolean(getField("terms-city") && getField("terms-city").checked),
-          discord: Boolean(getField("terms-discord") && getField("terms-discord").checked),
-          conduct: Boolean(getField("terms-conduct") && getField("terms-conduct").checked)
+          peace: termsAccepted()
         },
         submitted: applicationSubmitted,
         savedAt: Date.now()
@@ -704,6 +707,15 @@
           identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
           return;
         }
+        if (!entrySession && !manualEntryIdentity && document.body.dataset.discordConnected === "true" && typeof site.refreshDiscordSession === "function") {
+          setButtonBusy(refreshButton, true, "Validando…");
+          site.refreshDiscordSession().then(function (session) {
+            if (!resumeConnectedFlow(session) && refreshResult) refreshResult.textContent = "Ainda não consegui confirmar a entrada. Tente novamente em instantes.";
+          }).catch(function () {
+            if (refreshResult) refreshResult.textContent = "Não consegui atualizar a conta agora. Tente novamente em instantes.";
+          }).finally(function () { setButtonBusy(refreshButton, false); });
+          return;
+        }
         fetchEntryStatus(true).catch(function () { /* message is visible in the live region */ });
       });
     }
@@ -763,8 +775,11 @@
         panel.classList.toggle("is-active", active);
       });
       if (wizardLabel) wizardLabel.textContent = "Passo " + wizardStep + " de 4";
-      if (wizardPercent) wizardPercent.textContent = String(Math.round((wizardStep / 4) * 100)) + "%";
-      if (wizardTrack) wizardTrack.style.width = String((wizardStep / 4) * 100) + "%";
+      var progress = Math.round((wizardStep / 4) * 100);
+      if (wizardPercent) wizardPercent.textContent = String(progress) + "%";
+      if (wizardTrack) wizardTrack.style.width = String(progress) + "%";
+      var progressbar = wizard.querySelector('[role="progressbar"]');
+      if (progressbar) progressbar.setAttribute("aria-valuenow", String(progress));
       if (wizardBack) wizardBack.hidden = wizardStep === 1;
       if (wizardNext) wizardNext.hidden = wizardStep === 4;
       if (moveFocus) {
@@ -841,9 +856,7 @@
         nickname: getField("nickname") ? getField("nickname").value.trim() : "",
         discovery: getField("discovery") ? getField("discovery").value.trim() : "",
         motivation: getField("motivation") ? getField("motivation").value.trim() : "",
-        terms_city: Boolean(getField("terms-city") && getField("terms-city").checked),
-        terms_discord: Boolean(getField("terms-discord") && getField("terms-discord").checked),
-        terms_conduct: Boolean(getField("terms-conduct") && getField("terms-conduct").checked)
+        terms_peace: termsAccepted()
       };
       if (result) result.textContent = "Validando sua conta e publicando o pedido no scan-only…";
       setButtonBusy(submitButton, true, "Enviando…");
@@ -874,12 +887,10 @@
     }
 
     if (submitButton) submitButton.addEventListener("click", function () {
-      var missingTerm = Array.prototype.slice.call(wizard.querySelectorAll('[name^="terms-"]')).find(function (term) {
-        return !term.checked;
-      });
-      if (missingTerm) {
-        if (result) result.textContent = "Aceite os três termos para enviar.";
-        missingTerm.focus();
+      var termsField = getField("terms-peace");
+      if (!termsAccepted()) {
+        if (result) result.textContent = "Aceite os Termos de Uso, Privacidade e Coleta de Dados para enviar.";
+        if (termsField) termsField.focus();
         return;
       }
       submitApplication().catch(function () { /* message is visible in the live region */ });
@@ -893,9 +904,7 @@
     if (typeof draftValues.nickname === "string") getField("nickname").value = draftValues.nickname;
     if (typeof draftValues.discovery === "string") getField("discovery").value = draftValues.discovery;
     if (typeof draftValues.motivation === "string") getField("motivation").value = draftValues.motivation;
-    if (getField("terms-city")) getField("terms-city").checked = draftTerms.city === true;
-    if (getField("terms-discord")) getField("terms-discord").checked = draftTerms.discord === true;
-    if (getField("terms-conduct")) getField("terms-conduct").checked = draftTerms.conduct === true;
+    if (getField("terms-peace")) getField("terms-peace").checked = draftTerms.peace === true || (draftTerms.city === true && draftTerms.discord === true && draftTerms.conduct === true);
     wizard.querySelectorAll("[data-character-count-for]").forEach(function (counter) {
       var field = wizard.querySelector('[name="' + counter.dataset.characterCountFor + '"]');
       if (field) counter.textContent = String(field.value.length);
@@ -913,8 +922,19 @@
       var server = session && session.server ? session.server : {};
       if (!session) return false;
       if (server.is_peace_member === true) {
-        if (sessionNote) sessionNote.textContent = "Sua conta já possui o cargo Peace. Abrindo o painel para acompanhar o próximo passo.";
+        if (sessionNote) sessionNote.textContent = "Sua conta já possui o cargo Peace. Abrindo a área de membros para acompanhar o próximo passo.";
         window.location.replace("/area/");
+        return true;
+      }
+      if (server.is_member === true && server.is_verified !== true) {
+        if (connectButton) connectButton.hidden = true;
+        if (existingToggle) existingToggle.hidden = false;
+        setEntryUser({ mention: "@" + (session.identity && session.identity.username || "usuário") });
+        setVerificationState("pending", "Verificação pendente", "Sua conta já está na Peace. Abra o canal #verify, conclua a verificação humana e atualize este status.");
+        if (manualEntryNote) manualEntryNote.textContent = "A conta conectada já foi encontrada no servidor. Não é necessário gerar outro convite.";
+        if (sessionNote) sessionNote.textContent = "Conta encontrada no servidor. Conclua o #verify para liberar a entrevista.";
+        if (refreshResult) refreshResult.textContent = "Aguardando sua verificação no #verify.";
+        setStage(2, false);
         return true;
       }
       if (server.is_member === true) {

@@ -30,7 +30,7 @@
     site.getDiscordSession().then(function (session) {
       if (!session) return;
       var server = session.server || {};
-      show(server.is_peace_member === true ? "Discord confirmado. Abrindo o painel Peace…" : "Discord confirmado. Abrindo seu próximo passo…", "success");
+      show(server.is_peace_member === true ? "Discord confirmado. Abrindo a área de membros…" : "Discord confirmado. Abrindo seu próximo passo…", "success");
       window.setTimeout(function () {
         var destination = server.is_peace_member === true
           ? "/area/"

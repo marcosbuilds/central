@@ -72,6 +72,12 @@ PUBLIC_MEMBER_AUTH_THROTTLED = "Aguarde alguns minutos antes de solicitar outro 
 PUBLIC_MEMBER_SESSION_EXPIRED = "Sua sessão expirou. Entre novamente para continuar."
 PUBLIC_MEMBER_AUTH_UNAVAILABLE = "A autenticação está temporariamente indisponível. Tente novamente em instantes."
 PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a área."
+PUBLIC_EXAM_TYPE_CONFIG = {
+    "tier_i": {
+        "label": "Tier I",
+        "question_bank_version": CIVIL_BANK_VERSION,
+    },
+}
 PUBLIC_API_RATE_LIMITS = {
     "/api/status": (120, 60),
     "/api/media": (12, 60),
@@ -3331,9 +3337,15 @@ class PeaceBot(commands.Bot):
                 {"ok": False, "code": "INVALID_APPLICATION_FIELDS", "message": "Revise os textos da candidatura e tente novamente."},
                 status=400,
             )
-        if not all(payload.get(key) is True for key in ("terms_city", "terms_discord", "terms_conduct")):
+        if "terms_peace" in payload:
+            terms_accepted = payload.get("terms_peace") is True
+        else:
+            # Keep the old contract readable for already-open clients while
+            # the public form migrates to one Peace-owned document set.
+            terms_accepted = all(payload.get(key) is True for key in ("terms_city", "terms_discord", "terms_conduct"))
+        if not terms_accepted:
             return web.json_response(
-                {"ok": False, "code": "TERMS_REQUIRED", "message": "Aceite os três termos para enviar a candidatura."},
+                {"ok": False, "code": "TERMS_REQUIRED", "message": "Aceite os Termos de Uso, Privacidade e Coleta de Dados para enviar a candidatura."},
                 status=400,
             )
 
@@ -3869,7 +3881,7 @@ class PeaceBot(commands.Bot):
                 or channel.name.casefold().endswith("・parceiros")
                 or channel.name.casefold().endswith("・partners")
             ),
-            guild.text_channels,
+            getattr(guild, "text_channels", ()) or (),
         )
 
     async def public_member_auth_overview(self, request: web.Request) -> web.Response:
@@ -5314,10 +5326,21 @@ class PeaceBot(commands.Bot):
 
     @staticmethod
     def public_exam_assignment_payload(row: object) -> dict[str, object]:
+        question_bank_version = str(row["question_bank_version"])
+        exam_type = next(
+            (
+                key
+                for key, config in PUBLIC_EXAM_TYPE_CONFIG.items()
+                if config["question_bank_version"] == question_bank_version
+            ),
+            "unknown",
+        )
         return {
             "id": int(row["id"]),
             "candidate_username": str(row["candidate_username_snapshot"]),
-            "question_bank_version": str(row["question_bank_version"]),
+            "question_bank_version": question_bank_version,
+            "exam_type": exam_type,
+            "exam_type_label": PUBLIC_EXAM_TYPE_CONFIG.get(exam_type, {}).get("label", "Tipo não identificado"),
             "passing_score": int(row["passing_score"]),
             "deadline_at": str(row["deadline_at"]),
             "status": str(row["status"]),
@@ -5609,6 +5632,7 @@ class PeaceBot(commands.Bot):
                 "state": state,
                 "is_member": False if state == "not_member" else None,
                 "is_peace_member": False if state == "not_member" else None,
+                "is_verified": False if state == "not_member" else None,
                 "is_manager": False if state == "not_member" else None,
             }
         try:
@@ -5619,10 +5643,15 @@ class PeaceBot(commands.Bot):
             is_manager = management_role_member(member, self.settings)
         except (AttributeError, TypeError):
             is_manager = False
+        try:
+            is_verified = role_member(member, getattr(self.settings, "visitor_role_id", None))
+        except (AttributeError, TypeError):
+            is_verified = False
         return {
             "state": "peace" if is_peace_member else "member",
             "is_member": True,
             "is_peace_member": bool(is_peace_member),
+            "is_verified": bool(is_verified),
             "is_manager": bool(is_manager),
         }
 
@@ -5647,6 +5676,7 @@ class PeaceBot(commands.Bot):
                 status=401,
             )
         membership = None
+        peace_member = None
         if require_peace:
             membership = await self.public_discord_membership_payload(session["discord_user_id"])
             if membership["state"] == "unavailable" or membership["is_peace_member"] is None:
@@ -5663,9 +5693,19 @@ class PeaceBot(commands.Bot):
                     {
                         "ok": False,
                         "code": "PEACE_ROLE_REQUIRED",
-                        "message": "O painel Peace está disponível somente para contas com cargo Peace.",
+                        "message": "A área de membros está disponível somente para contas com cargo Peace.",
                     },
                     status=403,
+                )
+            peace_member, peace_member_state = await self.public_discord_member_state(session["discord_user_id"])
+            if peace_member_state != "member" or peace_member is None:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "code": "PEACE_MEMBERSHIP_UNAVAILABLE",
+                        "message": "Não foi possível confirmar sua conta no servidor agora.",
+                    },
+                    status=503,
                 )
         try:
             profile = self.database.candidate_profile(session["discord_user_id"])
@@ -5678,29 +5718,43 @@ class PeaceBot(commands.Bot):
             )
         if membership is None:
             membership = await self.public_discord_membership_payload(session["discord_user_id"])
-        return web.json_response(
-            {
-                "ok": True,
-                "identity": {
-                    "discord_id": str(session["discord_user_id"]),
-                    "username": str(session["username"]),
-                    "global_name": session["global_name"],
-                    "display_name": session["display_name"] or session["username"],
-                    "avatar_url": self.public_discord_avatar_url(session["discord_user_id"], session["avatar_hash"]),
-                },
-                "profile": {
-                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
-                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
-                    "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
-                    "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
-                },
-                "server": membership,
-                "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
+        response_payload: dict[str, object] = {
+            "ok": True,
+            "identity": {
+                "discord_id": str(session["discord_user_id"]),
+                "username": str(session["username"]),
+                "global_name": session["global_name"],
+                "display_name": session["display_name"] or session["username"],
+                "avatar_url": self.public_discord_avatar_url(session["discord_user_id"], session["avatar_hash"]),
+            },
+            "profile": {
+                "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
+                "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
+            },
+            "server": membership,
+            "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
+        }
+        if require_peace:
+            partner_items, partner_available = await self.public_channel_messages(
+                self.public_partner_channel(),
+                kind="partner",
+                limit=8,
+                requester=peace_member,
+            )
+            response_payload["partners"] = {
+                "state": "ready" if partner_items else ("empty" if partner_available else "unavailable"),
+                "source": "discord:parceiros",
+                "updated_at": datetime.now(timezone.utc).isoformat() if partner_available else None,
+                "stale": not partner_available,
+                "items": partner_items,
+                "message": None if partner_items else "Nenhum parceiro publicado agora.",
             }
-        )
+        return web.json_response(response_payload)
 
     async def public_peace_process(self, request: web.Request) -> web.Response:
-        """Return the panel process only after the live Peace role check."""
+        """Return the member-area process only after the live Peace role check."""
         return await self.public_exam_process(request, require_peace=True)
 
     async def public_exam_access(self, request: web.Request) -> web.Response:
@@ -5913,6 +5967,12 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da atribuição inválidos."}, status=400)
         candidate_id = str(payload.get("candidate_discord_user_id", "") or "").strip()
         candidate_username = str(payload.get("candidate_username", "") or "").strip()
+        exam_type = str(payload.get("exam_type", "tier_i") or "tier_i").strip().casefold()
+        if exam_type not in PUBLIC_EXAM_TYPE_CONFIG:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_TYPE_UNAVAILABLE", "message": "Este tipo de prova ainda não está disponível. Escolha Tier I."},
+                status=400,
+            )
         deadline = self.public_exam_deadline(payload.get("deadline_at"))
         if not re.fullmatch(r"[0-9]{15,25}", candidate_id):
             return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_ID", "message": "Informe um Discord ID válido."}, status=400)
@@ -5944,7 +6004,7 @@ class PeaceBot(commands.Bot):
                 candidate_discord_user_id=candidate_id,
                 candidate_username=candidate_username,
                 manager_discord_user_id=session["discord_user_id"],
-                question_bank_version=CIVIL_BANK_VERSION,
+                question_bank_version=PUBLIC_EXAM_TYPE_CONFIG[exam_type]["question_bank_version"],
                 passing_score=self.public_exam_passing_score(),
                 deadline_at=deadline.isoformat(),
             )

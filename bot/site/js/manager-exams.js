@@ -19,7 +19,11 @@
   function setText(node, value) { if (node) node.textContent = value; }
   function request(url, options) {
     return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 6000)
-      .then(function (response) { return response.json(); });
+      .then(function (response) { return response.json(); })
+      .then(function (payload) {
+        if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não foi possível continuar agora.");
+        return payload;
+      });
   }
   function setMessage(node, text, tone) { setText(node, text || ""); if (node) node.dataset.state = tone || "pending"; }
   function hideLoading() {
@@ -67,6 +71,11 @@
     if (item.status === "expired") return "Prazo encerrado";
     return "Aguardando candidato";
   }
+  function examTypeLabel(item) {
+    if (item && item.exam_type_label) return item.exam_type_label;
+    if (item && item.exam_type === "tier_i") return "Tier I";
+    return item && item.question_bank_version ? item.question_bank_version : "Tipo não identificado";
+  }
   function renderList(assignments) {
     if (!list) return;
     list.textContent = "";
@@ -84,7 +93,7 @@
       var heading = document.createElement("h3");
       heading.textContent = "#" + item.id + " · " + item.candidate_username;
       var detail = document.createElement("p");
-      detail.textContent = "Discord ID " + (item.candidate_discord_user_id || "—") + " · Prazo " + date(item.deadline_at) + " · " + (item.score === null ? "sem resultado" : "nota " + item.score + "/100");
+      detail.textContent = examTypeLabel(item) + " · Discord ID " + (item.candidate_discord_user_id || "—") + " · Prazo " + date(item.deadline_at) + " · " + (item.score === null ? "sem resultado" : "nota " + item.score + "/100");
       copy.appendChild(heading);
       copy.appendChild(detail);
       var badge = document.createElement("span");
@@ -132,14 +141,19 @@
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       var formData = new FormData(form);
+      var examType = String(formData.get("exam_type") || "").trim();
       var deadlineDate = new Date(String(formData.get("deadline_at") || ""));
+      if (examType !== "tier_i") {
+        setMessage(formMessage, "Somente a prova Tier I está disponível nesta fase.", "error");
+        return;
+      }
       if (!formData.get("candidate_discord_user_id") || !formData.get("candidate_username") || !Number.isFinite(deadlineDate.getTime())) {
         setMessage(formMessage, "Preencha o ID, o username e o prazo.", "error");
         return;
       }
       submitButton.disabled = true;
       setMessage(formMessage, "Gerando atribuição…", "pending");
-      request("/api/exams/assignments", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ candidate_discord_user_id: String(formData.get("candidate_discord_user_id")), candidate_username: String(formData.get("candidate_username")), deadline_at: deadlineDate.toISOString() }) })
+      request("/api/exams/assignments", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ exam_type: examType, candidate_discord_user_id: String(formData.get("candidate_discord_user_id")), candidate_username: String(formData.get("candidate_username")), deadline_at: deadlineDate.toISOString() }) })
         .then(function (payload) {
           setMessage(formMessage, "Atribuição criada. Copie o link antes de sair.", "success");
           if (generated) generated.hidden = false;

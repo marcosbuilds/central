@@ -125,8 +125,8 @@ the process page reads only records bound to the authenticated Discord ID.
 The route boundary is explicit:
 
 - Public static pages: `/`, `/estudos/`, both study detail pages and readers,
-  `/avisos/`, `/parceiros/`, `/clipes/`, `/meu-processo/`, `/entrar/`,
-  `/candidatura/`, and `/acessar/`.
+  `/avisos/`, `/parceiros/`, `/clipes/`, `/termos/`, `/meu-processo/`,
+  `/entrar/`, `/candidatura/`, and `/acessar/`.
 - Public pages with private data/actions: `/meu-processo/` and `/prova/`.
   Their APIs require the authenticated Discord identity and return only the
   candidate's own process; they do not require the Peace role.
@@ -194,6 +194,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/avisos/` | serves the dedicated public notices interface |
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
 | Netlify `/clipes/` | serves the public clip library; GET is public, interactions require the Peace role |
+| Netlify `/termos/` | serves the public Terms of Use, privacy, and data-collection document |
 | Netlify `/estudos/` | serves the public study library and material cards |
 | Netlify `/estudos/civil/` | redirects to the Civil reader |
 | Netlify `/estudos/civil/leitor/` | serves the Civil study reader and rendered pages |
@@ -201,9 +202,9 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/estudos/peace/leitor/` | serves the Peace convivencia reader and rendered pages |
 | Netlify `/meu-processo/` | serves the candidate-owned Discord-linked process shell |
 | Netlify `/estudos/a-peace` | redirects to `/estudos/peace/leitor/` as a readable alias |
-| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
+| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/termos`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
-| Netlify `/area/` | serves the gated member-area UI shell; its Peace panel is revealed only after the Discord session, live Peace role, complete profile/avatar, and candidate process are all confirmed |
+| Netlify `/area/` | serves the gated member-area UI shell; its content is revealed only after the Discord session, live Peace role, and candidate process are confirmed |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | Netlify `/api/media` | proxies the bounded public Discord media feed |
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
@@ -221,7 +222,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/auth/discord/session` | returns the authenticated Discord identity and guild state |
 | Netlify `/api/auth/discord/logout` | revokes the current Discord session |
 | Netlify `/api/exams/process` | returns only the authenticated candidate's assignments and score for the public process page |
-| Netlify `/api/peace/process` | returns the panel process only after the authenticated Discord account has a live Peace role |
+| Netlify `/api/peace/process` | returns the member-area process only after the authenticated Discord account has a live Peace role |
 | Netlify `/api/exams/access` | validates the individualized assignment link against the authenticated Discord ID |
 | Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
 | Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
@@ -240,7 +241,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/notices` | returns the bounded public notices feed |
 | ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
 | ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
-| ACLClouds `/api/peace/process` | rechecks the live Peace role before returning panel process data; 401, 403, or 503 remain distinct |
+| ACLClouds `/api/peace/process` | rechecks the live Peace role before returning member-area process data; 401, 403, or 503 remain distinct |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -249,22 +250,23 @@ disables this listener without changing the bot's other services. The public
 domain remains on Netlify; the API origin is used only by the explicit proxy
 rule.
 
-### Peace panel navigation
+### Peace member-area navigation
 
-The authenticated `/area/` panel uses a responsive side navigation. It is a
+The authenticated `/area/` member area uses a responsive side navigation. It is a
 navigation aid, not an authorization boundary: every destination must keep its
 own server-side checks and a hidden menu item must not be treated as protection.
-The sidebar stays inside the authenticated panel and uses real routes. Overview,
+The sidebar stays inside the authenticated area and uses real routes. Overview,
 the study library, and clips are views of the same shell: changing between them
 updates the URL state without rebuilding the authenticated document. The
 context title stays in the shell toolbar, while the notification bell opens the
 notices panel on demand:
 
-- `/area/` — the overview and member-owned process summary;
+- `/area/` — the overview, score, proof summary, and member-owned process;
 - `/estudos/` — public study library;
 - the notification bell in `/area/` — on-demand public notices panel;
-- `/parceiros/` — public partner directory;
-- `/clipes/` — public YouTube-inspired clip library;
+- `/parceiros/` — the partner view inside the member area, with the public directory as its direct route;
+- `/clipes/` — the clip view inside the member area, with the public library as its direct route;
+- `/termos/` — the public Terms of Use, privacy, and data-collection document;
 - `/meu-processo/` — candidate-owned process view;
 - `/gerencia/provas/` — shown only for the manager capability and still guarded
   by the server.
@@ -466,10 +468,11 @@ home page. A transient timeout keeps the local session and offers a retry.
 The authenticated area uses one compact hierarchy, no unauthenticated preview,
 and source-aware blocks with `updated_at`, `source`, and `stale` semantics. It
 uses bounded polling while the tab is visible; it does not create a WebSocket
-until the Discord sources expose an event contract. The required
-terms remain on the final review step, while the draft is persisted silently on
-input, step changes, and page hide. The candidature header is hidden on desktop
-and mobile; the desktop return link remains beside the title.
+until the Discord sources expose an event contract. The final review step
+contains one Peace-owned acceptance linking the Terms of
+Use, privacy, and data-collection document. The draft is persisted silently on
+input, step changes, and page hide. The candidature header remains minimal on
+desktop and mobile; its return link stays beside the title.
 
 ## Verification
 
@@ -486,7 +489,7 @@ The public route tests exercise the Netlify artifact contract, the ACL API
 allowlist, CORS behavior, health response, media filtering, and the fixed
 status proxy rule without contacting Discord or a production provider. A
 production smoke check should verify the Netlify homepage, `/discord`,
-`/entrar/`, `/candidatura/`, `/acessar/`, `/avisos/`, `/parceiros/`, `/area/`,
+`/entrar/`, `/candidatura/`, `/acessar/`, `/avisos/`, `/parceiros/`, `/termos/`, `/area/`,
 `/api/status`, and `/api/media`, followed by the direct ACL `/healthz`,
 `/api/status`, and `/api/media` routes. Custom-domain TLS
 remains controlled by Netlify after DNS propagation. The current redesign is

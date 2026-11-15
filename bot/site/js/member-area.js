@@ -30,6 +30,8 @@
     var memberName = workspace && workspace.querySelector("[data-member-name]");
     var memberUsername = workspace && workspace.querySelector("[data-member-username]");
     var memberRoles = workspace && workspace.querySelector("[data-member-roles]");
+    var memberScore = workspace && workspace.querySelector("[data-member-score]");
+    var memberAssignmentCount = workspace && workspace.querySelector("[data-member-assignment-count]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
     var memberAvatarFallback = workspace && workspace.querySelector("[data-member-avatar-fallback]");
     var connection = workspace && workspace.querySelector("[data-member-connection]");
@@ -38,17 +40,26 @@
     var notificationClose = workspace && workspace.querySelector("[data-member-notifications-close]");
     var notificationList = workspace && workspace.querySelector("[data-member-notification-list]");
     var notificationBadge = workspace && workspace.querySelector("[data-member-notification-badge]");
+    var partnerList = workspace && workspace.querySelector("[data-member-partners-list]");
+    var navCounts = {
+      clips: workspace && workspace.querySelector('[data-member-nav-count="clips"]'),
+      proofs: workspace && workspace.querySelector('[data-member-nav-count="proofs"]')
+    };
+    var managementGroup = workspace && workspace.querySelector("[data-member-management-group]");
     var logout = workspace && workspace.querySelector("[data-member-logout]");
     var retry = gate && gate.querySelector("[data-member-retry]");
     var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
     var notificationsLoading = false;
     var notificationsLoaded = false;
+    var currentProcess = null;
     var currentView = "overview";
     var shellReadyStorageKey = "peace.member.shell-ready.v1";
+    var seenNoticeStorageKey = "peace.member.notices.seen.v1";
     var viewTitles = {
       overview: "Visão geral",
       library: "Área de estudo / Biblioteca",
+      partners: "Parceiros",
       clips: "Clipes"
     };
 
@@ -67,6 +78,71 @@
     function date(value) {
       if (!value) return "—";
       try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value; }
+    }
+    function setNavCount(name, count) {
+      var node = navCounts[name];
+      if (!node) return;
+      var value = Math.max(0, Number(count) || 0);
+      node.textContent = value > 99 ? "99+" : String(value);
+      node.hidden = value === 0;
+    }
+    function noticeKey(item) {
+      return String((item && (item.id || item.url)) || "") + "|" + String(item && item.published_at || "") + "|" + String(item && item.text || "");
+    }
+    function readSeenNoticeKeys() {
+      try {
+        var parsed = JSON.parse(window.localStorage.getItem(seenNoticeStorageKey) || "[]");
+        return Array.isArray(parsed) ? parsed.filter(function (value) { return typeof value === "string"; }) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+    function writeSeenNoticeKeys(keys) {
+      try { window.localStorage.setItem(seenNoticeStorageKey, JSON.stringify(keys.slice(-120))); } catch (error) { /* optional */ }
+    }
+    function markNoticesSeen(items) {
+      var keys = readSeenNoticeKeys();
+      items.forEach(function (item) {
+        var key = noticeKey(item);
+        if (key && keys.indexOf(key) < 0) keys.push(key);
+      });
+      writeSeenNoticeKeys(keys);
+    }
+    function renderPartners(payload) {
+      if (!partnerList) return;
+      var block = payload && payload.partners ? payload.partners : {};
+      var items = Array.isArray(block.items) ? block.items : [];
+      partnerList.textContent = "";
+      if (!items.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = block.state === "unavailable"
+          ? "A fonte de parceiros está indisponível agora. Tente novamente em instantes."
+          : "Ainda não há parceiros publicados pela gestão.";
+        partnerList.appendChild(empty);
+        return;
+      }
+      items.forEach(function (item) {
+        var article = document.createElement("article");
+        article.className = "member-partner-item";
+        article.setAttribute("role", "listitem");
+        var heading = document.createElement("h2");
+        heading.textContent = item.title || item.author || "Parceiro Peace";
+        var copy = document.createElement("p");
+        copy.textContent = item.text || "Projeto aprovado pela gestão da Peace.";
+        article.appendChild(heading);
+        article.appendChild(copy);
+        if (/^https?:\/\//i.test(String(item.url || ""))) {
+          var link = document.createElement("a");
+          link.className = "text-link";
+          link.href = String(item.url);
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Abrir origem ↗";
+          article.appendChild(link);
+        }
+        partnerList.appendChild(article);
+      });
     }
     function statusLabel(item) {
       if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
@@ -132,14 +208,16 @@
       var sourceState = payload && payload.source ? payload.source.state : "unavailable";
       notificationList.textContent = "";
 
+      var seenKeys = readSeenNoticeKeys();
+      var unreadCount = items.filter(function (item) { return seenKeys.indexOf(noticeKey(item)) < 0; }).length;
       if (notificationBadge) {
-        notificationBadge.textContent = items.length > 9 ? "9+" : String(items.length);
-        notificationBadge.hidden = items.length === 0;
+        notificationBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
+        notificationBadge.hidden = unreadCount === 0;
       }
       if (notificationTrigger) {
         notificationTrigger.setAttribute(
           "aria-label",
-          items.length ? (items.length === 1 ? "1 aviso público. Abrir avisos" : items.length + " avisos públicos. Abrir avisos") : "Abrir avisos"
+          unreadCount ? (unreadCount === 1 ? "1 aviso não visto. Abrir avisos" : unreadCount + " avisos não vistos. Abrir avisos") : "Abrir avisos"
         );
       }
 
@@ -186,6 +264,11 @@
         }
         notificationList.appendChild(article);
       });
+      if (notificationPanel && !notificationPanel.hidden) {
+        markNoticesSeen(items);
+        if (notificationBadge) notificationBadge.hidden = true;
+        if (notificationTrigger) notificationTrigger.setAttribute("aria-label", "Abrir avisos");
+      }
     }
 
     function loadNotifications() {
@@ -234,6 +317,7 @@
     }
 
     function resetReusableSurface() {
+      currentProcess = null;
       if (memberName) memberName.textContent = "membro";
       if (memberUsername) memberUsername.textContent = "@discord";
       if (memberRoles) {
@@ -242,6 +326,18 @@
       }
       if (memberAvatar) memberAvatar.hidden = true;
       if (memberAvatarFallback) memberAvatarFallback.hidden = true;
+      if (memberScore) memberScore.textContent = "—";
+      if (memberAssignmentCount) memberAssignmentCount.textContent = "0";
+      setNavCount("proofs", 0);
+      setNavCount("clips", 0);
+      if (managementGroup) managementGroup.hidden = true;
+      if (partnerList) {
+        partnerList.textContent = "";
+        var partnerLoading = document.createElement("p");
+        partnerLoading.className = "member-block-state";
+        partnerLoading.textContent = "Consultando parceiros publicados…";
+        partnerList.appendChild(partnerLoading);
+      }
       if (sidebarName) sidebarName.textContent = "membro";
       if (sidebarUsername) sidebarUsername.textContent = "@discord";
       if (sidebarState) sidebarState.textContent = "Validando conta…";
@@ -308,13 +404,16 @@
       else if (nextUrl !== window.location.pathname + window.location.search + window.location.hash) window.history.pushState({}, document.title, nextUrl);
 
       currentView = nextView;
-      if (notificationPanel && !notificationPanel.hidden) setNotificationsOpen(false, false);
+      if (notificationTrigger) notificationTrigger.hidden = nextView !== "overview";
+      if (notificationPanel && (!notificationPanel.hidden || nextView !== "overview")) setNotificationsOpen(false, false);
       memberViews.forEach(function (node) { node.hidden = node.dataset.memberView !== nextView; });
       if (memberContextTitle) memberContextTitle.textContent = viewTitles[nextView];
       syncSidebarLocation();
+      if (nextView === "overview") loadNotifications();
 
       var activeView = memberViews.find(function (node) { return node.dataset.memberView === nextView; });
       if (nextView === "library" && activeView && typeof site.initStudies === "function") site.initStudies(activeView);
+      if (nextView === "partners" && activeView) renderPartners(currentProcess || {});
       if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(activeView);
       if (moveFocus && activeView) {
         var target = activeView.querySelector("[data-member-view-focus], input, a, button");
@@ -330,7 +429,7 @@
       return Boolean(
         identity
         && /^[0-9]{15,25}$/.test(String(identity.discord_id || ""))
-        && identity.avatar_url
+        && String(identity.username || identity.global_name || identity.display_name || "").trim()
       );
     }
 
@@ -352,34 +451,19 @@
     function renderOverview(session, process) {
       if (!overview) return;
       var data = process || {};
+      currentProcess = data;
       var identity = data.identity || (session && session.identity) || {};
       var profile = data.profile || {};
       var assignments = Array.isArray(data.assignments) ? data.assignments : [];
       overview.textContent = "";
-
-      var progress = document.createElement("section");
-      progress.className = "member-progress-card member-data-block--wide";
-      progress.id = "member-process";
-      progress.setAttribute("aria-label", "Seu andamento");
-      var summary = document.createElement("div");
-      summary.className = "member-progress-grid";
-      [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Status", profile.passed ? "Aprovado" : assignments.length ? "Em andamento" : "Sem prova"]].forEach(function (entry) {
-        var item = document.createElement("div");
-        var label = document.createElement("small");
-        label.textContent = entry[0];
-        var value = document.createElement("strong");
-        value.textContent = entry[1];
-        item.appendChild(label);
-        item.appendChild(value);
-        summary.appendChild(item);
-      });
-      progress.appendChild(summary);
-      overview.appendChild(progress);
+      if (memberScore) memberScore.textContent = profile.score == null ? "—" : String(profile.score) + "/" + String(profile.score_scale || 100);
+      if (memberAssignmentCount) memberAssignmentCount.textContent = String(assignments.length);
+      setNavCount("proofs", assignments.length);
 
       var assignmentsBlock = document.createElement("section");
       assignmentsBlock.className = "member-data-block member-data-block--wide";
       assignmentsBlock.id = "member-results";
-      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><h2 id=\"member-results-title\">Atribuições</h2></div>";
+      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><h2 id=\"member-results-title\">Provas</h2></div>";
       if (!assignments.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
@@ -402,9 +486,11 @@
         assignmentsBlock.appendChild(list);
       }
       overview.appendChild(assignmentsBlock);
+      renderPartners(data);
 
       var managerLink = document.querySelector("[data-member-manager]");
       if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
+      if (managementGroup) managementGroup.hidden = !(data.server && data.server.is_manager === true);
       if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
       if (memberUsername) memberUsername.textContent = identity.username ? "@" + identity.username : "@discord";
       renderRoles(data.server);
@@ -436,13 +522,13 @@
       if (retry) retry.hidden = mode !== "retry";
     }
     function showDisconnected(message) {
-      configureGate("connect", message || "Conecte uma conta Discord com cargo Peace para abrir o painel. Se você ainda não tem o cargo, siga para Meu processo.");
+      configureGate("connect", message || "Conecte uma conta Discord com cargo Peace para abrir a área de membros. Se você ainda não tem o cargo, siga para Meu processo.");
     }
     function showConnectedNonMember() {
       configureGate("set", "Discord conectado, mas esta conta ainda não tem cargo Peace. Continue pelo processo público para solicitar a setagem.");
     }
     function showUnavailable() {
-      configureGate("retry", "Não foi possível confirmar a conexão com Discord agora. O painel continua bloqueado até a verificação terminar; tente novamente em instantes.");
+      configureGate("retry", "Não foi possível confirmar a conexão com Discord agora. A área continua bloqueada até a verificação terminar; tente novamente em instantes.");
     }
     function showWorkspaceLoading() {
       if (gate) gate.hidden = true;
@@ -565,8 +651,12 @@
       if (sidebarMedia.addEventListener) sidebarMedia.addEventListener("change", syncSidebarMode);
       else if (sidebarMedia.addListener) sidebarMedia.addListener(syncSidebarMode);
     }
+    window.addEventListener("peace:clips-loaded", function (event) {
+      var detail = event && event.detail ? event.detail : {};
+      if (detail.count != null) setNavCount("clips", detail.count);
+    });
     if (logout) logout.addEventListener("click", function () {
-      if (!window.confirm("Sair da conta Discord e fechar o Painel Peace?")) return;
+      if (!window.confirm("Sair da conta Discord e fechar a área de membros?")) return;
       clearShellReady();
       logout.disabled = true;
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })

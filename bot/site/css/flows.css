@@ -242,6 +242,17 @@
 .notice-bell [data-notices-badge] { position: absolute; top: -0.45rem; right: -0.5rem; display: grid; min-width: 1.3rem; min-height: 1.3rem; place-items: center; padding: 0 0.25rem; border: 2px solid var(--canvas); border-radius: 999px; background: var(--warning); color: var(--canvas); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.5rem; font-weight: 800; line-height: 1; }
 .public-hero-mark strong { margin-top: 1.5rem; color: var(--text); font-size: 0.9rem; }
 .public-hero-mark p { max-width: 20rem; margin: 0.45rem 0 1.2rem; color: var(--muted); font-size: 0.77rem; line-height: 1.65; }
+.terms-main { padding-bottom: clamp(4rem, 8vw, 7rem); }
+.terms-document { max-width: 54rem; margin-top: clamp(3rem, 7vw, 6rem); border-top: 1px solid var(--border); }
+.terms-section { padding: clamp(1.8rem, 4vw, 3rem) 0; border-bottom: 1px solid var(--border); }
+.terms-section--last { border-bottom: 0; }
+.terms-section h2 { max-width: 42rem; margin: 0 0 1rem; color: var(--text); font-size: clamp(1.65rem, 3.5vw, 3rem); letter-spacing: -0.065em; line-height: 0.98; }
+.terms-section p { max-width: 48rem; margin: 0.75rem 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.8; }
+.terms-section .eyebrow { margin: 0 0 0.85rem; }
+.terms-section .terms-list { display: grid; gap: 0.85rem; margin: 1.35rem 0 0; padding: 0; border-top: 0; list-style: none; }
+.terms-section .terms-list li { padding-left: 1rem; border-left: 2px solid var(--border); color: var(--muted); font-size: 0.8rem; line-height: 1.75; }
+.terms-section .terms-list strong { color: var(--text); }
+.terms-note { color: var(--quiet) !important; font-size: 0.68rem !important; }
 .notice-board, .partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); }
 .notice-board-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 1.35rem; border-bottom: 1px solid var(--border); }
 .notice-board-heading .eyebrow { margin-bottom: 0.65rem; }

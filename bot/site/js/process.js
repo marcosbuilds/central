@@ -114,7 +114,7 @@
     if (membershipNoteNode) {
       membershipNoteNode.hidden = false;
       var membershipCopy = membership.state === "peace"
-        ? "Sua conta já está vinculada ao servidor Peace. O painel público pode mostrar o processo e a prova atribuída."
+        ? "Sua conta já está vinculada ao servidor Peace. A área de membros pode mostrar o processo e a prova atribuída."
         : membership.state === "member"
           ? "Sua conta está no servidor, mas o cargo Peace ainda não foi localizado. Use o fluxo de entrada para pedir set quando a Gerência orientar."
           : membership.state === "not_member"
@@ -163,7 +163,7 @@
     setText(usernameNode, "A identidade não foi liberada.");
     setText(membershipNode, "Confirmação pendente.");
     if (membershipNoteNode) {
-      membershipNoteNode.textContent = "O painel permanece fechado até o Discord e o Peace Tools responderem com dados completos.";
+      membershipNoteNode.textContent = "A área permanece fechada até o Discord e o Peace Tools responderem com dados completos.";
       membershipNoteNode.hidden = false;
       membershipNoteNode.dataset.state = "unavailable";
     }

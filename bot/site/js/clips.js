@@ -23,7 +23,11 @@
     return !view || !view.hidden;
   }
 
-  if (!list || list.dataset.clipsReady === "true") return;
+  if (!list) return;
+  if (list.dataset.clipsReady === "true") {
+    if (typeof list.__peaceClipsLoad === "function") list.__peaceClipsLoad();
+    return;
+  }
   list.dataset.clipsReady = "true";
 
   function node(tag, className, text) {
@@ -423,6 +427,9 @@
     if (status) status.textContent = total
       ? total + (total === 1 ? " clip encontrado." : " clipes encontrados.") + (payload.updated_at ? " Fonte atualizada." : "")
       : "A busca está pronta.";
+    if (typeof window.CustomEvent === "function") {
+      window.dispatchEvent(new CustomEvent("peace:clips-loaded", { detail: { count: total } }));
+    }
   }
 
   function load() {
@@ -455,12 +462,17 @@
         }
         if (retry) retry.hidden = false;
         if (status) status.textContent = hadCards ? "Atualização indisponível." : "Tente novamente em instantes.";
+        if (typeof window.CustomEvent === "function") {
+          window.dispatchEvent(new CustomEvent("peace:clips-loaded", { detail: { count: hadCards ? list.querySelectorAll(".clip-card").length : 0 } }));
+        }
       })
       .finally(function () {
         loading = false;
         if (submit) submit.disabled = false;
       });
   }
+
+  list.__peaceClipsLoad = load;
 
   if (form) form.addEventListener("submit", function (event) {
     if (!isActiveView()) return;
