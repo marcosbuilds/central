@@ -4,7 +4,7 @@ First slice of the Real Peace bot in Python:
 
 - captures members with the `Peace` role, complete role data, and bot messages;
 - persistently assigns Peace IDs in SQLite, reserving `0` for the founder;
-- `Request set` flow with nickname, national ID, phone, source, and recruiter modal fields;
+- `Request set` flow with nickname, national ID, phone, source, and reviewer selection fields;
 - private tickets with `Poke`, closing, renaming, and claiming;
 - ticket category selection, private calls, DM notices, and action blocking after closing;
 - time tracking, farming logs, and absence requests;
@@ -15,18 +15,129 @@ First slice of the Real Peace bot in Python:
 
 ```powershell
 python -m pip install -e .
-python -m bot.snap
+python -m bot.commands.snapshot
 python -m bot.main
-python -m bot.nick --apply
+python -m bot.commands.nick --apply
 ```
+
+The repository keeps the bot source in `bot/`, with `bot/main.py` as its
+compatibility entry point. The provider deployment copies the contents of
+`bot/` into its runtime root, so its startup command is `python -u main.py` and
+there is no `bot/` directory in production. Supporting code remains grouped by
+responsibility under `config/`, `core/`, `integrations/`, `persistence/`,
+`operations/`, and `commands/` inside that deployment payload.
 
 `snapshot` is read-only against Discord and writes the JSON snapshot to
 `data/snapshots/` and the database to `data/`. It does not rename members or
 modify roles. The bot applies a role and nickname only after a candidate
 completes the set flow and the panel is open.
 
-To open applications, set `SET_VAGAS_ABERTAS=true` in `.env` and restart the
-bot. The existing server panel remains closed while the value is `false`.
+Player applications are open by default. Set `SET_VAGAS_ABERTAS=false` to close
+them. The public Request set panel now opens only the Player path; Developer and
+Staff applications are not offered from that panel. Restart the bot after
+changing the vacancy setting.
+
+Founder and Management operational actions live behind the global `/start`
+command in the bot's direct messages. Founder sees the confirmed `Excluir
+usuário` flow; its selector is populated from current Peace members fetched
+from the server (25 per page), rather than from users suggested by the DM
+conversation. Management sees `Avisar`, which collects one follow-up DM and
+publishes its Markdown and attachments to the configured announcements channel.
+The two actions have independent role guards and never create or duplicate
+server roles. Founder and Management authorization reuse the existing
+structural role identities; they do not add duplicate role environment
+settings.
+Founder deletion keeps the member in the server, applies or
+preserves `Not Verified`, removes only manageable roles, and releases a valid
+Peace ID only after the Discord changes succeed.
+
+When a Player set is approved, the member receives one private welcome card
+with the Peace ID, next step, and the approving member's Discord avatar.
+
+The persistent welcome, set, verification, support, and operations panels use a
+wide banner embed followed by a short explanation card. Their interactive
+buttons keep the existing styles and stable component IDs. Availability is
+enforced by the configured application paths and select options, while each
+card explains what the panel does and why it exists. The set card also keeps
+its existing Peace rule, and the verification card explains the CAPTCHA flow.
+If `Not Verified` is manually reapplied to an existing `Visitor`, the bot
+removes `Visitor`, restores the verification panel, and requires the CAPTCHA
+again.
+
+Operational action records are sent as embeds to the channel configured by
+`DISCORD_LOG_CHANNEL_ID`. Point, farm, and automatic-moderation records use
+vertical fields and include the actor's display avatar when Discord provides
+one. Founder actions, announcements, Peace-ID reservations and return
+approvals use the same card format. Runtime diagnostics remain application
+logs and are not copied into the server channel.
+
+Human members enter with the visual `Not Verified` role. The bot exposes one
+verification channel, `verify`, only to that role; its persistent panel starts
+a short CAPTCHA image, and only a correct selection grants `Visitor` while
+removing `Not Verified`. A wrong or expired selection does not grant access and
+returns the member to the start button for another attempt. Bots and members
+with `Peace` never receive `Visitor` from this flow. A manually approved set
+grants `Peace` and the visual `Intern` role, with no global permissions on the
+latter.
+
+Peace nicknames use `F` for Founder. Access and status roles such as `Peace`,
+`Dev`, `Staff`, `Management`, `Visitor`, and `Not Verified` do not create a
+prefix. `Manager ⎰ Deputy Delegate` is a visual role and uses the stable code
+`DEL` when Discord's “display members of this role separately” (`hoist`) flag is
+enabled. The remaining known visual roles keep their established short codes
+(`Intern` → `I`, `Rookie ⎰ Agent` → `R`, `Streamer` → `S`). The highest live
+visual role by Discord position wins, and nickname codes use uppercase ASCII
+tokens so they remain readable and searchable on every Discord client.
+
+The same rule is used by runtime synchronization, snapshots, return approval,
+and `peace-nick`; their shared formatter accepts one-to-four-letter codes,
+preserves the alias, and never truncates the complete Peace ID. Offline
+name-only data keeps the known visual-role fallback so historical records remain
+readable. Startup reconciliation runs the nickname repair before panel history
+reconciliation and merges the gateway cache with Discord's complete member
+iterator, so existing members are repaired even when a slow panel sync would
+otherwise delay or prevent the backfill.
+
+When a member leaves with Peace, or loses Peace while remaining in the server,
+the ID is marked `reserved` and is never silently reused. The bot records the
+reason and the actor when Discord's audit log provides one. A returning member
+is sent directly to `scan-only` with a return card explaining the reason; the
+normal Player interview is not opened. The reservation remains in place until
+an authorized review succeeds. If Discord cannot apply the return roles or
+nickname, the database approval is rolled back and the request remains pending.
+
+The bot does not create or edit channel permission overwrites. Channel and
+category permissions are operator-managed; the verification panel only edits
+its own messages in the already configured channel.
+
+When `DISCORD_AFK_CHANNEL_ID` is configured, the bot keeps one idempotent voice
+connection in that channel while online and applies self-mute after startup,
+reconnect, or a manual move. The setting is optional for local runs; the
+production value belongs in the provider environment and is not part of the
+public repository.
+
+Members without an access role cannot see the server structure. After
+verification, `Visitor` can read `rules`, use `visitor-chat`, access `SUPPORT`,
+and see `AFK` without connecting. `spam-control` is private to the bot and is
+not a human-access channel.
+
+The visible Discord structure uses English names. The maintained categories
+are `RECEPTION`, `DEVELOPERS`, `RECORDS`, `SOCIAL LOUNGE`, `SUPPORT`, `CALLS`,
+`PRIVATE CALLS`, `STAFF`, `VERIFICATION`, and `CLOSED TICKETS`; visual role
+labels are also English and do not grant authorization.
+
+The structural migration can create the verification surface, normalize role
+names, save an ignored local role-membership snapshot, clear visual-role
+permissions, and remove the requested legacy roles. Use
+`python -m bot.operations.maintenance --apply --remove-chat-elite` only after
+reviewing the dry run. The `--remove-chat-elite` flag is intentionally explicit
+because channel deletion is irreversible.
+
+The Central bridge is optional at startup but, when enabled, requires an
+explicit `DISCORD_CENTRAL_ACCESS_ROLE_ID`, a loopback-only
+`CENTRAL_BRIDGE_URL`, and a randomly generated `CENTRAL_BRIDGE_KEY` of at least
+32 characters. Never commit that key. The desktop receives a one-time DM code,
+then a short session bound to its installation client and configured project.
 
 Iris support uses a local model. Keep the service available at `IRIS_URL` before
 starting the bot. Iris builds context from ticket data and recent messages;
@@ -61,6 +172,7 @@ uses management, chat, and previous-ticket information as controlled context,
 but does not store raw conversations as memory or reveal internal content to the
 requester.
 
-`bot.nick` changes only the final ID portion of existing nicknames and preserves
-the in-game name. It automatically skips the server owner and members above the
-bot's hierarchy; roles are not removed or added by this migration.
+`bot.commands.nick` recalculates the visual code and final ID portion of existing
+nicknames while preserving the in-game name. It automatically skips the server
+owner and members above the bot's hierarchy; roles are not removed or added by
+this migration.

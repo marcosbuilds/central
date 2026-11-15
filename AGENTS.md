@@ -27,7 +27,7 @@ The public boundary is strict:
 ```text
 .
 ├── app/       # Central desktop and shared core
-├── bot/       # companion automation bot
+├── bot/       # companion automation bot; its contents deploy to the provider root
 ├── db/        # database migrations
 ├── ops/       # gateway, installer, and operational scripts
 ├── tests/     # application and bot tests

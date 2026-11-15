@@ -210,6 +210,35 @@
 
         </Grid>
 
+        <local:AutomationStateGrid x:Name="CentralAuthOverlay"
+              Grid.ColumnSpan="2"
+              Panel.ZIndex="50"
+              FocusManager.IsFocusScope="True"
+              KeyboardNavigation.TabNavigation="Cycle"
+              AutomationProperties.Name="Autenticação da Central">
+            <Border Background="{StaticResource ScrimBrush}" />
+            <local:AutomationDialogBorder Width="430"
+                    MaxWidth="700"
+                    Margin="20"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource DialogPanel}"
+                    AutomationProperties.Name="Acesso à Central"
+                    AutomationProperties.IsDialog="True">
+                <StackPanel>
+                    <TextBlock Text="Entrar na Central" Style="{StaticResource DisplayText}" />
+                    <TextBlock Text="Informe seu ID Peace. O bot validará seu acesso e enviará um código secreto por mensagem privada no Discord." Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <TextBlock Text="ID PEACE" Style="{StaticResource CaptionText}" Foreground="{StaticResource BlueBrush}" Margin="0,24,0,4" />
+                    <TextBox x:Name="CentralPeaceIdTextBox" Style="{StaticResource TextBoxStyle}" AutomationProperties.Name="ID Peace" />
+                    <Button x:Name="RequestCentralCodeButton" Content="Enviar código no Discord" Style="{StaticResource AccentButton}" HorizontalAlignment="Left" Margin="0,12,0,0" Click="RequestCentralCode_Click" />
+                    <TextBlock x:Name="CentralCodeHint" Text="Depois de receber a mensagem privada, informe o código abaixo." Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,20,0,4" Visibility="Collapsed" />
+                    <PasswordBox x:Name="CentralCodeBox" MaxLength="6" Padding="10,8" Foreground="{StaticResource TextBrush}" Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" AutomationProperties.Name="Código secreto da Central" Visibility="Collapsed" />
+                    <Button x:Name="VerifyCentralCodeButton" Content="Liberar acesso" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,10,0,0" Click="VerifyCentralCode_Click" Visibility="Collapsed" />
+                    <TextBlock x:Name="CentralAuthStatusText" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,16,0,0" />
+                </StackPanel>
+            </local:AutomationDialogBorder>
+        </local:AutomationStateGrid>
+
         <local:AutomationStateGrid x:Name="SettingsOverlay"
               Grid.ColumnSpan="2"
               Visibility="Collapsed"

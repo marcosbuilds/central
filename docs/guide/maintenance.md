@@ -73,7 +73,7 @@ recorded before merge; `main` is changed only by an approved Pull Request.
 ## Acceptance checklist
 
 - The document is in English and has a direct filename.
-- It appears in `docs/README.md` or is intentionally scoped below `bot/`,
+- It appears in `docs/README.md` or is intentionally scoped below `docs/bot/`,
   `plan/`, or `template/`.
 - Implemented, verified, planned, deferred, and unverified states are not mixed.
 - Commands use repository-relative paths and contain no credentials.

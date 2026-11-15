@@ -5,9 +5,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .cfg import Settings
-from .db import PeaceDatabase
-from .api import DiscordAPI
+if (__package__ or "").startswith("bot."):
+    from ..config.settings import Settings
+    from ..persistence.database import PeaceDatabase
+    from ..integrations.discord_api import DiscordAPI
+else:
+    from config.settings import Settings
+    from persistence.database import PeaceDatabase
+    from integrations.discord_api import DiscordAPI
 
 
 def run() -> None:
@@ -19,7 +24,8 @@ def run() -> None:
     settings = Settings.from_env()
     api = DiscordAPI(settings.token)
     snapshot = api.snapshot(settings.guild_id, settings.founder_user_id, settings.peace_role_id)
-    output = args.output or Path(__file__).resolve().parent.parent / "data" / "snapshots" / (
+    root = Path(__file__).resolve().parents[2] if (__package__ or "").startswith("bot.") else Path(__file__).resolve().parent.parent
+    output = args.output or root / "data" / "snapshots" / (
         f"discord_snapshot_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     )
     output.parent.mkdir(parents=True, exist_ok=True)

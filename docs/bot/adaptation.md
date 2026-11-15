@@ -22,6 +22,14 @@ must never appear in an authorization rule.
 - Closed tickets remain unavailable to ordinary members.
 - Structural changes are applied idempotently and require a snapshot, a dry
   run, and a reviewable record.
+- Verification is a separate status-gated surface. A human member enters with
+  `Not Verified`, must complete the bot's CAPTCHA, and receives `Visitor` only
+  after the correct selection; `Not Verified` is then removed.
+- `@everyone` and `Not Verified` cannot see ordinary categories. `Visitor` can
+  read `rules`, use `visitor-chat`, access `SUPPORT`, and see `AFK` without
+  connecting; `spam-control` remains private to the bot.
+- An approved player set grants `Peace` and the visual `Intern` label. The
+  label has no global or channel permissions.
 
 ## Technical access
 
@@ -39,6 +47,18 @@ The entry flow is staged:
 5. record the result without exposing private content in public channels.
 
 The flow does not grant privileged access automatically from a message alone.
+
+Developer applications use two human approvals: the first sends the candidate
+to the manual support-call interview, and the second approves the candidate as
+a member and applies the technical role. After that final decision, the Central
+desktop can use the local Peace bridge described in
+[`../integration/peace-central.md`](../integration/peace-central.md). The bridge
+issues a short, project-scoped session only after the current role is confirmed.
+
+`Peace`, `Visitor`, `Dev`, `Staff`, and `Management` are access roles whose
+channel overwrites are explicit; visual roles do not authorize applications,
+ticket review, channel visibility, or voice movement. Staff may move members
+only in support/waiting calls. Management may move members in normal calls.
 
 ## Moderation and support
 
@@ -61,8 +81,8 @@ spaces or approved threads.
 
 ## Operations and rollback
 
-- `bot/maintenance.py` supports dry-run and explicit cleanup modes.
-- `bot/snap.py` creates operator-controlled snapshots.
+- `bot/operations/maintenance.py` supports dry-run and explicit cleanup modes.
+- `bot/commands/snapshot.py` creates operator-controlled snapshots.
 - `bot/main.py` synchronizes panels, tickets, support, moderation, and
   onboarding according to configuration.
 - Any structural change must identify its target, validate hierarchy and

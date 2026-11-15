@@ -8,15 +8,28 @@ of the public repository contract, not a staging area.
 | Folder | Contents | Consumer |
 |---|---|---|
 | `docs/` | neutral, text-free visuals for public documentation | `README.md` and `docs/` |
-| `bot/` | panel, moderation, welcome, and seasonal artwork | `bot/` |
+| `bot/` | panel, moderation, welcome, seasonal, and compact neutral artwork | `bot/main.py` and the bot package |
 
 Documentation visuals are intentionally transparent PNGs with a restrained
 neutral palette. They explain relationships such as coordination and review;
 they do not prove that an integration or two-computer test is complete.
 
 Bot artwork may contain product-specific text or seasonal styling. Keep it in
-`assets/bot/` and load it through the bot asset helper. Do not reuse it in public
+`assets/bot/` and load it through the bot entry point. Do not reuse it in public
 architecture diagrams.
+
+The current `assets/bot/set.png`, `assets/bot/verification.png`,
+`assets/bot/ops.png`, `assets/bot/support.png`, and `assets/bot/welcome.png` are
+reviewed, text-free 2:1 banner assets generated from consolidated visual briefs
+for the bot panels. `assets/bot/automod.png` remains unchanged because
+spam-control artwork is a strict panel contract. The legacy
+`welcome-halloween.png` file remains available as migration history but is no
+longer selected for new welcome messages.
+
+The public Peace home consumes `bot/site/assets/peace-bird.png`, a transparent
+RGBA cutout of the official bird mark. It is site runtime artwork rather than a
+documentation visual, and its source image is intentionally excluded from the
+repository.
 
 ## Change rules
 

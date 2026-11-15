@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
+
+if (__package__ or "").startswith("bot."):
+    from ..core.identity import prefix_for_roles
+else:
+    from core.identity import prefix_for_roles
 
 
 SCHEMA = """
@@ -36,7 +43,9 @@ CREATE TABLE IF NOT EXISTS peace_id_pool (
     peace_id INTEGER PRIMARY KEY,
     released_from TEXT NOT NULL,
     released_at TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'available'
+    status TEXT NOT NULL DEFAULT 'available',
+    release_reason TEXT NOT NULL DEFAULT 'unknown',
+    release_actor_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS peace_return_requests (
@@ -45,6 +54,8 @@ CREATE TABLE IF NOT EXISTS peace_return_requests (
     old_peace_id INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     message_id TEXT,
+    loss_reason TEXT NOT NULL DEFAULT 'unknown',
+    loss_actor_id TEXT,
     created_at TEXT NOT NULL,
     resolved_at TEXT,
     new_peace_id INTEGER
@@ -171,6 +182,39 @@ CREATE TABLE IF NOT EXISTS iris_events (
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS central_login_challenges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_user_id TEXT NOT NULL,
+    peace_id INTEGER NOT NULL,
+    client_id TEXT NOT NULL DEFAULT '',
+    code_hash TEXT NOT NULL,
+    code_salt TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_central_login_challenges_user
+    ON central_login_challenges(discord_user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS central_login_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_user_id TEXT NOT NULL,
+    peace_id INTEGER NOT NULL,
+    client_id TEXT NOT NULL,
+    project_id TEXT,
+    scope TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    token_salt TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_central_login_sessions_client
+    ON central_login_sessions(client_id, id DESC);
 """
 
 
@@ -178,23 +222,42 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _role_prefix(member: dict[str, Any], role_names: Iterable[str], founder_id: int) -> str:
-    if int(member["user"]["id"]) == founder_id:
-        return "F"
-    names = {name.casefold() for name in role_names}
-    if any("developer" in name or name == "dev" or "diretor" in name for name in names):
-        return "D"
-    if any("streamer" in name for name in names):
-        return "S"
-    if any("recrutador" in name for name in names):
-        return "R"
-    if any(
-        token in name
-        for name in names
-        for token in ("gerência", "gerencia", "gerente", "sublider", "recrutador")
-    ):
-        return "G"
-    return "N"
+def _central_code_hash(code: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        code.encode("utf-8"),
+        salt.encode("utf-8"),
+        120_000,
+    ).hex()
+
+
+def _central_token_hash(token: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        token.encode("utf-8"),
+        salt.encode("utf-8"),
+        120_000,
+    ).hex()
+
+
+def _role_prefix(
+    member: dict[str, Any],
+    role_names: Iterable[str],
+    founder_id: int,
+    role_positions: Mapping[str, int] | None = None,
+    role_hoist: Mapping[str, bool] | None = None,
+) -> str:
+    return str(
+        prefix_for_roles(
+            user_id=int(member["user"]["id"]),
+            role_names=role_names,
+            founder_user_id=founder_id,
+            founder_role_names=("Founder Peace", "Founder"),
+            default="N",
+            role_positions=role_positions,
+            role_hoist=role_hoist,
+        )
+    )
 
 
 class PeaceDatabase:
@@ -221,9 +284,29 @@ class PeaceDatabase:
                 connection.execute(
                     "ALTER TABLE peace_id_pool ADD COLUMN status TEXT NOT NULL DEFAULT 'available'"
                 )
+            if "release_reason" not in pool_columns:
+                connection.execute(
+                    "ALTER TABLE peace_id_pool ADD COLUMN release_reason TEXT NOT NULL DEFAULT 'unknown'"
+                )
+            if "release_actor_id" not in pool_columns:
+                connection.execute(
+                    "ALTER TABLE peace_id_pool ADD COLUMN release_actor_id TEXT"
+                )
+            return_columns = {row["name"] for row in connection.execute("PRAGMA table_info(peace_return_requests)")}
+            if "loss_reason" not in return_columns:
+                connection.execute(
+                    "ALTER TABLE peace_return_requests ADD COLUMN loss_reason TEXT NOT NULL DEFAULT 'unknown'"
+                )
+            if "loss_actor_id" not in return_columns:
+                connection.execute(
+                    "ALTER TABLE peace_return_requests ADD COLUMN loss_actor_id TEXT"
+                )
             developer_columns = {row["name"] for row in connection.execute("PRAGMA table_info(developer_requests)")}
             if developer_columns and "motivation" not in developer_columns:
                 connection.execute("ALTER TABLE developer_requests ADD COLUMN motivation TEXT NOT NULL DEFAULT ''")
+            challenge_columns = {row["name"] for row in connection.execute("PRAGMA table_info(central_login_challenges)")}
+            if challenge_columns and "client_id" not in challenge_columns:
+                connection.execute("ALTER TABLE central_login_challenges ADD COLUMN client_id TEXT NOT NULL DEFAULT ''")
             connection.commit()
 
     def _next_peace_id(self, connection: sqlite3.Connection) -> int:
@@ -268,6 +351,16 @@ class PeaceDatabase:
                 user_id = str(user["id"])
                 role_ids = [str(role_id) for role_id in member.get("roles", [])]
                 role_names = [str(roles_by_id.get(role_id, {}).get("name", role_id)) for role_id in role_ids]
+                role_positions = {
+                    str(role.get("name", role_id)): int(role.get("position", 0))
+                    for role_id, role in roles_by_id.items()
+                    if isinstance(role, dict)
+                }
+                role_hoist = {
+                    str(role.get("name", role_id)): bool(role.get("hoist", False))
+                    for role_id, role in roles_by_id.items()
+                    if isinstance(role, dict)
+                }
                 previous = existing.get(user_id)
                 if previous is not None:
                     peace_id = int(previous["peace_id"])
@@ -279,7 +372,7 @@ class PeaceDatabase:
                     peace_id = next_id
                     next_id += 1
                     new_ids += 1
-                prefix = _role_prefix(member, role_names, founder_id)
+                prefix = _role_prefix(member, role_names, founder_id, role_positions, role_hoist)
                 connection.execute(
                     """
                     INSERT INTO members (
@@ -357,6 +450,283 @@ class PeaceDatabase:
                 "SELECT * FROM members WHERE discord_user_id = ?", (str(discord_user_id),)
             ).fetchone()
 
+    def member_by_peace_id(self, peace_id: int | str) -> sqlite3.Row | None:
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM members WHERE peace_id = ?", (int(peace_id),)
+            ).fetchone()
+
+    def create_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        code: str,
+        expires_at: str,
+        client_id: str = "",
+    ) -> int:
+        self.initialize()
+        timestamp = now_iso()
+        salt = secrets.token_hex(16)
+        code_hash = _central_code_hash(code, salt)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE central_login_challenges
+                SET consumed_at = ?
+                WHERE discord_user_id = ? AND consumed_at IS NULL
+                """,
+                (timestamp, str(discord_user_id)),
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO central_login_challenges (
+                    discord_user_id, peace_id, client_id, code_hash, code_salt,
+                    attempts, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(peace_id),
+                    client_id,
+                    code_hash,
+                    salt,
+                    timestamp,
+                    expires_at,
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid)
+
+    def try_create_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        code: str,
+        expires_at: str,
+        window_seconds: int = 600,
+        max_user_requests: int = 3,
+        max_client_requests: int = 6,
+    ) -> int | None:
+        """Atomically enforce request throttles before storing a challenge."""
+        self.initialize()
+        timestamp = now_iso()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        salt = secrets.token_hex(16)
+        code_hash = _central_code_hash(code, salt)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            user_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE discord_user_id = ? AND created_at >= ?
+                """,
+                (str(discord_user_id), cutoff),
+            ).fetchone()["total"]
+            client_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE client_id = ? AND created_at >= ?
+                """,
+                (client_id, cutoff),
+            ).fetchone()["total"]
+            if int(user_count) >= max_user_requests or int(client_count) >= max_client_requests:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE central_login_challenges
+                SET consumed_at = ?
+                WHERE discord_user_id = ? AND consumed_at IS NULL
+                """,
+                (timestamp, str(discord_user_id)),
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO central_login_challenges (
+                    discord_user_id, peace_id, client_id, code_hash, code_salt,
+                    attempts, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(peace_id),
+                    client_id,
+                    code_hash,
+                    salt,
+                    timestamp,
+                    expires_at,
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid)
+
+    def central_login_request_allowed(
+        self,
+        *,
+        discord_user_id: int,
+        client_id: str,
+        window_seconds: int = 600,
+        max_user_requests: int = 3,
+        max_client_requests: int = 6,
+    ) -> bool:
+        self.initialize()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        with self.connect() as connection:
+            user_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE discord_user_id = ? AND created_at >= ?
+                """,
+                (str(discord_user_id), cutoff),
+            ).fetchone()["total"]
+            client_count = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM central_login_challenges
+                WHERE client_id = ? AND created_at >= ?
+                """,
+                (client_id, cutoff),
+            ).fetchone()["total"]
+        return int(user_count) < max_user_requests and int(client_count) < max_client_requests
+
+    def revoke_central_login_challenges(
+        self,
+        discord_user_id: int | str,
+        client_id: str | None = None,
+    ) -> None:
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE central_login_challenges
+                SET consumed_at = COALESCE(consumed_at, ?)
+                WHERE discord_user_id = ?
+                  AND consumed_at IS NULL
+                  AND (? IS NULL OR client_id = ?)
+                """,
+                (now_iso(), str(discord_user_id), client_id, client_id),
+            )
+            connection.commit()
+
+    def consume_central_login_challenge(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        code: str,
+        client_id: str = "",
+        max_attempts: int = 5,
+    ) -> bool:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM central_login_challenges
+                WHERE discord_user_id = ? AND peace_id = ?
+                  AND client_id = ?
+                  AND consumed_at IS NULL
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id), int(peace_id), client_id),
+            ).fetchone()
+            if row is None or row["expires_at"] <= timestamp or int(row["attempts"]) >= max_attempts:
+                return False
+            connection.execute(
+                "UPDATE central_login_challenges SET attempts = attempts + 1 WHERE id = ?",
+                (int(row["id"]),),
+            )
+            valid = hmac.compare_digest(
+                str(row["code_hash"]),
+                _central_code_hash(code, str(row["code_salt"])),
+            )
+            if valid:
+                connection.execute(
+                    "UPDATE central_login_challenges SET consumed_at = ? WHERE id = ?",
+                    (timestamp, int(row["id"])),
+                )
+            connection.commit()
+            return valid
+
+    def create_central_login_session(
+        self,
+        *,
+        discord_user_id: int,
+        peace_id: int,
+        client_id: str,
+        project_id: str | None,
+        scope: str,
+        expires_at: str,
+    ) -> str:
+        self.initialize()
+        token = secrets.token_urlsafe(32)
+        salt = secrets.token_hex(16)
+        token_hash = _central_token_hash(token, salt)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO central_login_sessions (
+                    discord_user_id, peace_id, client_id, project_id, scope,
+                    token_hash, token_salt, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(peace_id),
+                    client_id,
+                    project_id,
+                    scope,
+                    token_hash,
+                    salt,
+                    now_iso(),
+                    expires_at,
+                ),
+            )
+            connection.commit()
+        return token
+
+    def validate_central_login_session(
+        self,
+        *,
+        token: str,
+        client_id: str,
+        project_id: str | None = None,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM central_login_sessions
+                WHERE client_id = ? AND revoked_at IS NULL AND expires_at > ?
+                ORDER BY id DESC
+                """,
+                (client_id, timestamp),
+            ).fetchall()
+        for row in rows:
+            if project_id is not None and row["project_id"] != project_id:
+                continue
+            if hmac.compare_digest(
+                str(row["token_hash"]),
+                _central_token_hash(token, str(row["token_salt"])),
+            ):
+                return row
+        return None
+
+    def revoke_central_login_session(self, *, token: str, client_id: str) -> bool:
+        row = self.validate_central_login_session(token=token, client_id=client_id)
+        if row is None:
+            return False
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE central_login_sessions SET revoked_at = ? WHERE id = ?",
+                (now_iso(), int(row["id"])),
+            )
+            connection.commit()
+        return True
+
     def update_nickname(self, discord_user_id: int | str, nickname: str) -> None:
         self.initialize()
         with self.connect() as connection:
@@ -366,10 +736,17 @@ class PeaceDatabase:
             )
             connection.commit()
 
-    def release_peace_member(self, discord_user_id: int | str) -> sqlite3.Row | None:
+    def release_peace_member(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str = "vínculo Peace removido manualmente",
+        actor_user_id: int | str | None = None,
+    ) -> sqlite3.Row | None:
         """Remove o vínculo Peace e libera o ID para o próximo set."""
         self.initialize()
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT * FROM members WHERE discord_user_id = ?", (str(discord_user_id),)
             ).fetchone()
@@ -377,16 +754,66 @@ class PeaceDatabase:
                 return None
             connection.execute(
                 """
-                INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                VALUES (?, ?, ?, 'available')
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'available', ?, ?)
                 """,
-                (int(row["peace_id"]), str(discord_user_id), now_iso()),
+                (
+                    int(row["peace_id"]),
+                    str(discord_user_id),
+                    now_iso(),
+                    reason,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                ),
             )
             connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(discord_user_id),))
             connection.commit()
             return row
 
-    def reserve_peace_member(self, discord_user_id: int | str) -> sqlite3.Row | None:
+    def available_peace_id_for_user(self, discord_user_id: int | str) -> sqlite3.Row | None:
+        """Return a previously released ID for an already-completed operation."""
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM peace_id_pool
+                WHERE released_from = ? AND status = 'available'
+                ORDER BY released_at DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+
+    def manual_peace_releases_for_cleanup(self) -> list[sqlite3.Row]:
+        """Return legacy manual releases that still need Discord cleanup.
+
+        The reason filter excludes the old ID release that happens during an
+        approved return. A current ``members`` row also wins over a stale pool
+        row, so a later set can never be removed by this repair pass.
+        """
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT pool.*
+                    FROM peace_id_pool AS pool
+                    LEFT JOIN members
+                      ON members.discord_user_id = pool.released_from
+                    WHERE pool.status = 'available'
+                      AND pool.release_reason LIKE 'vínculo Peace removido manualmente por Founder%'
+                      AND members.discord_user_id IS NULL
+                    ORDER BY pool.released_at, pool.peace_id
+                    """
+                ).fetchall()
+            )
+
+    def reserve_peace_member(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str = "cargo Peace perdido",
+        actor_user_id: int | str | None = None,
+    ) -> sqlite3.Row | None:
         """Reserva o ID de quem saiu com Peace, sem permitir reutilização automática."""
         self.initialize()
         with self.connect() as connection:
@@ -398,22 +825,103 @@ class PeaceDatabase:
                 return None
             connection.execute(
                 """
-                INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                VALUES (?, ?, ?, 'reserved')
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'reserved', ?, ?)
                 """,
-                (int(row["peace_id"]), str(discord_user_id), now_iso()),
+                (
+                    int(row["peace_id"]),
+                    str(discord_user_id),
+                    now_iso(),
+                    reason,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                ),
             )
             connection.execute("DELETE FROM members WHERE discord_user_id = ?", (str(discord_user_id),))
             connection.commit()
             return row
+
+    def recorded_peace_member(self, discord_user_id: int | str, peace_role_id: int) -> bool:
+        """Return whether the local record still proves that the member had Peace."""
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM members
+                JOIN member_roles ON member_roles.discord_user_id = members.discord_user_id
+                WHERE members.discord_user_id = ?
+                  AND members.is_founder = 0
+                  AND members.peace_id > 0
+                  AND member_roles.role_id = ?
+                LIMIT 1
+                """,
+                (str(discord_user_id), str(peace_role_id)),
+            ).fetchone()
+        return row is not None
+
+    def annotate_peace_reservation(
+        self,
+        discord_user_id: int | str,
+        *,
+        reason: str,
+        actor_user_id: int | str | None = None,
+    ) -> bool:
+        """Append a lifecycle event to an existing reservation without releasing it."""
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT release_reason, release_actor_id
+                FROM peace_id_pool
+                WHERE released_from = ? AND status = 'reserved'
+                ORDER BY released_at DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            previous = str(row["release_reason"] or "unknown")
+            combined = reason if previous in {"", "unknown"} else f"{previous}; {reason}"
+            connection.execute(
+                """
+                UPDATE peace_id_pool
+                SET release_reason = ?,
+                    release_actor_id = COALESCE(release_actor_id, ?),
+                    released_at = ?
+                WHERE released_from = ? AND status = 'reserved'
+                """,
+                (
+                    combined,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                    now_iso(),
+                    str(discord_user_id),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET loss_reason = ?,
+                    loss_actor_id = COALESCE(loss_actor_id, ?)
+                WHERE discord_user_id = ? AND status = 'pending'
+                """,
+                (
+                    combined,
+                    str(actor_user_id) if actor_user_id is not None else None,
+                    str(discord_user_id),
+                ),
+            )
+            connection.commit()
+        return True
 
     def reserve_missing_peace_members(
         self,
         *,
         current_user_ids: set[int],
         peace_role_id: int,
+        current_peace_user_ids: set[int] | None = None,
     ) -> list[sqlite3.Row]:
-        """Reserva registros Peace que não aparecem mais no servidor após um reinício."""
+        """Reserve Peace records missing from the current member/role snapshot."""
         self.initialize()
         reserved: list[sqlite3.Row] = []
         with self.connect() as connection:
@@ -428,14 +936,22 @@ class PeaceDatabase:
             ).fetchall()
             for row in rows:
                 user_id = int(row["discord_user_id"])
-                if user_id in current_user_ids:
+                if user_id in current_user_ids and (
+                    current_peace_user_ids is None or user_id in current_peace_user_ids
+                ):
                     continue
+                reason = (
+                    "registro Peace sem membro após auditoria de inicialização"
+                    if user_id not in current_user_ids
+                    else "cargo Peace ausente após auditoria de inicialização"
+                )
                 connection.execute(
                     """
-                    INSERT OR REPLACE INTO peace_id_pool (peace_id, released_from, released_at, status)
-                    VALUES (?, ?, ?, 'reserved')
+                    INSERT OR REPLACE INTO peace_id_pool (
+                        peace_id, released_from, released_at, status, release_reason, release_actor_id
+                    ) VALUES (?, ?, ?, 'reserved', ?, NULL)
                     """,
-                    (int(row["peace_id"]), str(user_id), now_iso()),
+                    (int(row["peace_id"]), str(user_id), now_iso(), reason),
                 )
                 connection.execute(
                     "DELETE FROM members WHERE discord_user_id = ?",
@@ -457,20 +973,131 @@ class PeaceDatabase:
                 (str(discord_user_id),),
             ).fetchone()
 
-    def save_return_request(self, *, discord_user_id: int, old_peace_id: int) -> int:
+    def latest_return_request_for_user(self, discord_user_id: int | str) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE discord_user_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+
+    def save_return_request(
+        self,
+        *,
+        discord_user_id: int,
+        old_peace_id: int,
+        loss_reason: str = "retorno Peace pendente",
+        loss_actor_id: int | str | None = None,
+    ) -> int:
         self.initialize()
         timestamp = now_iso()
         with self.connect() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO peace_return_requests (
-                    discord_user_id, old_peace_id, status, created_at
-                ) VALUES (?, ?, 'pending', ?)
+                    discord_user_id, old_peace_id, status, loss_reason, loss_actor_id, created_at
+                ) VALUES (?, ?, 'pending', ?, ?, ?)
                 """,
-                (str(discord_user_id), int(old_peace_id), timestamp),
+                (
+                    str(discord_user_id),
+                    int(old_peace_id),
+                    loss_reason,
+                    str(loss_actor_id) if loss_actor_id is not None else None,
+                    timestamp,
+                ),
             )
             connection.commit()
             return int(cursor.lastrowid)
+
+    def get_or_create_return_request(
+        self,
+        *,
+        discord_user_id: int,
+        old_peace_id: int,
+        loss_reason: str,
+        loss_actor_id: int | str | None = None,
+    ) -> tuple[sqlite3.Row, bool]:
+        """Atomically deduplicate pending return requests for one member."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE discord_user_id = ? AND status = 'pending'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+            if existing is not None:
+                connection.commit()
+                return existing, False
+            cursor = connection.execute(
+                """
+                INSERT INTO peace_return_requests (
+                    discord_user_id, old_peace_id, status, loss_reason, loss_actor_id, created_at
+                ) VALUES (?, ?, 'pending', ?, ?, ?)
+                """,
+                (
+                    str(discord_user_id),
+                    int(old_peace_id),
+                    loss_reason,
+                    str(loss_actor_id) if loss_actor_id is not None else None,
+                    timestamp,
+                ),
+            )
+            created = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            connection.commit()
+        assert created is not None
+        return created, True
+
+    def reject_return_request(self, request_id: int | str) -> sqlite3.Row | None:
+        """Reject a pending return while keeping its Peace ID reserved."""
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            request = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ? AND status = 'pending'",
+                (str(request_id),),
+            ).fetchone()
+            if request is None:
+                connection.rollback()
+                return None
+            reservation = connection.execute(
+                """
+                SELECT 1 FROM peace_id_pool
+                WHERE peace_id = ? AND released_from = ? AND status = 'reserved'
+                """,
+                (int(request["old_peace_id"]), str(request["discord_user_id"])),
+            ).fetchone()
+            if reservation is None:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET status = 'rejected', resolved_at = ?, new_peace_id = NULL
+                WHERE id = ? AND status = 'pending'
+                """,
+                (now_iso(), str(request_id)),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            row = connection.execute(
+                "SELECT * FROM peace_return_requests WHERE id = ?",
+                (str(request_id),),
+            ).fetchone()
+            connection.commit()
+            return row
 
     def return_request(self, request_id: int | str) -> sqlite3.Row | None:
         self.initialize()
@@ -499,6 +1126,29 @@ class PeaceDatabase:
                 "SELECT * FROM peace_return_requests WHERE status = 'pending' ORDER BY id"
             ).fetchall())
 
+    def approved_return_requests(self) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE status = 'approved' AND new_peace_id IS NOT NULL
+                ORDER BY id
+                """
+            ).fetchall())
+
+    def approved_return_user_ids(self) -> set[int]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT discord_user_id
+                FROM peace_return_requests
+                WHERE status = 'approved' AND new_peace_id IS NOT NULL
+                """
+            ).fetchall()
+        return {int(row["discord_user_id"]) for row in rows}
+
     def set_return_request_message(self, request_id: int | str, message_id: int | str) -> None:
         self.initialize()
         with self.connect() as connection:
@@ -517,10 +1167,13 @@ class PeaceDatabase:
         role_ids: list[int],
         role_names: list[str],
         founder_id: int,
+        role_positions: Mapping[str, int] | None = None,
+        role_hoist: Mapping[str, bool] | None = None,
     ) -> tuple[sqlite3.Row, int, int] | None:
         """Libera o ID reservado e registra um novo ID para o retorno aprovado."""
         self.initialize()
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             request = connection.execute(
                 "SELECT * FROM peace_return_requests WHERE id = ? AND status = 'pending'",
                 (str(request_id),),
@@ -559,6 +1212,8 @@ class PeaceDatabase:
                 {"user": {"id": str(request["discord_user_id"])}},
                 role_names,
                 founder_id,
+                role_positions,
+                role_hoist,
             )
             connection.execute(
                 """
@@ -598,6 +1253,57 @@ class PeaceDatabase:
             connection.commit()
             return request, int(request["old_peace_id"]), new_peace_id
 
+    def rollback_return_approval(self, request_id: int | str) -> bool:
+        """Restore a pending return when Discord role/nickname mutation failed."""
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            request = connection.execute(
+                """
+                SELECT * FROM peace_return_requests
+                WHERE id = ? AND status = 'approved' AND new_peace_id IS NOT NULL
+                """,
+                (str(request_id),),
+            ).fetchone()
+            if request is None:
+                connection.rollback()
+                return False
+            current_member = connection.execute(
+                "SELECT peace_id FROM members WHERE discord_user_id = ?",
+                (str(request["discord_user_id"]),),
+            ).fetchone()
+            if current_member is not None and int(current_member["peace_id"]) != int(request["new_peace_id"]):
+                connection.rollback()
+                return False
+            connection.execute(
+                "DELETE FROM members WHERE discord_user_id = ?",
+                (str(request["discord_user_id"]),),
+            )
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO peace_id_pool (
+                    peace_id, released_from, released_at, status, release_reason, release_actor_id
+                ) VALUES (?, ?, ?, 'reserved', ?, ?)
+                """,
+                (
+                    int(request["old_peace_id"]),
+                    str(request["discord_user_id"]),
+                    now_iso(),
+                    str(request["loss_reason"] or "retorno pendente"),
+                    request["loss_actor_id"],
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE peace_return_requests
+                SET status = 'pending', resolved_at = NULL, new_peace_id = NULL
+                WHERE id = ?
+                """,
+                (str(request_id),),
+            )
+            connection.commit()
+        return True
+
     def ensure_runtime_member(
         self,
         *,
@@ -607,19 +1313,28 @@ class PeaceDatabase:
         role_ids: list[int],
         role_names: list[str],
         founder_id: int,
+        role_positions: Mapping[str, int] | None = None,
+        role_hoist: Mapping[str, bool] | None = None,
     ) -> int:
         self.initialize()
         existing = self.get_member(discord_user_id)
         if existing:
             with self.connect() as connection:
                 timestamp = now_iso()
+                prefix = _role_prefix(
+                    {"user": {"id": str(discord_user_id)}},
+                    role_names,
+                    founder_id,
+                    role_positions,
+                    role_hoist,
+                )
                 connection.execute(
                     """
                     UPDATE members
-                    SET username = ?, nickname = ?, updated_at = ?
+                    SET username = ?, nickname = ?, name_prefix = ?, updated_at = ?
                     WHERE discord_user_id = ?
                     """,
-                    (username, nickname, timestamp, str(discord_user_id)),
+                    (username, nickname, prefix, timestamp, str(discord_user_id)),
                 )
                 connection.execute("DELETE FROM member_roles WHERE discord_user_id = ?", (str(discord_user_id),))
                 connection.executemany(
@@ -631,7 +1346,11 @@ class PeaceDatabase:
         with self.connect() as connection:
             peace_id = 0 if discord_user_id == founder_id else self._next_peace_id(connection)
             prefix = _role_prefix(
-                {"user": {"id": str(discord_user_id)}}, role_names, founder_id
+                {"user": {"id": str(discord_user_id)}},
+                role_names,
+                founder_id,
+                role_positions,
+                role_hoist,
             )
             timestamp = now_iso()
             connection.execute(
@@ -767,7 +1486,7 @@ class PeaceDatabase:
             return connection.execute(
                 """
                 SELECT * FROM developer_requests
-                WHERE discord_user_id = ? AND status IN ('pending', 'approved', 'meeting_scheduled')
+                WHERE discord_user_id = ? AND status IN ('pending', 'interview_scheduled', 'approved', 'meeting_scheduled')
                 ORDER BY id DESC LIMIT 1
                 """,
                 (str(discord_user_id),),
@@ -777,7 +1496,7 @@ class PeaceDatabase:
         self.initialize()
         with self.connect() as connection:
             return list(connection.execute(
-                "SELECT * FROM developer_requests WHERE status = 'pending' ORDER BY id"
+                "SELECT * FROM developer_requests WHERE status IN ('pending', 'interview_scheduled') ORDER BY id"
             ).fetchall())
 
     def update_developer_request(
