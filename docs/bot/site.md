@@ -72,20 +72,21 @@ invite created in `#verify`. The runtime keeps the invite effectively
 single-use: it creates a short-lived two-use invite so Discord's usage counter
 remains observable during the join event, binds the first observed member, and
 deletes the invite immediately. The invite is valid for 30 minutes. The browser
-keeps only an opaque short-lived flow token, so a reload reuses the same invite
-while it is valid. If the invite expires or disappears before entry, the bot
-reports that bounded state and the browser automatically requests a replacement
-while remaining in a loading state. The bot binds the invite to the member join
-event, reports the linked
-Discord display name, and exposes the verification state from the member's
-`Not Verified`, `Visitante`, or `Peace` role. The interface advances to the
-interview only after `Visitante` or `Peace` is observed; it never treats the
-public service-health check as proof of a member identity and it does not
-create a Discord OAuth session. If the visitor already belongs to the server,
-the candidature flow can identify the existing member by required username and
-optional Discord ID/profile URL, then route `Visitante` to the interview or
-route an existing `Peace` member to `/acessar/` without requesting a new
-setagem. `/acessar/` validates the numeric Peace ID, including the valid
+keeps only an opaque short-lived flow token, while the server persists only its
+selector and salted hash in SQLite, so a reload or bot restart reuses the same
+invite while it is valid. If the invite expires or disappears before entry, the
+bot reports that bounded state and the browser automatically requests a
+replacement while remaining in a loading state. The bot binds the invite to the
+member join event, reports the linked Discord display name, and exposes the
+verification state from the member's `Not Verified`, `Visitante`, or `Peace`
+role. The interface advances to the interview only after `Visitante` or `Peace`
+is observed; it never treats the public service-health check as proof of a
+member identity and it does not create a Discord OAuth session. If the visitor
+already belongs to the server, the existing-member fallback requires an active
+Discord OAuth session and compares the supplied username/ID/profile hints to
+that authenticated Discord ID before returning any role state. An unauthenticated
+request cannot enumerate guild membership or entry roles. `/acessar/` validates
+the numeric Peace ID, including the valid
 Founder ID `0`, against the runtime member record, requires the configured
 Peace role, sends a short-lived single-use code to that member's Discord DM,
 and creates a web session only after the code is consumed. The DM is an embed
@@ -210,7 +211,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
 | Netlify `/api/entry/status` | accepts the opaque flow token only in the POST body; tokens in query strings are rejected |
 | Netlify `/api/entry/repair` | repairs only the linked member's `Not Verified` entry role when safe |
-| Netlify `/api/entry/identify` | identifies an existing server member and reports the confirmed role state |
+| Netlify `/api/entry/identify` | confirms only the authenticated Discord session and reports that account's role state |
 | Netlify `/api/member/auth/request` | validates a Peace ID and sends a one-time code to the linked member's Discord DM |
 | Netlify `/api/member/auth/verify` | consumes the one-time code bound to the HttpOnly challenge cookie and creates a member session |
 | Netlify `/api/member/auth/session` | validates the bounded member session and the current Discord identity |
@@ -232,7 +233,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/entry/start` | creates/resumes the 30-minute invite in the verification channel |
 | ACLClouds `/api/entry/status` | returns bounded flow state, not cookies or OAuth data |
 | ACLClouds `/api/entry/repair` | validates the linked session before the narrow role repair |
-| ACLClouds `/api/entry/identify` | matches required username plus optional identity hints against current guild membership |
+| ACLClouds `/api/entry/identify` | requires Discord OAuth, matches the supplied identity hints to the authenticated account, and reports only that account's current role state |
 | ACLClouds `/api/member/auth/request` | validates an active Peace member and sends the short-lived DM code |
 | ACLClouds `/api/member/auth/verify` | consumes the code once from the browser-bound challenge and issues a bounded member session |
 | ACLClouds `/api/member/auth/session` | rechecks the session, Discord user ID, and current Peace role |
@@ -451,14 +452,16 @@ Peace ID/code interaction and a compact route to candidature, `/entrar/` keeps
 the three public destinations visible, and `/candidatura/` reveals one stage at
 a time. Future stage buttons are disabled until the backend-backed entry state
 advances the flow. The Discord invite opens in a new tab and remains reusable
-after a reload until its 30-minute expiry. Stage 02 explains the real `#verify`
+after a reload or bot restart until its 30-minute expiry. Stage 02 explains the real `#verify`
 CAPTCHA flow, polls the bounded entry status, and moves automatically only when
 the bot observes `Visitante` or `Peace`. During the invite stage it shows one
 Discord-opening action plus a non-clickable invite label, waits for the bot's
 actual member binding, and never treats a browser click as proof of entry. Its
 troubleshooting panel accepts
 optional username, ID, and profile link fields, but the backend binds every
-repair to the member already identified by that invite. Remote actions use a
+repair to the member already identified by that invite. The existing-member
+fallback uses the same account-bound OAuth check and never searches arbitrary
+guild members. Remote actions use a
 60-second timeout, expose a button loading state with `aria-busy`, and return to
 a retryable state without showing internal routes or technical integration
 logs. Member authentication shows a loading state while the session is checked,

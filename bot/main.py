@@ -630,6 +630,7 @@ class EntryInviteSession:
     expires_at: datetime
     created_at: datetime | None = None
     initial_uses: int = 0
+    session_selector: str = ""
     discord_user_id: int | None = None
     discord_username: str = ""
     status: str = "waiting_invite"
@@ -2929,11 +2930,104 @@ class PeaceBot(commands.Bot):
         token = str(value or "").strip()
         return token if ENTRY_SESSION_TOKEN_PATTERN.fullmatch(token) else None
 
+    @staticmethod
+    def entry_session_datetime(value: object) -> datetime | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def entry_session_from_row(self, row: object, token: str = "") -> EntryInviteSession:
+        return EntryInviteSession(
+            session_token=token,
+            session_selector=str(row["session_selector"]),
+            invite_code=str(row["invite_code"]),
+            invite_url=str(row["invite_url"]),
+            expires_at=self.entry_session_datetime(row["expires_at"]) or datetime.now(timezone.utc),
+            created_at=self.entry_session_datetime(row["created_at"]),
+            initial_uses=int(row["initial_uses"] or 0),
+            discord_user_id=int(row["discord_user_id"]) if row["discord_user_id"] else None,
+            discord_username=str(row["discord_username"] or ""),
+            status=str(row["status"] or "waiting_invite"),
+            last_repair_at=float(row["last_repair_at"] or 0),
+            last_invite_check_at=float(row["last_invite_check_at"] or 0),
+            join_observed_at=self.entry_session_datetime(row["join_observed_at"]),
+        )
+
+    def entry_session_for_token(self, token: str) -> EntryInviteSession | None:
+        row = self.database.get_entry_invite_session(token)
+        if row is not None:
+            session = self.entry_session_from_row(row, token)
+            self.entry_sessions[token] = session
+            return session
+        # Test doubles and older local integrations may seed only the in-process
+        # cache. Production-created sessions always have a persistent selector,
+        # so a missing DB row cannot resurrect an expired session.
+        cached = self.entry_sessions.get(token)
+        return cached if cached is not None and not cached.session_selector else None
+
+    def persist_entry_session(self, session: EntryInviteSession) -> bool:
+        selector = session.session_selector
+        if not selector and session.session_token:
+            selector = self.database.entry_invite_session_selector(session.session_token)
+        if not selector:
+            return False
+        try:
+            updated = self.database.update_entry_invite_session(
+                session_selector=selector,
+                invite_code=session.invite_code,
+                invite_url=session.invite_url,
+                expires_at=session.expires_at.isoformat(),
+                created_at=session.created_at.isoformat() if session.created_at else None,
+                initial_uses=session.initial_uses,
+                discord_user_id=session.discord_user_id,
+                discord_username=session.discord_username,
+                status=session.status,
+                last_repair_at=session.last_repair_at,
+                last_invite_check_at=session.last_invite_check_at,
+                join_observed_at=session.join_observed_at.isoformat() if session.join_observed_at else None,
+            )
+            if updated:
+                session.session_selector = selector
+            return updated
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui persistir a sessão do convite público", exc_info=True)
+            return False
+
+    def pending_entry_sessions(self) -> list[EntryInviteSession]:
+        sessions: list[EntryInviteSession] = []
+        selectors: set[str] = set()
+        try:
+            for row in self.database.list_pending_entry_invite_sessions():
+                session = self.entry_session_from_row(row)
+                sessions.append(session)
+                selectors.add(session.session_selector)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui carregar as sessões persistentes de entrada pública", exc_info=True)
+        for session in self.entry_sessions.values():
+            if session.session_selector and session.session_selector in selectors:
+                continue
+            if session.status == "waiting_invite" and session.discord_user_id is None:
+                sessions.append(session)
+        return sessions
+
     def prune_entry_sessions(self) -> None:
         now = datetime.now(timezone.utc)
         for token, session in tuple(self.entry_sessions.items()):
             if session.expires_at <= now:
                 self.entry_sessions.pop(token, None)
+        try:
+            self.database.delete_expired_entry_invite_sessions(now=now.isoformat())
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui limpar as sessões expiradas de entrada pública", exc_info=True)
 
     @staticmethod
     def entry_invite_code(invite: object) -> str:
@@ -2990,6 +3084,7 @@ class PeaceBot(commands.Bot):
     async def refresh_entry_session(self, session: EntryInviteSession) -> None:
         if session.expires_at <= datetime.now(timezone.utc):
             session.status = "expired"
+            self.persist_entry_session(session)
             return
         member = self.entry_member(session)
         if member is None:
@@ -2997,8 +3092,10 @@ class PeaceBot(commands.Bot):
                 now = time.monotonic()
                 created_at = session.created_at
                 if session.join_observed_at is not None:
+                    self.persist_entry_session(session)
                     return
                 if created_at is not None and (datetime.now(timezone.utc) - created_at).total_seconds() < ENTRY_INVITE_PROPAGATION_GRACE_SECONDS:
+                    self.persist_entry_session(session)
                     return
                 if now - session.last_invite_check_at >= 5:
                     session.last_invite_check_at = now
@@ -3007,6 +3104,7 @@ class PeaceBot(commands.Bot):
                         invite, inspected = await self.entry_invite_for_code(guild, session.invite_code)
                         if inspected and invite is None:
                             session.status = "invite_unavailable"
+            self.persist_entry_session(session)
             return
 
         session.discord_username = str(
@@ -3016,6 +3114,7 @@ class PeaceBot(commands.Bot):
         )[:80]
         guild = self.entry_guild()
         if guild is None:
+            self.persist_entry_session(session)
             return
         visitor = role_named(
             guild,
@@ -3038,21 +3137,19 @@ class PeaceBot(commands.Bot):
             session.status = "verification_pending"
         else:
             session.status = "role_missing"
+        self.persist_entry_session(session)
 
     async def bind_entry_invite(self, member: discord.Member) -> None:
         """Bind a one-use invite to the member that joined through it."""
         async with self.entry_invite_lock:
             self.prune_entry_sessions()
-            sessions = [
-                session
-                for session in self.entry_sessions.values()
-                if session.discord_user_id is None and session.status == "waiting_invite"
-            ]
+            sessions = self.pending_entry_sessions()
             if not sessions:
                 return
             observed_at = datetime.now(timezone.utc)
             for session in sessions:
                 session.join_observed_at = observed_at
+                self.persist_entry_session(session)
 
             # Discord can publish on_member_join before the invite usage counter
             # is visible to the next REST request. Keep the session in the
@@ -3078,6 +3175,19 @@ class PeaceBot(commands.Bot):
                         uses = None
                     if uses is None or uses <= session.initial_uses:
                         continue
+                    if session.session_selector:
+                        try:
+                            claimed = self.database.claim_entry_invite_session(
+                                session_selector=session.session_selector,
+                                discord_user_id=member.id,
+                                discord_username=str(getattr(member, "display_name", None) or member.name)[:80],
+                                join_observed_at=observed_at.isoformat(),
+                            )
+                        except (sqlite3.Error, OSError):
+                            log.warning("Não consegui reservar a sessão persistente do convite público", exc_info=True)
+                            continue
+                        if not claimed:
+                            continue
                     session.discord_user_id = member.id
                     session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
                     session.status = "verification_pending"
@@ -3103,6 +3213,19 @@ class PeaceBot(commands.Bot):
                 ]
                 if len(recent_sessions) == 1:
                     session = recent_sessions[0]
+                    if session.session_selector:
+                        try:
+                            claimed = self.database.claim_entry_invite_session(
+                                session_selector=session.session_selector,
+                                discord_user_id=member.id,
+                                discord_username=str(getattr(member, "display_name", None) or member.name)[:80],
+                                join_observed_at=observed_at.isoformat(),
+                            )
+                        except (sqlite3.Error, OSError):
+                            log.warning("Não consegui reservar a sessão persistente do convite público", exc_info=True)
+                            return
+                        if not claimed:
+                            return
                     session.discord_user_id = member.id
                     session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
                     session.status = "verification_pending"
@@ -3174,7 +3297,7 @@ class PeaceBot(commands.Bot):
         if supplied_token and self.entry_session_token(supplied_token) is None:
             return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
         self.prune_entry_sessions()
-        session = self.entry_sessions.get(self.entry_session_token(supplied_token) or "")
+        session = self.entry_session_for_token(self.entry_session_token(supplied_token) or "") if supplied_token else None
         if session is not None:
             return web.json_response({"ok": True, **await self.entry_session_payload(session)})
 
@@ -3212,7 +3335,23 @@ class PeaceBot(commands.Bot):
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=ENTRY_INVITE_MAX_AGE_SECONDS),
             created_at=created_at,
             initial_uses=initial_uses,
+            session_selector=self.database.entry_invite_session_selector(token),
         )
+        try:
+            self.database.create_entry_invite_session(
+                session_token=token,
+                invite_code=invite_code,
+                invite_url=invite_url,
+                expires_at=session.expires_at.isoformat(),
+                created_at=created_at.isoformat(),
+                initial_uses=initial_uses,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui persistir a sessão do convite público", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "ENTRY_SESSION_UNAVAILABLE", "message": "Não foi possível preparar o acompanhamento da entrada agora."},
+                status=503,
+            )
         self.entry_sessions[token] = session
         return web.json_response({"ok": True, **await self.entry_session_payload(session)})
 
@@ -3236,7 +3375,7 @@ class PeaceBot(commands.Bot):
         if token is None:
             return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
         self.prune_entry_sessions()
-        session = self.entry_sessions.get(token)
+        session = self.entry_session_for_token(token)
         if session is None:
             return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
         return web.json_response({"ok": True, **await self.entry_session_payload(session)})
@@ -3256,7 +3395,7 @@ class PeaceBot(commands.Bot):
         if token is None:
             return web.json_response({"ok": False, "code": "INVALID_SESSION", "message": "Sessão de entrada inválida."}, status=400)
         self.prune_entry_sessions()
-        session = self.entry_sessions.get(token)
+        session = self.entry_session_for_token(token)
         if session is None:
             return web.json_response({"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "O convite expirou. Gere um novo link."}, status=404)
         if session.discord_user_id is None:
@@ -3357,7 +3496,7 @@ class PeaceBot(commands.Bot):
                 status=400,
             )
         self.prune_entry_sessions()
-        entry_session = self.entry_sessions.get(entry_token or "") if entry_token else None
+        entry_session = self.entry_session_for_token(entry_token or "") if entry_token else None
         if entry_token and entry_session is None:
             return web.json_response(
                 {"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "A sessão de entrada expirou. Refaça a conexão para continuar."},
@@ -4144,21 +4283,61 @@ class PeaceBot(commands.Bot):
             profile_id = self.public_discord_id_from_profile(profile_value)
             if profile_id is None:
                 return web.json_response({"ok": False, "code": "INVALID_DISCORD_PROFILE", "message": "Informe um link de perfil válido do Discord."}, status=400)
+
+        _, oauth_session = await self.public_discord_session_context(request)
+        if oauth_session is None:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "OAUTH_SESSION_REQUIRED",
+                    "message": "Conecte sua conta Discord para confirmar sua identidade.",
+                },
+                status=401,
+            )
+        authenticated_id = str(oauth_session["discord_user_id"])
+        authenticated_names = {
+            str(value).strip().casefold()
+            for value in (
+                oauth_session["username"],
+                oauth_session["global_name"],
+                oauth_session["display_name"],
+            )
+            if value
+        }
+        if username.casefold() not in authenticated_names:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "DISCORD_IDENTITY_MISMATCH",
+                    "message": "Os dados informados não correspondem à conta Discord conectada.",
+                },
+                status=409,
+            )
+        if (discord_id is not None and str(discord_id) != authenticated_id) or (
+            profile_id is not None and str(profile_id) != authenticated_id
+        ):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "code": "DISCORD_IDENTITY_MISMATCH",
+                    "message": "Os dados informados não correspondem à conta Discord conectada.",
+                },
+                status=409,
+            )
         guild = self.entry_guild()
         if guild is None or not self.is_ready() or self.is_closed():
             return web.json_response({"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."}, status=503)
-        member, error_code = await self.public_member_by_identity(
-            username=username,
-            discord_id=discord_id,
-            profile_id=profile_id,
-        )
+        member, member_state = await self.public_discord_member_state(authenticated_id)
+        if member_state == "unavailable":
+            return web.json_response(
+                {"ok": False, "code": "DISCORD_NOT_READY", "message": "Não consegui confirmar sua conta no servidor agora."},
+                status=503,
+            )
         if member is None:
-            messages = {
-                "MEMBER_AMBIGUOUS": "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
-                "MEMBER_IDENTITY_MISMATCH": "O username, o ID e o link informado não pertencem à mesma conta.",
-                "ENTRY_MEMBER_NOT_FOUND": "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
-            }
-            return web.json_response({"ok": False, "code": error_code or "ENTRY_MEMBER_NOT_FOUND", "message": messages.get(error_code, messages["ENTRY_MEMBER_NOT_FOUND"])}, status=409 if error_code == "MEMBER_AMBIGUOUS" else 404)
+            return web.json_response(
+                {"ok": False, "code": "ENTRY_MEMBER_NOT_FOUND", "message": "A conta conectada ainda não está no servidor Peace."},
+                status=404,
+            )
 
         display_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "membro"))[:80]
         discord_user = {"username": display_name, "mention": f"@{display_name}"}

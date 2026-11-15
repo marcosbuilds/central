@@ -958,7 +958,7 @@
         startEntrySession().then(maybeRecoverEntrySession).catch(function () {
           if (sessionNote) sessionNote.textContent = "Não consegui retomar o convite agora. Tente abrir um novo link.";
         });
-      } else if (manualEntryIdentity) {
+      } else if (manualEntryIdentity && session) {
         identifyExistingMember(false, manualEntryIdentity).catch(function () { /* draft remains available for a manual retry */ });
       }
     });

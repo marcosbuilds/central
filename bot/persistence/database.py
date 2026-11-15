@@ -346,6 +346,30 @@ CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_user
 CREATE INDEX IF NOT EXISTS idx_discord_oauth_sessions_expiry
     ON discord_oauth_sessions(expires_at, revoked_at);
 
+CREATE TABLE IF NOT EXISTS entry_invite_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_selector TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    token_salt TEXT NOT NULL,
+    invite_code TEXT NOT NULL,
+    invite_url TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT,
+    initial_uses INTEGER NOT NULL DEFAULT 0,
+    discord_user_id TEXT,
+    discord_username TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'waiting_invite',
+    last_repair_at REAL NOT NULL DEFAULT 0,
+    last_invite_check_at REAL NOT NULL DEFAULT 0,
+    join_observed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_entry_invite_sessions_expiry
+    ON entry_invite_sessions(expires_at, status);
+
+CREATE INDEX IF NOT EXISTS idx_entry_invite_sessions_pending
+    ON entry_invite_sessions(status, discord_user_id, expires_at);
+
 CREATE TABLE IF NOT EXISTS public_media_likes (
     media_id TEXT NOT NULL,
     discord_user_id TEXT NOT NULL,
@@ -542,6 +566,10 @@ class PeaceDatabase:
                    OR (revoked_at IS NOT NULL AND revoked_at <= ?)
                 """,
                 (auth_now, auth_retention_cutoff),
+            )
+            connection.execute(
+                "DELETE FROM entry_invite_sessions WHERE expires_at <= ?",
+                (auth_now,),
             )
             connection.commit()
 
@@ -838,6 +866,166 @@ class PeaceDatabase:
             )
             connection.commit()
         return True
+
+    @staticmethod
+    def entry_invite_session_selector(token: str) -> str:
+        return _central_token_selector(token)
+
+    def create_entry_invite_session(
+        self,
+        *,
+        session_token: str,
+        invite_code: str,
+        invite_url: str,
+        expires_at: str,
+        created_at: str | None,
+        initial_uses: int,
+    ) -> None:
+        """Persist an entry session without retaining its raw browser token."""
+        self.initialize()
+        salt = secrets.token_hex(16)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO entry_invite_sessions (
+                    session_selector, token_hash, token_salt, invite_code,
+                    invite_url, expires_at, created_at, initial_uses
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    _central_token_selector(session_token),
+                    _central_token_hash(session_token, salt),
+                    salt,
+                    str(invite_code),
+                    str(invite_url),
+                    str(expires_at),
+                    str(created_at) if created_at else None,
+                    int(initial_uses),
+                ),
+            )
+            connection.commit()
+
+    def get_entry_invite_session(self, token: str) -> sqlite3.Row | None:
+        self.initialize()
+        if not token:
+            return None
+        selector = _central_token_selector(token)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM entry_invite_sessions WHERE session_selector = ?",
+                (selector,),
+            ).fetchone()
+        if row is None or not hmac.compare_digest(
+            _central_token_hash(token, str(row["token_salt"])),
+            str(row["token_hash"]),
+        ):
+            return None
+        return row
+
+    def list_pending_entry_invite_sessions(self, *, now: str | None = None) -> list[sqlite3.Row]:
+        self.initialize()
+        current_time = now or now_iso()
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM entry_invite_sessions
+                WHERE status = 'waiting_invite'
+                  AND discord_user_id IS NULL
+                  AND expires_at > ?
+                ORDER BY id ASC
+                """,
+                (current_time,),
+            ).fetchall()
+
+    def update_entry_invite_session(
+        self,
+        *,
+        session_selector: str,
+        invite_code: str,
+        invite_url: str,
+        expires_at: str,
+        created_at: str | None,
+        initial_uses: int,
+        discord_user_id: int | str | None,
+        discord_username: str,
+        status: str,
+        last_repair_at: float,
+        last_invite_check_at: float,
+        join_observed_at: str | None,
+    ) -> bool:
+        self.initialize()
+        with self.connect() as connection:
+            updated = connection.execute(
+                """
+                UPDATE entry_invite_sessions
+                SET invite_code = ?, invite_url = ?, expires_at = ?, created_at = ?,
+                    initial_uses = ?, discord_user_id = ?, discord_username = ?,
+                    status = ?, last_repair_at = ?, last_invite_check_at = ?,
+                    join_observed_at = ?
+                WHERE session_selector = ?
+                """,
+                (
+                    str(invite_code),
+                    str(invite_url),
+                    str(expires_at),
+                    str(created_at) if created_at else None,
+                    int(initial_uses),
+                    str(discord_user_id) if discord_user_id is not None else None,
+                    str(discord_username)[:80],
+                    str(status),
+                    float(last_repair_at),
+                    float(last_invite_check_at),
+                    str(join_observed_at) if join_observed_at else None,
+                    str(session_selector),
+                ),
+            )
+            connection.commit()
+        return updated.rowcount == 1
+
+    def claim_entry_invite_session(
+        self,
+        *,
+        session_selector: str,
+        discord_user_id: int | str,
+        discord_username: str,
+        join_observed_at: str,
+        now: str | None = None,
+    ) -> bool:
+        """Atomically bind one pending invite to one Discord member."""
+        self.initialize()
+        current_time = now or now_iso()
+        with self.connect() as connection:
+            claimed = connection.execute(
+                """
+                UPDATE entry_invite_sessions
+                SET discord_user_id = ?, discord_username = ?,
+                    status = 'verification_pending', join_observed_at = ?
+                WHERE session_selector = ?
+                  AND discord_user_id IS NULL
+                  AND status = 'waiting_invite'
+                  AND expires_at > ?
+                """,
+                (
+                    str(discord_user_id),
+                    str(discord_username)[:80],
+                    str(join_observed_at),
+                    str(session_selector),
+                    current_time,
+                ),
+            )
+            connection.commit()
+        return claimed.rowcount == 1
+
+    def delete_expired_entry_invite_sessions(self, *, now: str | None = None) -> int:
+        self.initialize()
+        current_time = now or now_iso()
+        with self.connect() as connection:
+            deleted = connection.execute(
+                "DELETE FROM entry_invite_sessions WHERE expires_at <= ?",
+                (current_time,),
+            )
+            connection.commit()
+        return deleted.rowcount
 
     def upsert_candidate_profile(
         self,

@@ -156,15 +156,15 @@
         <div class="entry-existing-dialog">
           <button class="dialog-close" type="button" data-entry-existing-close aria-label="Fechar">×</button>
           <p class="eyebrow">Exceção</p>
-          <h2 id="entry-existing-title">Já entrou na Peace?</h2>
-          <p>Encontre sua conta sem gerar outro convite. O username é obrigatório; o ID ou o link do perfil ajudam quando existem nomes iguais.</p>
+          <h2 id="entry-existing-title">Já entrou na Peace com a conta conectada?</h2>
+          <p>Conecte seu Discord no topo e confirme a conta autenticada sem gerar outro convite. O username é obrigatório; o ID ou o link do perfil ajudam quando existem nomes iguais.</p>
           <form data-entry-existing>
             <div class="form-grid form-grid--two">
               <label class="field"><span>Username do Discord</span><input name="discord_username" type="text" required maxlength="80" autocomplete="username" placeholder="ex.: peaceiro"></label>
               <label class="field"><span>ID do Discord <em>(opcional)</em></span><input name="discord_id" type="text" inputmode="numeric" maxlength="22" pattern="[0-9]{15,22}" placeholder="somente números"></label>
             </div>
             <label class="field"><span>Link do perfil <em>(opcional)</em></span><input name="discord_profile_url" type="url" maxlength="300" placeholder="https://discord.com/users/..."></label>
-            <button class="button button--light" type="submit" data-entry-existing-submit><span data-button-label>Encontrar minha conta</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
+            <button class="button button--light" type="submit" data-entry-existing-submit><span data-button-label>Confirmar conta conectada</span><span class="button-spinner" aria-hidden="true"></span><span class="button-icon" aria-hidden="true">→</span></button>
             <p class="stage-note" data-entry-existing-result role="status" aria-live="polite"></p>
           </form>
         </div>

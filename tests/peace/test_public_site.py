@@ -687,6 +687,49 @@ def test_public_entry_invite_is_effectively_single_use_and_reused_until_expiry(t
     )
 
 
+def test_public_entry_session_survives_bot_restart(tmp_path):
+    first_channel = SimpleNamespace(name="verify")
+    first_channel.create_invite = AsyncMock(
+        return_value=SimpleNamespace(
+            code="restart-code",
+            url="https://discord.gg/restart-code",
+            uses=0,
+        )
+    )
+
+    def configure(bot, channel):
+        bot.guild = SimpleNamespace(
+            text_channels=[channel],
+            roles=[],
+            get_channel=lambda channel_id: channel if channel_id == 500 else None,
+            get_role=lambda role_id: None,
+        )
+        bot.is_ready = lambda: True
+        bot.is_closed = lambda: False
+
+    first_bot = make_bot(tmp_path)
+    configure(first_bot, first_channel)
+    status, first = run_configured_api(first_bot, "/api/entry/start", method="POST", payload={})
+
+    assert status == 200
+    assert first["status"] == "waiting_invite"
+
+    second_channel = SimpleNamespace(name="verify", create_invite=AsyncMock())
+    second_bot = make_bot(tmp_path)
+    configure(second_bot, second_channel)
+    status, resumed = run_configured_api(
+        second_bot,
+        "/api/entry/start",
+        method="POST",
+        payload={"session_token": first["session_token"]},
+    )
+
+    assert status == 200
+    assert resumed["session_token"] == first["session_token"]
+    assert resumed["invite_url"] == first["invite_url"]
+    second_channel.create_invite.assert_not_awaited()
+
+
 def test_public_entry_binds_join_from_the_verification_channel_invite_list(tmp_path):
     from bot.main import EntryInviteSession
 
@@ -887,6 +930,42 @@ def test_public_entry_identifies_existing_visitor_without_granting_access(tmp_pa
     bot.guild = SimpleNamespace(members=[member], get_member=lambda user_id: member if user_id == member.id else None)
     bot.is_ready = lambda: True
     bot.is_closed = lambda: False
+    session_token = bot.database.create_discord_oauth_session(
+        discord_user_id=member.id,
+        username=member.name,
+        global_name=member.global_name,
+        display_name=member.display_name,
+        avatar_hash=None,
+        expires_at="2030-01-01T00:00:00+00:00",
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/identify",
+        method="POST",
+        payload={"discord_username": "peaceiro"},
+        cookies={"peace_discord_session": session_token},
+    )
+    assert status == 200
+    assert payload["status"] == "visitor_member"
+    assert payload["next_stage"] == 3
+    assert payload["discord_user"]["mention"] == "@Peaceiro"
+
+
+def test_public_entry_identify_does_not_enumerate_roles_without_oauth(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick=None,
+        roles=[SimpleNamespace(id=200, name="Visitor")],
+        bot=False,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = SimpleNamespace(members=[member], get_member=lambda user_id: member if user_id == member.id else None)
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
 
     status, payload = run_configured_api(
         bot,
@@ -894,10 +973,63 @@ def test_public_entry_identifies_existing_visitor_without_granting_access(tmp_pa
         method="POST",
         payload={"discord_username": "peaceiro"},
     )
-    assert status == 200
-    assert payload["status"] == "visitor_member"
-    assert payload["next_stage"] == 3
-    assert payload["discord_user"]["mention"] == "@Peaceiro"
+
+    assert status == 401
+    assert payload["code"] == "OAUTH_SESSION_REQUIRED"
+    assert "status" not in payload
+    assert "next_stage" not in payload
+
+
+def test_public_entry_identify_rejects_unknown_or_mismatched_connected_identity(tmp_path):
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="peaceiro",
+        display_name="Peaceiro",
+        global_name="Peaceiro",
+        nick=None,
+        roles=[SimpleNamespace(id=200, name="Visitor")],
+        bot=False,
+    )
+    other_member = SimpleNamespace(
+        id=22345678901234567,
+        name="peace",
+        display_name="Peace",
+        global_name="Peace",
+        nick=None,
+        roles=[SimpleNamespace(id=100, name="Peace")],
+        bot=False,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = SimpleNamespace(
+        members=[member, other_member],
+        get_member=lambda user_id: {member.id: member, other_member.id: other_member}.get(user_id),
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+    session_token = bot.database.create_discord_oauth_session(
+        discord_user_id=member.id,
+        username=member.name,
+        global_name=member.global_name,
+        display_name=member.display_name,
+        avatar_hash=None,
+        expires_at="2030-01-01T00:00:00+00:00",
+    )
+
+    for identity in (
+        {"discord_username": "unknown"},
+        {"discord_username": other_member.name, "discord_id": str(other_member.id)},
+    ):
+        status, payload = run_configured_api(
+            bot,
+            "/api/entry/identify",
+            method="POST",
+            payload=identity,
+            cookies={"peace_discord_session": session_token},
+        )
+        assert status == 409
+        assert payload["code"] == "DISCORD_IDENTITY_MISMATCH"
+        assert "status" not in payload
+        assert "next_stage" not in payload
 
 
 def test_public_member_auth_rejects_ids_outside_numeric_limit(tmp_path):
