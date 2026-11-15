@@ -13,21 +13,24 @@
     var overview = workspace && workspace.querySelector("[data-member-overview]");
     var shell = workspace && workspace.querySelector("[data-member-shell]");
     var sidebar = workspace && workspace.querySelector("[data-member-sidebar]");
+    var workspaceMain = workspace && workspace.querySelector(".member-workspace-main");
     var sidebarToggle = workspace && workspace.querySelector("[data-member-sidebar-toggle]");
-    var sidebarToggleLabel = workspace && workspace.querySelector("[data-member-sidebar-toggle-label]");
-    var sidebarClose = workspace && workspace.querySelector("[data-member-sidebar-close]");
+    var sidebarToggleIcon = workspace && workspace.querySelector("[data-member-sidebar-toggle-icon]");
+    var sidebarScrim = workspace && workspace.querySelector("[data-member-sidebar-scrim]");
     var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
+    var memberViews = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-view]")) : [];
+    var memberContextTitle = workspace && workspace.querySelector("[data-member-context-title]");
     var sidebarName = workspace && workspace.querySelector("[data-member-sidebar-name]");
     var sidebarUsername = workspace && workspace.querySelector("[data-member-sidebar-username]");
     var sidebarState = workspace && workspace.querySelector("[data-member-sidebar-state]");
     var sidebarAvatar = workspace && workspace.querySelector("[data-member-sidebar-avatar]");
     var sidebarAvatarFallback = workspace && workspace.querySelector("[data-member-sidebar-avatar-fallback]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
+    var memberUsername = workspace && workspace.querySelector("[data-member-username]");
     var memberRoles = workspace && workspace.querySelector("[data-member-roles]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
     var memberAvatarFallback = workspace && workspace.querySelector("[data-member-avatar-fallback]");
     var connection = workspace && workspace.querySelector("[data-member-connection]");
-    var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
     var notificationTrigger = workspace && workspace.querySelector("[data-member-notifications]");
     var notificationPanel = workspace && workspace.querySelector("[data-member-notification-panel]");
     var notificationClose = workspace && workspace.querySelector("[data-member-notifications-close]");
@@ -39,6 +42,13 @@
     var loading = false;
     var notificationsLoading = false;
     var notificationsLoaded = false;
+    var currentView = "overview";
+    var shellReadyStorageKey = "peace.member.shell-ready.v1";
+    var viewTitles = {
+      overview: "Visão geral",
+      library: "Área de estudo / Biblioteca",
+      clips: "Clipes"
+    };
 
     function request(url, options) {
       return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 5000).then(function (response) { return response.json(); });
@@ -205,17 +215,32 @@
       }
     }
 
+    function hasReusableShell() {
+      try { return window.sessionStorage.getItem(shellReadyStorageKey) === "1"; } catch (error) { return false; }
+    }
+    function markShellReady() {
+      try { window.sessionStorage.setItem(shellReadyStorageKey, "1"); } catch (error) { /* optional */ }
+    }
+    function clearShellReady() {
+      try { window.sessionStorage.removeItem(shellReadyStorageKey); } catch (error) { /* optional */ }
+    }
+
     function setSidebarOpen(open, moveFocus) {
       if (!shell || !sidebar) return;
       var compact = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
       var nextOpen = compact ? Boolean(open) : true;
       shell.dataset.sidebarOpen = String(nextOpen);
       sidebarToggle && sidebarToggle.setAttribute("aria-expanded", String(nextOpen));
-      if (sidebarToggleLabel) sidebarToggleLabel.textContent = nextOpen ? "Fechar menu" : "Abrir menu";
+      if (sidebarToggle) sidebarToggle.setAttribute("aria-label", nextOpen ? "Fechar menu" : "Abrir menu");
+      if (sidebarToggleIcon) sidebarToggleIcon.textContent = nextOpen ? "×" : "☰";
+      if (workspaceMain) {
+        if (compact && nextOpen) workspaceMain.setAttribute("inert", "");
+        else workspaceMain.removeAttribute("inert");
+      }
       if (nextOpen) {
         sidebar.removeAttribute("inert");
         if (moveFocus && compact) {
-          var first = sidebar.querySelector(".member-sidebar-close, .member-nav a");
+          var first = sidebar.querySelector(".member-nav a");
           if (first) first.focus();
         }
       } else {
@@ -224,14 +249,51 @@
       }
     }
 
-    function syncSidebarLocation() {
+    function requestedView() {
       var path = window.location.pathname.replace(/\/+$/, "/") || "/";
+      if (path !== "/area/") return "overview";
+      var view = new URL(window.location.href).searchParams.get("view");
+      return Object.prototype.hasOwnProperty.call(viewTitles, view) ? view : "overview";
+    }
+
+    function syncSidebarLocation() {
       sidebarLinks.forEach(function (link) {
         var href = link.getAttribute("href") || "";
-        if (!href.startsWith("/")) return;
-        if (href.replace(/\/+$/, "/") === path) link.setAttribute("aria-current", "page");
+        var linkView = link.dataset.memberViewLink;
+        var active = linkView ? linkView === currentView : (currentView === "overview" && href.replace(/\/+$/, "/") === "/area/");
+        if (active) link.setAttribute("aria-current", "page");
         else link.removeAttribute("aria-current");
       });
+    }
+
+    function setMemberView(view, replace, moveFocus) {
+      var nextView = Object.prototype.hasOwnProperty.call(viewTitles, view) ? view : "overview";
+      var url = new URL(window.location.href);
+      if (url.pathname.replace(/\/+$/, "/") !== "/area/") url.pathname = "/area/";
+      if (nextView === "overview") url.searchParams.delete("view");
+      else url.searchParams.set("view", nextView);
+      if (nextView !== "library" && nextView !== "clips") url.searchParams.delete("q");
+      var nextUrl = url.pathname + (url.search ? "?" + url.searchParams.toString() : "") + url.hash;
+      if (replace) window.history.replaceState({}, document.title, nextUrl);
+      else if (nextUrl !== window.location.pathname + window.location.search + window.location.hash) window.history.pushState({}, document.title, nextUrl);
+
+      currentView = nextView;
+      if (notificationPanel && !notificationPanel.hidden) setNotificationsOpen(false, false);
+      memberViews.forEach(function (node) { node.hidden = node.dataset.memberView !== nextView; });
+      if (memberContextTitle) memberContextTitle.textContent = viewTitles[nextView];
+      syncSidebarLocation();
+
+      var activeView = memberViews.find(function (node) { return node.dataset.memberView === nextView; });
+      if (nextView === "library" && activeView && typeof site.initStudies === "function") site.initStudies(activeView);
+      if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(activeView);
+      if (moveFocus && activeView) {
+        var target = activeView.querySelector("[data-member-view-focus], input, a, button");
+        if (!target) {
+          target = activeView.querySelector("h1, h2");
+          if (target) target.setAttribute("tabindex", "-1");
+        }
+        if (target) target.focus({ preventScroll: true });
+      }
     }
 
     function identityIsReady(identity) {
@@ -268,7 +330,7 @@
       var progress = document.createElement("section");
       progress.className = "member-progress-card member-data-block--wide";
       progress.id = "member-process";
-      progress.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Processo</p><h2 id=\"member-process-title\">Seu andamento</h2></div>";
+      progress.setAttribute("aria-label", "Seu andamento");
       var summary = document.createElement("div");
       summary.className = "member-progress-grid";
       [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Status", profile.passed ? "Aprovado" : assignments.length ? "Em andamento" : "Sem prova"]].forEach(function (entry) {
@@ -282,16 +344,12 @@
         summary.appendChild(item);
       });
       progress.appendChild(summary);
-      var copy = document.createElement("p");
-      copy.className = "member-progress-copy";
-      copy.textContent = assignments.length ? "Abaixo estão as atribuições vinculadas ao seu Discord ID." : "Nenhuma prova foi atribuída ainda. Continue estudando pelos materiais públicos.";
-      progress.appendChild(copy);
       overview.appendChild(progress);
 
       var assignmentsBlock = document.createElement("section");
       assignmentsBlock.className = "member-data-block member-data-block--wide";
       assignmentsBlock.id = "member-results";
-      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Provas</p><h2 id=\"member-results-title\">Suas atribuições</h2></div>";
+      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><h2 id=\"member-results-title\">Atribuições</h2></div>";
       if (!assignments.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
@@ -315,59 +373,10 @@
       }
       overview.appendChild(assignmentsBlock);
 
-      var materials = document.createElement("section");
-      materials.className = "member-data-block member-data-block--wide member-materials-card";
-      materials.id = "member-materials";
-      materials.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Biblioteca</p><h2 id=\"member-materials-title\">Materiais de estudo</h2></div><p>Leitura pública, sem depender do painel.</p>";
-      var materialCovers = document.createElement("div");
-      materialCovers.className = "member-material-covers";
-      [
-        { href: "/estudos/", src: "/assets/studies/civil/civil-cover-01.png", alt: "Capa da Apostila Civil", kicker: "01 / Civil", title: "Apostila Civil", description: "Investigação, patrulhamento e preparação.", meta: "18 páginas · biblioteca pública" },
-        { href: "/estudos/", src: "/assets/studies/peace/a-peace-cover-1.png", alt: "Capa do manual A Peace", kicker: "02 / Convivência", title: "Manual da Peace", description: "Paz, respeito e responsabilidade.", meta: "8 páginas · biblioteca pública" }
-      ].forEach(function (item) {
-        var link = document.createElement("a");
-        link.className = "member-material-card";
-        link.href = item.href;
-        link.setAttribute("aria-label", "Abrir " + item.title);
-        var cover = document.createElement("div");
-        cover.className = "material-cover material-cover--member";
-        cover.setAttribute("data-material-cover", "");
-        cover.setAttribute("aria-busy", "true");
-        var image = document.createElement("img");
-        image.className = "material-cover-image";
-        image.src = item.src;
-        image.alt = item.alt;
-        image.width = 1240;
-        image.height = 1754;
-        image.loading = "lazy";
-        var overlay = document.createElement("div");
-        overlay.className = "material-cover-overlay";
-        overlay.innerHTML = "<span class=\"material-cover-kicker\"></span><h4></h4><p></p><span class=\"material-cover-meta\"></span>";
-        overlay.querySelector(".material-cover-kicker").textContent = item.kicker;
-        overlay.querySelector("h4").textContent = item.title;
-        overlay.querySelector("p").textContent = item.description;
-        overlay.querySelector(".material-cover-meta").textContent = item.meta;
-        cover.appendChild(image);
-        cover.appendChild(overlay);
-        link.appendChild(cover);
-        materialCovers.appendChild(link);
-      });
-      materials.appendChild(materialCovers);
-      overview.appendChild(materials);
-      if (typeof site.initMaterialCovers === "function") site.initMaterialCovers(materials);
-
-      if (nextAction) {
-        nextAction.textContent = "";
-        var nextTitle = document.createElement("strong");
-        nextTitle.textContent = profile.passed ? "Você pode pedir a setagem." : "Próximo passo";
-        var nextText = document.createElement("p");
-        nextText.textContent = profile.passed ? "Use o Discord conectado para falar com a equipe e solicitar a entrada como aluno." : assignments.length ? "Conclua a prova atribuída e acompanhe o resultado aqui." : "Aguarde uma atribuição da Gerência ou continue estudando.";
-        nextAction.appendChild(nextTitle);
-        nextAction.appendChild(nextText);
-      }
       var managerLink = document.querySelector("[data-member-manager]");
       if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
       if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
+      if (memberUsername) memberUsername.textContent = identity.username ? "@" + identity.username : "@discord";
       renderRoles(data.server);
       renderAvatar(identity);
       renderSidebarProfile(identity);
@@ -376,6 +385,7 @@
     }
 
     function configureGate(mode, message) {
+      clearShellReady();
       if (workspace) workspace.hidden = true;
       if (gate) gate.hidden = false;
       var gateText = gate && gate.querySelector("[data-member-gate-message]");
@@ -406,8 +416,15 @@
     function showWorkspaceLoading() {
       if (gate) gate.hidden = true;
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "true"); }
-      if (skeleton) skeleton.hidden = false;
-      if (content) content.hidden = true;
+      if (hasReusableShell()) {
+        if (skeleton) skeleton.hidden = true;
+        if (content) content.hidden = false;
+        setSidebarOpen(false, false);
+        setMemberView(requestedView(), true, false);
+      } else {
+        if (skeleton) skeleton.hidden = false;
+        if (content) content.hidden = true;
+      }
       setConnection("Validando sessão, cargo Peace e processo…", "pending");
     }
     function showWorkspace() {
@@ -415,7 +432,9 @@
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "false"); }
       if (skeleton) skeleton.hidden = true;
       if (content) content.hidden = false;
+      markShellReady();
       setSidebarOpen(false, false);
+      setMemberView(requestedView(), true, false);
     }
 
     function load() {
@@ -449,17 +468,21 @@
       var open = shell && shell.dataset.sidebarOpen === "true";
       setSidebarOpen(!open, true);
     });
-    if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
+    if (sidebarScrim) sidebarScrim.addEventListener("click", function () { setSidebarOpen(false, true); });
     if (notificationTrigger) notificationTrigger.addEventListener("click", function () {
       var open = notificationTrigger.getAttribute("aria-expanded") === "true";
       setNotificationsOpen(!open, true);
     });
     if (notificationClose) notificationClose.addEventListener("click", function () { setNotificationsOpen(false, true); });
-    sidebarLinks.forEach(function (link) {
-      link.addEventListener("click", function () {
-        setSidebarOpen(false, false);
-      });
-    });
+    if (workspace) workspace.addEventListener("click", function (event) {
+      var target = event.target && event.target.closest ? event.target.closest("[data-member-view-link]") : null;
+      if (!target || !workspace.contains(target)) return;
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      setMemberView(target.dataset.memberViewLink, false, true);
+      setSidebarOpen(false, false);
+    }, true);
+    window.addEventListener("popstate", function () { setMemberView(requestedView(), true, false); });
     document.addEventListener("keydown", function (event) {
       if (event.key !== "Escape") return;
       if (notificationPanel && !notificationPanel.hidden) {
@@ -485,6 +508,7 @@
     }
     if (logout) logout.addEventListener("click", function () {
       if (!window.confirm("Sair da conta Discord e fechar o Painel Peace?")) return;
+      clearShellReady();
       logout.disabled = true;
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
         .then(function () { window.location.replace("/acessar/?status=logged-out"); })

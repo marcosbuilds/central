@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Painel Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261115-01">
-    <script defer src="../script.js?v=20261115-01"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261115-04">
+    <script defer src="../script.js?v=20261115-04"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -37,10 +37,11 @@
         </aside>
       </section>
 
-      <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="workspace-title">
+      <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="member-workspace-label">
+        <span class="sr-only" id="member-workspace-label">Painel Peace autenticado</span>
         <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Validando sua sessão no painel Peace">
-          <div class="member-skeleton-sidebar"><span class="member-skeleton-brand"></span><span class="member-skeleton-profile"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span></div>
-          <div class="member-skeleton-content"><span class="member-skeleton-kicker"></span><span class="member-skeleton-heading"></span><span class="member-skeleton-profile-card"></span><span class="member-skeleton-list"></span><span class="member-skeleton-list member-skeleton-list--short"></span></div>
+          <div class="member-skeleton-sidebar" aria-hidden="true"><span class="member-skeleton-brand"></span><span class="member-skeleton-profile"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span></div>
+          <div class="member-skeleton-content" aria-hidden="true"><span class="member-skeleton-toolbar"></span><span class="member-skeleton-profile-card"></span><span class="member-skeleton-list"></span></div>
         </div>
         <div data-member-workspace-content hidden>
           <div class="member-workspace-shell" data-member-shell data-sidebar-open="false">
@@ -51,14 +52,14 @@
                     <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
                     <span class="brand-lockup"><strong>PEACE</strong><small>PAINEL</small></span>
                   </a>
-                  <button class="member-sidebar-close" type="button" data-member-sidebar-close aria-label="Fechar menu" title="Fechar menu">×</button>
+
                 </div>
 
                 <nav class="member-nav" aria-label="Seções do painel">
-                  <a aria-current="page" data-member-nav-link href="/area/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>Visão geral</a>
-                  <a data-member-nav-link href="/estudos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.2 5.2c2.9-.8 5.4-.3 7.8 1.4v12c-2.4-1.7-4.9-2.2-7.8-1.4v-12ZM19.8 5.2c-2.9-.8-5.4-.3-7.8 1.4v12c2.4-1.7 4.9-2.2-7.8-1.4v-12Z"></path><path d="M12 6.6v12"></path></svg>Área de estudos</a>
+                  <a aria-current="page" data-member-nav-link data-member-view-link="overview" href="/area/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>Visão geral</a>
+                  <a data-member-nav-link data-member-view-link="library" href="/estudos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.2 5.2c2.9-.8 5.4-.3 7.8 1.4v12c-2.4-1.7-4.9-2.2-7.8-1.4v-12ZM19.8 5.2c-2.9-.8-5.4-.3-7.8 1.4v12c2.4-1.7 4.9-2.2-7.8 1.4v-12Z"></path><path d="M12 6.6v12"></path></svg>Biblioteca</a>
                   <a data-member-nav-link href="/parceiros/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="8" cy="8.2" r="2.5"></circle><circle cx="16" cy="15.8" r="2.5"></circle><path d="m10 9.8 4 4.4"></path><path d="M5.5 15.5a3.6 3.6 0 0 1 5.1-1.8M13.4 10.3a3.6 3.6 0 0 1 5.1 1.8"></path></svg>Parceiros</a>
-                  <a data-member-nav-link href="/clipes/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m10 9 5 3-5 3V9Z"></path></svg>Clipes</a>
+                  <a data-member-nav-link data-member-view-link="clips" href="/clipes/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m10 9 5 3-5 3V9Z"></path></svg>Clipes</a>
                   <a data-member-nav-link href="/meu-processo/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.3 12.3 2.4 2.4 4.9-5"></path></svg>Meu processo</a>
                   <a data-member-nav-link data-member-manager href="/gerencia/provas/" hidden>Gerenciar provas</a>
                 </nav>
@@ -72,23 +73,30 @@
                 </div>
               </div>
             </aside>
+            <div class="member-sidebar-scrim" data-member-sidebar-scrim aria-hidden="true"></div>
 
             <div class="member-workspace-main">
               <div class="member-workspace-toolbar">
-                <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false"><span class="member-sidebar-toggle-icon" aria-hidden="true">☰</span><span data-member-sidebar-toggle-label>Abrir menu</span></button>
-                <div class="member-toolbar-context"><span class="eyebrow">Painel Peace</span><div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div></div>
+                <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false" aria-label="Abrir menu"><span class="member-sidebar-toggle-icon" data-member-sidebar-toggle-icon aria-hidden="true">☰</span></button>
+                <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title>Visão geral</strong><div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div></div>
                 <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
               </div>
 
-              <div class="member-profile" id="overview">
-                <div class="member-avatar-wrap member-avatar-wrap--large"><img data-member-avatar alt="" width="72" height="72" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
-                <div class="member-profile-main">
-                  <p class="eyebrow">Perfil Peace</p>
-                  <h1 id="workspace-title">Olá, <span data-member-name>membro</span>.</h1>
-                  <p>Seu acesso, progresso e próximos passos em um só lugar.</p>
-                  <div class="member-profile-roles" data-member-roles aria-label="Cargos confirmados"><span class="member-role-chip">Membro Peace</span></div>
+              <div class="member-view member-view--overview" data-member-view="overview">
+                <div class="member-profile" id="overview">
+                  <div class="member-avatar-wrap member-avatar-wrap--large"><img data-member-avatar alt="" width="72" height="72" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
+                  <div class="member-profile-main">
+                    <p class="eyebrow">Perfil</p>
+                    <h1 id="workspace-title"><span data-member-name>membro</span></h1>
+                    <p class="member-profile-handle" data-member-username>@discord</p>
+                    <div class="member-profile-roles" data-member-roles aria-label="Cargos confirmados"><span class="member-role-chip">Membro Peace</span></div>
+                  </div>
+                  <div class="member-profile-status"><span class="status-mark" aria-hidden="true"></span><strong>Conta conectada</strong><small>Discord confirmado</small></div>
                 </div>
-                <div class="member-profile-status"><span class="status-mark" aria-hidden="true"></span><strong>Conta conectada</strong><small>Identidade confirmada pelo Discord</small></div>
+
+                <div class="member-overview-grid" data-member-overview>
+                  <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden></section>
+                </div>
               </div>
 
               <aside class="member-notification-panel" id="member-notification-panel" data-member-notification-panel role="dialog" aria-modal="false" hidden aria-labelledby="member-notification-title">
@@ -97,11 +105,46 @@
                 <a class="text-link" href="/avisos/">Ver todos os avisos <span aria-hidden="true">↗</span></a>
               </aside>
 
-              <div class="member-next-action" data-member-next-action></div>
+              <section class="member-view member-library-view" data-member-view="library" hidden aria-labelledby="member-library-title">
+                <h1 class="sr-only" id="member-library-title">Área de estudo / Biblioteca</h1>
+                <div class="study-library-toolbar member-view-toolbar" aria-label="Ferramentas da biblioteca">
+                  <label class="study-library-search" for="member-study-search">
+                    <span class="sr-only">Buscar na biblioteca</span>
+                    <input id="member-study-search" data-study-search type="search" name="q" autocomplete="off" placeholder="Buscar na biblioteca…" aria-controls="member-study-library-list">
+                  </label>
+                  <span class="study-library-count" data-study-count aria-live="polite">2 materiais</span>
+                </div>
+                <div id="member-study-library-list" class="study-library-grid" data-study-library role="list">
+                  <article class="study-library-item" data-study-item data-study-search="apostila civil investigação patrulhamento conduta radiocomunicação prova" role="listitem">
+                    <a class="study-library-link" href="/estudos/civil/leitor/" aria-label="Ler a Apostila Civil">
+                      <div class="material-cover material-cover--library" data-material-cover aria-busy="true"><img class="material-cover-image" src="/assets/studies/civil/civil-cover-01.png" alt="Capa da Apostila Civil" width="1240" height="1754" fetchpriority="high"></div>
+                    </a>
+                    <div class="study-library-meta"><span class="study-library-number">01</span><p><strong>Apostila Civil</strong><span>18 páginas · leitura visual</span></p></div>
+                  </article>
+                  <article class="study-library-item" data-study-item data-study-search="manual peace convivência paz respeito participação responsabilidade comunidade" role="listitem">
+                    <a class="study-library-link" href="/estudos/peace/leitor/" aria-label="Ler o Manual da Peace">
+                      <div class="material-cover material-cover--library" data-material-cover aria-busy="true"><img class="material-cover-image" src="/assets/studies/peace/a-peace-cover-1.png" alt="Capa do manual A Peace" width="1240" height="1754" loading="lazy"></div>
+                    </a>
+                    <div class="study-library-meta"><span class="study-library-number">02</span><p><strong>Manual da Peace</strong><span>8 páginas · leitura visual</span></p></div>
+                  </article>
+                </div>
+                <p class="study-library-empty" data-study-empty role="status" hidden>Nenhum material corresponde à busca.</p>
+              </section>
 
-              <div class="member-overview-grid" data-member-overview>
-                <section class="member-data-block member-data-block--wide" id="investigation" data-member-block="investigation" data-member-title="Investigação" data-member-capability="investigator" hidden></section>
-              </div>
+              <section class="member-view member-clips-view" data-member-view="clips" hidden aria-labelledby="member-clips-title">
+                <h1 class="sr-only" id="member-clips-title">Clipes</h1>
+                <section class="clips-feed clips-feed--member" aria-label="Feed de clipes">
+                  <form class="clips-search" data-clips-search role="search">
+                    <label class="sr-only" for="member-clips-query">Buscar clipes</label>
+                    <div class="clips-search-row"><span class="clips-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></span><input id="member-clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar por vídeo ou autor"><button class="clips-search-submit" data-clips-submit type="submit" aria-label="Buscar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></button></div>
+                  </form>
+                  <div class="clips-feed-heading"><p data-clips-status role="status" aria-live="polite">Preparando a busca…</p></div>
+                  <div class="clips-grid" data-clips-list role="list" aria-busy="true" aria-label="Clipes publicados"></div>
+                  <p class="clips-empty" data-clips-empty hidden role="status"></p>
+                  <button class="clips-retry text-button" data-clips-retry type="button" hidden>Repetir busca</button>
+                </section>
+                <div class="site-toast clips-toast" data-clips-toast role="status" aria-live="polite" hidden></div>
+              </section>
             </div>
           </div>
         </div>

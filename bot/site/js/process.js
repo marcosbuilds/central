@@ -12,6 +12,7 @@
   var usernameNode = document.querySelector("[data-process-username]");
   var membershipNode = document.querySelector("[data-process-membership]");
   var membershipNoteNode = document.querySelector("[data-process-membership-note]");
+  var connectLink = document.querySelector("[data-process-connect]");
   var setLink = document.querySelector("[data-process-set-link]");
   var scorePanel = document.querySelector("[data-process-score]");
   var scoreValueNode = document.querySelector("[data-process-score-value]");
@@ -123,12 +124,14 @@
       membershipNoteNode.dataset.state = membership.state || "unavailable";
     }
     if (setLink) setLink.hidden = membership.state === "peace";
+    if (connectLink) connectLink.hidden = true;
     if (scorePanel) scorePanel.hidden = false;
     if (scoreValueNode) setText(scoreValueNode, profile.score === null || profile.score === undefined ? "—" : profile.score + "/" + (profile.score_scale || 100));
     if (scoreCopyNode) setText(scoreCopyNode, profile.score === null || profile.score === undefined ? "Nenhuma prova enviada ainda." : (profile.passed ? "Aprovado na última prova registrada." : "Não aprovado na última prova registrada."));
     if (logoutButton) logoutButton.hidden = false;
     renderAssignments(assignments);
     updateSteps(assignments);
+    showStatus("", "ready");
   }
 
   function showDisconnected(message) {
@@ -144,6 +147,7 @@
       membershipNoteNode.dataset.state = "pending";
     }
     if (setLink) setLink.hidden = true;
+    if (connectLink) connectLink.hidden = false;
     if (scorePanel) scorePanel.hidden = true;
     if (logoutButton) logoutButton.hidden = true;
     if (resultsPanel) resultsPanel.hidden = true;
@@ -164,6 +168,7 @@
       membershipNoteNode.dataset.state = "unavailable";
     }
     if (setLink) setLink.hidden = true;
+    if (connectLink) connectLink.hidden = true;
     if (retryButton) { retryButton.hidden = false; retryButton.disabled = false; }
     if (scorePanel) scorePanel.hidden = true;
     if (logoutButton) logoutButton.hidden = true;

@@ -2,7 +2,7 @@
   "use strict";
 
   var body = document.body;
-  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process"];
+  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process", "exam"];
   var routeLabels = {
     "/": "Início",
     "/area/": "Painel Peace",
@@ -17,6 +17,17 @@
     "/meu-processo/": "Meu processo",
     "/entrar/": "Entrada Peace",
     "/acessar/": "Conectar Discord"
+  };
+  var contextTitles = {
+    studies: "Área de estudo / Biblioteca",
+    clips: "Clipes",
+    notices: "Avisos",
+    partners: "Parceiros",
+    process: "Meu processo",
+    exam: "Prova Civil",
+    "study-civil": "Área de estudo / Apostila Civil",
+    "study-peace": "Área de estudo / Manual da Peace",
+    reader: "Leitor visual"
   };
 
   function routePath() {
@@ -48,10 +59,9 @@
     document.documentElement.classList.add("public-context-page");
     var shell = document.querySelector(".site-shell");
     if (!shell || shell.querySelector(".public-context-bar")) return;
-    var bar = document.createElement("div");
+    var bar = document.createElement("header");
     bar.className = "public-context-bar";
-    bar.setAttribute("role", "navigation");
-    bar.setAttribute("aria-label", "Navegação contextual");
+    bar.setAttribute("role", "banner");
     var back = document.createElement("a");
     back.className = "public-context-back";
     back.setAttribute("data-public-return", "");
@@ -91,6 +101,11 @@
       window.setTimeout(function () { window.history.back(); }, 150);
     });
     bar.appendChild(back);
+    var contextTitle = document.createElement("h1");
+    contextTitle.className = "public-context-title";
+    contextTitle.id = "public-context-title";
+    contextTitle.textContent = contextTitles[body.dataset.page] || "Peace";
+    bar.appendChild(contextTitle);
     var actions = document.createElement("div");
     actions.className = "public-context-actions";
     bar.appendChild(actions);

@@ -144,7 +144,11 @@
           setMessage(formMessage, "Atribuição criada. Copie o link antes de sair.", "success");
           if (generated) generated.hidden = false;
           setText(generatedLink, payload.access_url || "");
-          return request("/api/exams/assignments").then(function (updated) { renderList(updated.assignments || []); });
+          return request("/api/exams/assignments")
+            .then(function (updated) { renderList(updated.assignments || []); })
+            .catch(function () {
+              setMessage(formMessage, "A atribuição foi criada, mas a lista não atualizou. Recarregue para conferir.", "pending");
+            });
         })
         .catch(function (error) { setMessage(formMessage, error.message || "Não consegui gerar a prova.", "error"); })
         .then(function () { submitButton.disabled = false; });
@@ -178,6 +182,7 @@
         return openWorkspace();
       })
       .catch(function (error) {
+        hideLoading();
         if (error && error.status === 403) showGate("Sua conta Discord está identificada, mas o cargo de Gerência não foi confirmado.");
         else if (error && error.status === 401) {
           if (gate) gate.hidden = false;
@@ -189,7 +194,7 @@
           if (title) title.textContent = "Conecte o Discord para verificar seu cargo.";
           setMessage(message, "Conecte uma conta Discord para continuar.", "pending");
         }
-        else if (error && error.code === "EXAM_NOT_CONFIGURED") setMessage(message, "O gabarito protegido ainda não está configurado neste ambiente.", "error");
+        else if (error && error.code === "EXAM_NOT_CONFIGURED") showUnavailable("O gabarito protegido ainda não está configurado neste ambiente.");
         else showUnavailable(error && error.message);
       });
   }

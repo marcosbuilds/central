@@ -254,7 +254,11 @@ rule.
 The authenticated `/area/` panel uses a responsive side navigation. It is a
 navigation aid, not an authorization boundary: every destination must keep its
 own server-side checks and a hidden menu item must not be treated as protection.
-The sidebar stays inside the authenticated panel and uses real routes:
+The sidebar stays inside the authenticated panel and uses real routes. Overview,
+the study library, and clips are views of the same shell: changing between them
+updates the URL state without rebuilding the authenticated document. The
+context title stays in the shell toolbar, while the notification bell opens the
+notices panel on demand:
 
 - `/area/` — the overview and member-owned process summary;
 - `/estudos/` — public study library;
@@ -286,11 +290,23 @@ logout action remain available.
 
 The same `material-cover` component is reused for the home learning previews,
 the study library, each reader cover, and the authenticated panel's public
-materials. It keeps the supplied cover image as the visual base, adds a dark
-bottom-up gradient, and places the title, description, page count, and
-availability metadata over that gradient instead of repeating the material
-details below the cover. The image is still a public static asset; its loading
-and error state remains explicit and does not grant access to the panel.
+materials, with a deliberate hierarchy per surface. The public and authenticated
+libraries keep the supplied cover image raw and place only a short title/page
+metadata row below it. The reader may keep its compact contextual overlay because
+the cover is part of the reading entry point. The home preview can keep its
+editorial overlay when it is acting as a feature, not as the library index. The
+image is still a public static asset; its loading and error state remains explicit
+and does not grant access to the panel.
+
+Candidate process and exam surfaces use the same contextual header pattern: the
+route title stays in the header and the next authenticated action appears first.
+Supporting identity boundaries and process stages are available below the action
+instead of preceding it. The Gerência exam surface is intentionally limited to a
+return link, connected-account control, assignment disclosure, and assignment
+history. Attempt review, answer-key inspection, rejection, and retry decisions
+remain deferred until the server exposes the corresponding manager-authorized
+detail endpoints; the current assignment API cannot truthfully render those
+controls.
 
 ## Configuration boundary
 

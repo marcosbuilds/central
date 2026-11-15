@@ -1664,11 +1664,13 @@ def test_public_site_files_are_complete():
         "prova/index.html",
         "gerencia/provas/index.html",
     ):
-        header = (site_root / relative_path).read_text(encoding="utf-8").split("</header>", 1)[0]
-        assert "<header" in header
-        assert "Como entrar" not in header
-        assert "href=\"/acessar/\"" not in header
-        assert "Entrar para Peace" not in header
+        page_html = (site_root / relative_path).read_text(encoding="utf-8")
+        assert "<header" not in page_html
+        assert "Como entrar" not in page_html
+        assert "href=\"/acessar/\"" not in page_html
+        assert "Entrar para Peace" not in page_html
+    assert '"exam"' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
+    assert "manager-topbar" in (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
 
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
@@ -1746,8 +1748,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261115-01"' in opening_html
-    assert 'src="/script.js?v=20261115-01"' in opening_html
+    assert 'href="/styles.css?v=20261115-04"' in opening_html
+    assert 'src="/script.js?v=20261115-04"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1791,8 +1793,8 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261115-01"' in html
-        assert 'src="/script.js?v=20261115-01"' in html
+        assert 'href="/styles.css?v=20261115-04"' in html
+        assert 'src="/script.js?v=20261115-04"' in html
         assert '<header' not in html
     clips_html = (site_root / "clipes" / "index.html").read_text(encoding="utf-8")
     assert 'data-page="clips"' in clips_html
@@ -1800,7 +1802,7 @@ def test_public_site_files_are_complete():
     assert 'data-clips-list' in clips_html
     assert 'data-clips-query' in clips_html
     assert 'aria-label="Páginas públicas"' not in clips_html
-    assert "Biblioteca." in studies_html
+    assert "Biblioteca" in studies_html
     assert "Estude com calma." not in studies_html
     assert 'searchParams.get("q")' in studies_script
     assert "history.replaceState" in studies_script
@@ -1815,7 +1817,8 @@ def test_public_site_files_are_complete():
     assert 'src="/assets/studies/peace/a-peace-cover-1.png"' in peace_html
     assert 'href="/estudos/civil/leitor/" aria-label="Ler a Apostila Civil"' in studies_html
     assert 'href="/estudos/peace/leitor/" aria-label="Ler o Manual da Peace"' in studies_html
-    for cover_html in (studies_html, civil_html, peace_html, civil_reader_html, peace_reader_html):
+    assert 'class="material-cover-overlay"' not in studies_html
+    for cover_html in (civil_html, peace_html, civil_reader_html, peace_reader_html):
         assert 'data-material-cover' in cover_html
         assert 'class="material-cover-overlay"' in cover_html
     assert 'href="/estudos/civil/leitor/" target="_blank" rel="noopener"' in civil_html
@@ -1848,23 +1851,24 @@ def test_public_site_files_are_complete():
     assert 'class="study-reader" id="manual" tabindex="-1"' in peace_html
     assert '<section id="avaliacao" tabindex="-1"' in civil_html
     assert '<section id="pdf" tabindex="-1"' in peace_html
-    assert 'class="process-empty" id="conexao" tabindex="-1"' in process_html
+    assert 'class="process-empty process-empty--primary" id="conexao" tabindex="-1"' in process_html
     assert "Somente a Gerência poderá gerar, atribuir, revogar e corrigir provas." in process_html
     assert "Mesmo banco de questões" in civil_html
     assert "Sequência individual" in civil_html
     assert "class=\"process-identity-list\"" in process_html
     assert "Discord ID" in process_html and "Membro Peace" in process_html
-    assert "A ordem muda por tentativa, sem mudar o conjunto de questões." in process_html
-    assert "Começar pela Apostila Civil" in process_html
+    assert "Link único, prazo final e versão do banco de questões registrados no processo." in process_html
+    assert "Começar pela Apostila Civil" not in process_html
+    assert 'class="process-details"' in process_html
     assert "synthetic" not in process_html.lower()
     assert ".study-reader" in stylesheet and ".process-empty" in stylesheet
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261115-01" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261115-01" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261115-01" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "clips.css?v=20261115-01" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261115-04" in (site_root / "styles.css").read_text(encoding="utf-8")
     notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
     assert 'data-notices-bell' in notices_html
     assert 'data-notices-badge' in notices_html
@@ -1954,7 +1958,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
-    assert member_html.count("<h1") == 2  # one gate heading and one authenticated workspace heading
+    assert member_html.count("<h1") == 4  # gate, overview, library and clips accessible headings
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script

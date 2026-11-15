@@ -4,48 +4,50 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#050607">
-    <meta name="description" content="Gerência Peace — atribuição da prova Civil.">
-    <title>Gerência · Provas — Peace</title>
+    <meta name="description" content="Gerência Peace — atribuição e revisão de provas.">
+    <title>Gerar uma prova — Peace</title>
     <link rel="icon" href="/assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=20261115-01">
-    <script defer src="/script.js?v=20261115-01"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261115-04">
+    <script defer src="/script.js?v=20261115-04"></script>
   </head>
   <body data-page="manager">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
-    <div class="site-shell flow-page study-page manager-page">
-      <header class="flow-header" aria-label="Gerência de provas">
-        <a class="brand" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a>
-        <nav class="flow-header-nav" id="flow-site-nav" aria-label="Páginas públicas"><a href="/estudos/">Estudos</a><a href="/meu-processo/">Meu processo</a><a href="/estudos/civil/leitor/">Apostila Civil</a><a href="/#sobre">A Peace</a></nav>
-        <button class="menu-toggle flow-menu-toggle" type="button" aria-expanded="false" aria-controls="flow-site-nav"><span class="menu-toggle-label">menu</span><span class="menu-toggle-arrow" aria-hidden="true"><i></i><i></i></span></button>
-        <button class="button button--outline flow-header-cta" type="button" data-manager-logout hidden>Sair</button>
-      </header>
+    <div class="site-shell manager-page">
+      <div class="public-context-bar manager-topbar" role="banner" aria-label="Gerência de provas">
+        <a class="public-context-back" href="/area/" aria-label="Voltar ao painel Peace">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          <span>Voltar</span>
+        </a>
+        <h1 class="public-context-title" id="manager-title">Gerar uma prova</h1>
+        <div class="public-context-actions"></div>
+      </div>
 
       <main id="conteudo" class="manager-main" tabindex="-1">
-        <div class="study-breadcrumb"><a href="/estudos/">Estudos</a><span aria-hidden="true">/</span><span aria-current="page">Gerência · Provas</span></div>
-        <section class="manager-hero manager-hero--compact" data-reveal aria-labelledby="manager-title"><div><p class="eyebrow">Acesso restrito · Gerência</p><h1 id="manager-title">Gerar uma prova.</h1></div><p class="flow-lede">Informe o candidato e o prazo. O servidor confirma seu cargo antes de criar um link individual.</p></section>
-
         <noscript>
           <section class="manager-gate manager-gate--noscript" aria-labelledby="manager-noscript-title"><p class="eyebrow">Identidade da equipe</p><h2 id="manager-noscript-title">Ative o JavaScript para validar seu cargo.</h2><p>A Gerência só pode abrir esta área depois que a sessão Discord e o cargo atual forem confirmados pelo servidor.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fgerencia%2Fprovas%2F">Conectar com Discord <span class="button-icon" aria-hidden="true">↗</span></a></section>
         </noscript>
 
         <section class="manager-loading" data-manager-loading aria-busy="true" aria-label="Carregando área de Gerência">
-          <div class="manager-loading-skeleton" aria-hidden="true"><span class="manager-loading-kicker"></span><span class="manager-loading-title"></span><span class="manager-loading-line"></span><span class="manager-loading-line manager-loading-line--short"></span></div>
+          <div class="manager-loading-status" role="status"><span class="status-mark" aria-hidden="true"></span><span>Validando acesso da Gerência…</span></div>
         </section>
 
-        <section class="manager-gate" data-manager-gate hidden aria-labelledby="manager-gate-title"><p class="eyebrow">Identidade da equipe</p><h2 id="manager-gate-title">Conecte o Discord para verificar seu cargo.</h2><p>Somente o cargo de Gerência, conferido no servidor pelo bot, pode gerar atribuições. Staff, Founder e Recrutador não recebem esta permissão nesta etapa.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fgerencia%2Fprovas%2F" data-manager-connect><span data-manager-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><button class="text-button" type="button" data-manager-retry hidden>Tentar validar novamente</button><p class="form-status" data-manager-message role="status" aria-live="polite"></p></section>
+        <section class="manager-gate" data-manager-gate hidden aria-labelledby="manager-gate-title"><p class="eyebrow">Acesso restrito</p><h2 id="manager-gate-title">Conecte o Discord para verificar seu cargo.</h2><p>Somente o cargo de Gerência, conferido no servidor pelo bot, pode operar esta área.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fgerencia%2Fprovas%2F" data-manager-connect><span data-manager-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><button class="text-button" type="button" data-manager-retry hidden>Tentar validar novamente</button><p class="form-status" data-manager-message role="status" aria-live="polite"></p></section>
 
         <section class="manager-workspace" data-manager-workspace hidden aria-labelledby="assignment-form-title">
-          <div class="manager-workspace-heading"><h2 id="assignment-form-title">Dados da atribuição</h2><span class="status-tag status-tag--ready">Gerência confirmada</span></div>
-          <form class="manager-form" data-manager-form novalidate>
-            <div class="manager-field-grid"><label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" minlength="15" maxlength="25" required placeholder="Ex.: 000000000000000000"><small>Use o ID real. O username sozinho nunca autoriza a prova.</small></label><label class="field"><span>Username atual no Discord</span><input name="candidate_username" maxlength="80" required placeholder="Ex.: nome-do-candidato"><small>Será salvo como snapshot visual; o ID autenticado é a chave.</small></label></div>
-            <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required><small>O backend converte para UTC e valida o limite configurado.</small></label>
-            <div class="manager-form-actions"><button class="button button--light" type="submit" data-manager-submit>Gerar atribuição <span class="button-icon" aria-hidden="true">→</span></button><p class="form-status" data-manager-form-message role="status" aria-live="polite"></p></div>
-          </form>
-          <section class="manager-generated" data-manager-generated hidden aria-labelledby="generated-title"><p class="eyebrow">Link pronto</p><h3 id="generated-title">Envie uma única vez ao candidato.</h3><p>O token não é salvo em texto no banco. Copie agora e trate este link como privado.</p><div class="manager-link-row"><code id="generated-link" data-manager-generated-link></code><button class="button button--outline" type="button" data-copy-target="#generated-link">Copiar link</button></div><p class="copy-status" data-copy-status role="status" aria-live="polite"></p></section>
-          <section class="manager-history" aria-labelledby="history-title"><div class="study-section-heading"><div><p class="eyebrow">Histórico</p><h2 id="history-title">Atribuições criadas</h2></div><p>Somente as atribuições desta conta aparecem aqui.</p></div><div class="manager-assignment-list" data-manager-list></div></section>
+          <details class="manager-assignment-panel">
+            <summary><strong id="assignment-form-title">Atribuir prova</strong><span class="manager-summary-meta">Prova de ingresso</span></summary>
+            <form class="manager-form" data-manager-form novalidate>
+              <div class="manager-form-type" aria-label="Tipo de atribuição"><div><span class="manager-type-label">Tipo de atribuição</span><strong>Prova de ingresso</strong></div><p class="manager-type-note">Tipo inicial disponível nesta versão.</p></div>
+              <div class="manager-field-grid"><label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" minlength="15" maxlength="25" required placeholder="000000000000000000"></label><label class="field"><span>Username no Discord</span><input name="candidate_username" maxlength="80" required placeholder="nome-do-candidato"></label></div>
+              <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required></label>
+              <div class="manager-form-actions"><button class="button button--light" type="submit" data-manager-submit>Gerar atribuição <span class="button-icon" aria-hidden="true">→</span></button><p class="form-status" data-manager-form-message role="status" aria-live="polite"></p></div>
+            </form>
+            <section class="manager-generated" data-manager-generated hidden aria-labelledby="generated-title"><p class="eyebrow">Link pronto</p><h2 id="generated-title">Envie ao candidato.</h2><div class="manager-link-row"><code id="generated-link" data-manager-generated-link></code><button class="button button--outline" type="button" data-copy-target="#generated-link">Copiar link</button></div><p class="copy-status" data-copy-status role="status" aria-live="polite"></p></section>
+          </details>
+
+          <section class="manager-history" aria-labelledby="history-title"><div class="manager-section-heading"><h2 id="history-title">Minhas atribuições</h2><span class="manager-history-type">Prova de ingresso</span></div><div class="manager-assignment-list" data-manager-list></div></section>
         </section>
       </main>
-      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Gerência com rastreabilidade.</p><a class="footer-link" href="/estudos/civil/leitor/">Apostila Civil <span class="button-icon" aria-hidden="true">↗</span></a></footer>
     </div>
   </body>
 </html>

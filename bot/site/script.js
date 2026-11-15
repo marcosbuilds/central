@@ -4,7 +4,7 @@
 
   var currentScript = document.currentScript;
   var baseUrl = new URL("./", currentScript ? currentScript.src : document.baseURI);
-  var assetVersion = "20261115-01";
+  var assetVersion = "20261115-04";
   var pageModules = {
     home: ["js/public-media.js"],
     studies: ["js/studies.js"],
@@ -13,7 +13,7 @@
     candidatura: ["js/candidature.js"],
     entry: ["js/entry.js"],
     login: ["js/login.js"],
-    member: ["js/member-area.js"],
+    member: ["js/member-area.js", "js/studies.js", "js/clips.js"],
     process: ["js/process.js"],
     exam: ["js/exam.js"],
     manager: ["js/manager-exams.js"],

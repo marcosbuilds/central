@@ -341,3 +341,57 @@
   .scroll-cue { display: none; }
   .hero { padding-bottom: 4rem; }
 }
+
+/* Persistent authenticated shell: navigation stays put while the working
+   view changes in place. Keep the rail wide enough for labels, but remove the
+   old card gutters that made the panel look off-center. */
+.member-workspace-shell {
+  --member-sidebar-width: 18.5rem;
+  grid-template-columns: var(--member-sidebar-width) minmax(0, 1fr);
+}
+.member-sidebar { width: var(--member-sidebar-width); }
+.member-sidebar-inner { width: var(--member-sidebar-width); padding-inline: 1rem; }
+.member-sidebar-topline { justify-content: flex-start; }
+.member-nav a { width: 100%; box-sizing: border-box; padding-inline: 0.75rem; }
+.member-workspace-toolbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) auto minmax(7rem, 1fr);
+  align-items: center;
+  margin-bottom: 1.1rem;
+}
+.member-sidebar-toggle { grid-column: 1; justify-self: start; }
+.member-toolbar-context { position: absolute; left: 50%; grid-column: 2; justify-items: center; text-align: center; transform: translateX(-50%); }
+.member-toolbar-title { color: var(--text); font-size: 0.78rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+.member-toolbar-context .member-live-status { text-align: center; }
+.member-notification-trigger { position: absolute; right: 0; grid-column: 3; justify-self: end; }
+.member-view { min-width: 0; }
+.member-view[hidden] { display: none !important; }
+.member-library-view,
+.member-clips-view { padding-top: clamp(1.5rem, 3vw, 2.5rem); }
+.member-library-view .study-library-toolbar { margin: 0; }
+.member-library-view .study-library-grid { gap: clamp(1.25rem, 3vw, 3rem); margin-top: 1.6rem; }
+.member-library-view .material-cover--library { box-shadow: 0 1.2rem 2.5rem rgba(0, 0, 0, 0.2); }
+.member-library-view .study-library-meta { min-height: 3.5rem; }
+.member-clips-view .clips-feed { margin-top: 0; }
+.member-clips-view .clips-search { margin: 0 0 1.25rem; }
+.member-clips-view .clips-feed-heading { padding-bottom: 0.8rem; }
+.member-profile-main > p:not(.eyebrow) { display: none; }
+.member-next-action { margin-top: 1.1rem; padding-block: 0.75rem; }
+.member-next-action p { margin: 0; }
+
+@media (max-width: 900px) {
+  .member-workspace-shell { --member-sidebar-width: 0rem; }
+  .member-workspace-shell[data-sidebar-open="true"] { --member-sidebar-width: min(18.5rem, 86vw); }
+  .member-sidebar-inner { width: var(--member-sidebar-width); }
+  .member-workspace-toolbar { grid-template-columns: minmax(6rem, 1fr) auto minmax(3rem, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .member-workspace-toolbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.6rem; }
+  .member-toolbar-context { max-width: min(55vw, 14rem); }
+  .member-toolbar-title { font-size: 0.7rem; }
+  .member-sidebar-toggle { padding-inline: 0.65rem; }
+  .member-sidebar-toggle-label { display: none; }
+  .member-library-view .study-library-grid { grid-template-columns: 1fr; }
+}

@@ -2,20 +2,29 @@
   "use strict";
 
   var site = global.PeaceSite;
-  if (!site || !site.body || site.body.dataset.page !== "clips") return;
+  if (!site) return;
 
-  var list = document.querySelector("[data-clips-list]");
-  var empty = document.querySelector("[data-clips-empty]");
-  var status = document.querySelector("[data-clips-status]");
-  var form = document.querySelector("[data-clips-search]");
+  function initClips(root) {
+  var scope = root && typeof root.querySelector === "function" ? root : document;
+  var list = scope.querySelector("[data-clips-list]");
+  var empty = scope.querySelector("[data-clips-empty]");
+  var status = scope.querySelector("[data-clips-status]");
+  var form = scope.querySelector("[data-clips-search]");
   var input = form && form.querySelector("[data-clips-query]");
   var submit = form && form.querySelector("[data-clips-submit]");
-  var toast = document.querySelector("[data-clips-toast]");
+  var retry = scope.querySelector("[data-clips-retry]");
+  var toast = scope.querySelector("[data-clips-toast]");
   var toastTimer = null;
   var viewer = { state: "anonymous", can_interact: false };
   var loading = false;
 
-  if (!list) return;
+  function isActiveView() {
+    var view = form && form.closest && form.closest("[data-member-view]");
+    return !view || !view.hidden;
+  }
+
+  if (!list || list.dataset.clipsReady === "true") return;
+  list.dataset.clipsReady = "true";
 
   function node(tag, className, text) {
     var element = document.createElement(tag);
@@ -372,24 +381,31 @@
   }
 
   function renderSkeleton() {
-    list.replaceChildren();
-    for (var index = 0; index < 6; index += 1) {
-      var skeleton = node("article", "clip-skeleton");
-      skeleton.setAttribute("aria-hidden", "true");
-      skeleton.appendChild(node("span", "clip-skeleton-visual"));
-      skeleton.appendChild(node("span", "clip-skeleton-line"));
-      skeleton.appendChild(node("span", "clip-skeleton-line clip-skeleton-line--short"));
-      list.appendChild(skeleton);
+    if (!list.querySelector(".clip-card")) {
+      list.replaceChildren();
+      for (var index = 0; index < 3; index += 1) {
+        var skeleton = node("article", "clip-skeleton");
+        skeleton.setAttribute("aria-hidden", "true");
+        skeleton.appendChild(node("span", "clip-skeleton-visual"));
+        skeleton.appendChild(node("span", "clip-skeleton-line"));
+        skeleton.appendChild(node("span", "clip-skeleton-line clip-skeleton-line--short"));
+        list.appendChild(skeleton);
+      }
+    } else {
+      list.classList.add("is-refreshing");
     }
     list.setAttribute("aria-busy", "true");
     if (empty) empty.hidden = true;
+    if (retry) retry.hidden = true;
   }
 
   function render(payload) {
     var items = Array.isArray(payload.clips) ? payload.clips : [];
     viewer = payload.viewer || { state: "anonymous", can_interact: false };
     list.replaceChildren();
+    list.classList.remove("is-refreshing");
     list.setAttribute("aria-busy", "false");
+    if (retry) retry.hidden = true;
     if (!items.length) {
       if (empty) {
         empty.hidden = false;
@@ -410,8 +426,10 @@
   }
 
   function load() {
+    if (!isActiveView()) return;
     if (loading) return;
     loading = true;
+    var hadCards = Boolean(list.querySelector(".clip-card"));
     renderSkeleton();
     if (status) status.textContent = "Carregando clipes…";
     if (submit) submit.disabled = true;
@@ -426,13 +444,17 @@
         render(payload);
       })
       .catch(function (error) {
-        list.replaceChildren();
+        list.classList.remove("is-refreshing");
+        if (!hadCards) list.replaceChildren();
         list.setAttribute("aria-busy", "false");
         if (empty) {
-          empty.hidden = false;
-          empty.textContent = error.message || "Não consegui carregar os clipes agora.";
+          empty.hidden = hadCards;
+          empty.textContent = hadCards
+            ? "Não foi possível atualizar. A lista anterior continua visível."
+            : error.message || "Não consegui carregar os clipes agora.";
         }
-        if (status) status.textContent = "Tente novamente em instantes.";
+        if (retry) retry.hidden = false;
+        if (status) status.textContent = hadCards ? "Atualização indisponível." : "Tente novamente em instantes.";
       })
       .finally(function () {
         loading = false;
@@ -441,16 +463,31 @@
   }
 
   if (form) form.addEventListener("submit", function (event) {
+    if (!isActiveView()) return;
     event.preventDefault();
     var query = input ? input.value.trim() : "";
     var url = new URL(window.location.href);
+    if (site.body.dataset.page === "member") {
+      url.pathname = "/area/";
+      url.searchParams.set("view", "clips");
+    }
     if (query) url.searchParams.set("q", query);
     else url.searchParams.delete("q");
     window.history.replaceState({}, "", url.pathname + (url.search || ""));
     load();
   });
+  if (retry) retry.addEventListener("click", load);
 
   var initialQuery = new URL(window.location.href).searchParams.get("q") || "";
   if (input) input.value = initialQuery;
+  window.addEventListener("popstate", function () {
+    if (!isActiveView()) return;
+    if (input) input.value = new URL(window.location.href).searchParams.get("q") || "";
+    load();
+  });
   load();
+  }
+
+  site.initClips = initClips;
+  if (site.body.dataset.page === "clips") initClips(document);
 })(window);
