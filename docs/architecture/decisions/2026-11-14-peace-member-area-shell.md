@@ -22,14 +22,16 @@ the reading order, marks the closed rail `inert`, moves focus to the first
 control, and returns focus to the toggle on close or `Escape`.
 
 Each sidebar item is a real route, not a panel fragment:
-`/area/`, `/estudos/`, `/avisos/`, `/parceiros/`, `/clipes/`, and
-`/meu-processo/`. The current route is exposed with `aria-current`, and the
-public pages retain a contextual return link based on browser history. The
-panel does not send a connected member back to the public Home; Home resolves
-the same session and redirects to `/area/` for Peace members or `/entrar/` for
-connected accounts without the Peace role. Full-resource links may still open
-public study, notice, partner, or media routes. The Discord destination is
-explicitly external and opens in a separate tab.
+`/area/`, `/estudos/`, `/parceiros/`, `/clipes/`, and `/meu-processo/`.
+The current route is exposed with `aria-current`, and the public pages retain a
+contextual return link based on browser history. Public notices remain a full
+route, but the authenticated overview opens them from a notification bell so
+they do not compete with the primary workspace navigation. The panel does not
+send a connected member back to the public Home; Home resolves the same session
+and redirects to `/area/` for Peace members or `/entrar/` for connected
+accounts without the Peace role. Full-resource links may still open public
+study, notice, partner, or media routes. The Discord destination is explicitly
+external and opens in a separate tab.
 
 ## Authentication and state
 
@@ -59,7 +61,10 @@ availability metadata sit over that gradient.
 Skeleton geometry matches the rail and content columns. It is removed only
 after the state contract above resolves, preventing a connected person from
 seeing a second login action during the request or from entering a partially
-identified panel.
+identified panel. The ready view gives the profile the first visual priority,
+shows only backend-confirmed role chips, and keeps the public notices feed out
+of the initial process request; the bell loads it on demand with keyboard-safe
+focus restoration.
 
 ## React decision
 

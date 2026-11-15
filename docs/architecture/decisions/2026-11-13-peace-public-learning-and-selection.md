@@ -22,6 +22,13 @@ assets from the supplied PDFs. The original PDFs are not published or offered
 as downloads; the reader exposes a cover, outline, page navigation, and bounded
 page explanations.
 
+The library is the default entry point. Its material links open the reader
+routes directly; `/estudos/civil/` and `/estudos/peace/` remain compatibility
+aliases and redirect to `/estudos/civil/leitor/` and
+`/estudos/peace/leitor/` respectively. The reader keeps only a compact context
+line before page one so the reading task is not hidden behind a second landing
+page.
+
 ## Authorization boundary
 
 Study pages are public. Candidate process data is private to the authenticated

@@ -65,7 +65,7 @@
     }
     var previous = stored && stored.path !== current ? stored : referrer && referrer.origin === window.location.origin
       ? { path: referrer.pathname + referrer.search, label: labelForRoute(referrer.pathname) }
-      : { path: "/area/", label: "Painel Peace" };
+      : { path: "/", label: "início" };
     var canUseHistory = Boolean(stored || (referrer && referrer.origin === window.location.origin));
     back.href = previous.path || "/area/";
     back.setAttribute("aria-label", "Voltar para " + (previous.label || labelForRoute(previous.path)));

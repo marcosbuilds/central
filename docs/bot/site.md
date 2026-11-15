@@ -101,21 +101,23 @@ The `/area/` route is the member-area UI shell. Without a valid authenticated
 session it shows only an access gate; it never renders a member workspace,
 investigative case, or synthetic record. With the public member session it
 revalidates the cookie/bearer and the live Peace role, then loads a read-only
-overview. The overview returns only authorized blocks: next action, recent
-public notices, bounded media, partner posts, and a privacy-limited active
-clock summary. Investigator data is omitted from the payload unless the live
-member has `Investigator` or `Lead Investigator`. When present, the block reads
-from the site-owned investigative surface and does not read an investigation
-category or channel from Discord. Query strings such as
+profile and process summary. Public notices are kept in the separate notices
+feed and loaded on demand by the overview bell; they do not block the initial
+workspace request. Investigator data is omitted from the payload unless the
+live member has `Investigator` or `Lead Investigator`. When present, the block
+reads from the site-owned investigative surface and does not read an
+investigation category or channel from Discord. Query strings such as
 `?preview=member` and `?preview=investigativa` cannot bypass this gate.
 Every public API route also has a bounded in-process rate limit; the member
 overview keeps a separate per-member refresh throttle. Source blocks report
 `ready`, `empty`, or `unavailable` with `stale` metadata rather than presenting
 a failed Discord/SQLite read as current data.
 
-The public learning library is separate from `/area/`. `/estudos/` links to
-the Civil study material and the Peace convivencia manual, while
-`/meu-processo/` is the candidate-facing shell for Discord-linked exam
+The public learning library is separate from `/area/`. `/estudos/` is a
+content-first library with local search (the current filter is preserved as
+`?q=`) and links directly to the Civil reader and Peace convivencia reader; the
+former material landing URLs remain readable aliases that redirect to those
+readers. `/meu-processo/` is the candidate-facing shell for Discord-linked exam
 tracking. These pages do not require a Peace role. The reader publishes
 rendered page images from the supplied PDFs rather than the original files, and
 the process page reads only records bound to the authenticated Discord ID.
@@ -193,10 +195,12 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
 | Netlify `/clipes/` | serves the public clip library; GET is public, interactions require the Peace role |
 | Netlify `/estudos/` | serves the public study library and material cards |
-| Netlify `/estudos/civil/` | serves the Civil study reader and rendered pages |
-| Netlify `/estudos/peace/` | serves the Peace convivencia reader and rendered pages |
+| Netlify `/estudos/civil/` | redirects to the Civil reader |
+| Netlify `/estudos/civil/leitor/` | serves the Civil study reader and rendered pages |
+| Netlify `/estudos/peace/` | redirects to the Peace convivencia reader |
+| Netlify `/estudos/peace/leitor/` | serves the Peace convivencia reader and rendered pages |
 | Netlify `/meu-processo/` | serves the candidate-owned Discord-linked process shell |
-| Netlify `/estudos/a-peace` | redirects to `/estudos/peace/` as a readable alias |
+| Netlify `/estudos/a-peace` | redirects to `/estudos/peace/leitor/` as a readable alias |
 | Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell; its Peace panel is revealed only after the Discord session, live Peace role, complete profile/avatar, and candidate process are all confirmed |
@@ -254,7 +258,7 @@ The sidebar stays inside the authenticated panel and uses real routes:
 
 - `/area/` — the overview and member-owned process summary;
 - `/estudos/` — public study library;
-- `/avisos/` — public notices;
+- the notification bell in `/area/` — on-demand public notices panel;
 - `/parceiros/` — public partner directory;
 - `/clipes/` — public YouTube-inspired clip library;
 - `/meu-processo/` — candidate-owned process view;

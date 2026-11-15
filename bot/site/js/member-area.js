@@ -23,22 +23,25 @@
     var sidebarAvatar = workspace && workspace.querySelector("[data-member-sidebar-avatar]");
     var sidebarAvatarFallback = workspace && workspace.querySelector("[data-member-sidebar-avatar-fallback]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
+    var memberRoles = workspace && workspace.querySelector("[data-member-roles]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
     var memberAvatarFallback = workspace && workspace.querySelector("[data-member-avatar-fallback]");
     var connection = workspace && workspace.querySelector("[data-member-connection]");
     var nextAction = workspace && workspace.querySelector("[data-member-next-action]");
+    var notificationTrigger = workspace && workspace.querySelector("[data-member-notifications]");
+    var notificationPanel = workspace && workspace.querySelector("[data-member-notification-panel]");
+    var notificationClose = workspace && workspace.querySelector("[data-member-notifications-close]");
+    var notificationList = workspace && workspace.querySelector("[data-member-notification-list]");
+    var notificationBadge = workspace && workspace.querySelector("[data-member-notification-badge]");
     var logout = workspace && workspace.querySelector("[data-member-logout]");
     var retry = gate && gate.querySelector("[data-member-retry]");
     var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
+    var notificationsLoading = false;
+    var notificationsLoaded = false;
 
     function request(url, options) {
-      return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 15000).then(function (response) { return response.json(); });
-    }
-    function getDiscordSession() {
-      if (site.discordSessionError && typeof site.refreshDiscordSession === "function") return site.refreshDiscordSession();
-      if (typeof site.getDiscordSession === "function") return site.getDiscordSession();
-      return request("/api/auth/discord/session");
+      return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 5000).then(function (response) { return response.json(); });
     }
     function setConnection(message, tone) {
       if (!connection) return;
@@ -91,6 +94,115 @@
       if (sidebarUsername) sidebarUsername.textContent = profile.username ? "@" + profile.username : "@discord";
       if (sidebarState) sidebarState.textContent = "Membro Peace confirmado";
       renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, profile);
+    }
+
+    function renderRoles(server) {
+      if (!memberRoles) return;
+      var labels = [];
+      if (server && server.is_peace_member === true) labels.push("Membro Peace");
+      if (server && server.is_manager === true) labels.push("Gerência");
+      memberRoles.textContent = "";
+      labels.forEach(function (label) {
+        var chip = document.createElement("span");
+        chip.className = "member-role-chip";
+        chip.textContent = label;
+        memberRoles.appendChild(chip);
+      });
+      memberRoles.hidden = labels.length === 0;
+    }
+
+    function renderNotifications(payload) {
+      if (!notificationList) return;
+      var items = payload && Array.isArray(payload.notices) ? payload.notices : [];
+      var sourceState = payload && payload.source ? payload.source.state : "unavailable";
+      notificationList.textContent = "";
+
+      if (notificationBadge) {
+        notificationBadge.textContent = items.length > 9 ? "9+" : String(items.length);
+        notificationBadge.hidden = items.length === 0;
+      }
+      if (notificationTrigger) {
+        notificationTrigger.setAttribute(
+          "aria-label",
+          items.length ? (items.length === 1 ? "1 aviso público. Abrir avisos" : items.length + " avisos públicos. Abrir avisos") : "Abrir avisos"
+        );
+      }
+
+      if (!items.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-notification-state";
+        var unavailable = sourceState === "unavailable";
+        empty.textContent = unavailable
+          ? "A fonte pública está indisponível. Tente abrir novamente em instantes."
+          : "Nenhum comunicado público foi publicado ainda.";
+        notificationList.appendChild(empty);
+        if (unavailable) {
+          var retryButton = document.createElement("button");
+          retryButton.className = "text-button";
+          retryButton.type = "button";
+          retryButton.textContent = "Tentar novamente";
+          retryButton.addEventListener("click", function () {
+            notificationsLoaded = false;
+            loadNotifications();
+          });
+          notificationList.appendChild(retryButton);
+        }
+        return;
+      }
+
+      items.slice(0, 4).forEach(function (item) {
+        var article = document.createElement("article");
+        article.className = "member-notification-item";
+        var meta = document.createElement("p");
+        meta.className = "eyebrow";
+        meta.textContent = date(item.published_at) + " · " + (item.author || "Peace");
+        var copy = document.createElement("p");
+        copy.textContent = item.text || "Comunicado sem texto.";
+        article.appendChild(meta);
+        article.appendChild(copy);
+        if (/^https?:\/\//i.test(String(item.url || ""))) {
+          var link = document.createElement("a");
+          link.className = "text-link";
+          link.href = String(item.url);
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Abrir origem ↗";
+          article.appendChild(link);
+        }
+        notificationList.appendChild(article);
+      });
+    }
+
+    function loadNotifications() {
+      if (!notificationList || notificationsLoading || notificationsLoaded) return;
+      notificationsLoading = true;
+      notificationList.textContent = "";
+      var loadingState = document.createElement("p");
+      loadingState.className = "member-notification-state";
+      loadingState.textContent = "Consultando avisos públicos…";
+      notificationList.appendChild(loadingState);
+      request("/api/notices")
+        .then(function (payload) {
+          notificationsLoaded = true;
+          renderNotifications(payload);
+        })
+        .catch(function () {
+          renderNotifications({ notices: [], source: { state: "unavailable" } });
+        })
+        .finally(function () { notificationsLoading = false; });
+    }
+
+    function setNotificationsOpen(open, moveFocus) {
+      if (!notificationPanel || !notificationTrigger) return;
+      var nextOpen = Boolean(open);
+      notificationPanel.hidden = !nextOpen;
+      notificationTrigger.setAttribute("aria-expanded", String(nextOpen));
+      if (nextOpen) {
+        loadNotifications();
+        if (moveFocus && notificationClose) notificationClose.focus();
+      } else if (moveFocus) {
+        notificationTrigger.focus();
+      }
     }
 
     function setSidebarOpen(open, moveFocus) {
@@ -148,7 +260,7 @@
     function renderOverview(session, process) {
       if (!overview) return;
       var data = process || {};
-      var identity = data.identity || session.identity || {};
+      var identity = data.identity || (session && session.identity) || {};
       var profile = data.profile || {};
       var assignments = Array.isArray(data.assignments) ? data.assignments : [];
       overview.textContent = "";
@@ -156,7 +268,7 @@
       var progress = document.createElement("section");
       progress.className = "member-progress-card member-data-block--wide";
       progress.id = "member-process";
-      progress.innerHTML = "<p class=\"eyebrow\">Meu progresso</p><h3>Seu processo, em um só lugar.</h3>";
+      progress.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Processo</p><h2 id=\"member-process-title\">Seu andamento</h2></div>";
       var summary = document.createElement("div");
       summary.className = "member-progress-grid";
       [["Pontuação", profile.score == null ? "—" : profile.score + "/" + (profile.score_scale || 100)], ["Provas", String(assignments.length)], ["Status", profile.passed ? "Aprovado" : assignments.length ? "Em andamento" : "Sem prova"]].forEach(function (entry) {
@@ -179,7 +291,7 @@
       var assignmentsBlock = document.createElement("section");
       assignmentsBlock.className = "member-data-block member-data-block--wide";
       assignmentsBlock.id = "member-results";
-      assignmentsBlock.innerHTML = "<p class=\"eyebrow\">Provas e resultados</p><h3>Histórico do processo.</h3>";
+      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Provas</p><h2 id=\"member-results-title\">Suas atribuições</h2></div>";
       if (!assignments.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
@@ -206,7 +318,7 @@
       var materials = document.createElement("section");
       materials.className = "member-data-block member-data-block--wide member-materials-card";
       materials.id = "member-materials";
-      materials.innerHTML = "<p class=\"eyebrow\">Materiais públicos</p><h3>Continue sua preparação.</h3><p>As duas apostilas estão abertas para leitura, sem depender do painel.</p>";
+      materials.innerHTML = "<div class=\"member-data-heading\"><p class=\"eyebrow\">Biblioteca</p><h2 id=\"member-materials-title\">Materiais de estudo</h2></div><p>Leitura pública, sem depender do painel.</p>";
       var materialCovers = document.createElement("div");
       materialCovers.className = "member-material-covers";
       [
@@ -256,6 +368,7 @@
       var managerLink = document.querySelector("[data-member-manager]");
       if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
       if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
+      renderRoles(data.server);
       renderAvatar(identity);
       renderSidebarProfile(identity);
       syncSidebarLocation();
@@ -309,42 +422,25 @@
       if (loading) return;
       loading = true;
       showWorkspaceLoading();
-      getDiscordSession()
-        .then(function (session) {
-          var sessionError = site.discordSessionError;
-          if (!session) {
-            if (sessionError && sessionError.status !== 401) showUnavailable();
-            else showDisconnected();
-            return null;
-          }
-          var server = session.server || {};
-          if (server.state === "unavailable" || server.is_peace_member == null) {
-            showUnavailable();
-            return null;
-          }
-          if (server.is_peace_member !== true) {
-            showConnectedNonMember();
-            return null;
-          }
-          return request("/api/peace/process").then(function (process) {
-            var processServer = process && process.server ? process.server : {};
-            if (!processIsReady(process)) {
-              if (processServer.state === "member" || processServer.state === "not_member" || processServer.is_peace_member === false) {
-                showConnectedNonMember();
-              } else {
-                showUnavailable();
-              }
-              return;
+      request("/api/peace/process")
+        .then(function (process) {
+          var processServer = process && process.server ? process.server : {};
+          if (!processIsReady(process)) {
+            if (processServer.state === "member" || processServer.state === "not_member" || processServer.is_peace_member === false) {
+              showConnectedNonMember();
+            } else {
+              showUnavailable();
             }
-            renderOverview(session, process);
-            showWorkspace();
-          }).catch(function (error) {
-            if (error && error.status === 401) showDisconnected("Sua sessão Discord expirou. Conecte novamente para continuar.");
-            else if (error && error.status === 403) showConnectedNonMember();
-            else showUnavailable();
-          });
+            return;
+          }
+          renderOverview(null, process);
+          showWorkspace();
         })
-        .catch(function () { showUnavailable(); })
+        .catch(function (error) {
+          if (error && error.status === 401) showDisconnected("Sua sessão Discord expirou. Conecte novamente para continuar.");
+          else if (error && error.status === 403) showConnectedNonMember();
+          else showUnavailable();
+        })
         .finally(function () { loading = false; });
     }
 
@@ -354,16 +450,32 @@
       setSidebarOpen(!open, true);
     });
     if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
+    if (notificationTrigger) notificationTrigger.addEventListener("click", function () {
+      var open = notificationTrigger.getAttribute("aria-expanded") === "true";
+      setNotificationsOpen(!open, true);
+    });
+    if (notificationClose) notificationClose.addEventListener("click", function () { setNotificationsOpen(false, true); });
     sidebarLinks.forEach(function (link) {
       link.addEventListener("click", function () {
         setSidebarOpen(false, false);
       });
     });
     document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches) {
+      if (event.key !== "Escape") return;
+      if (notificationPanel && !notificationPanel.hidden) {
+        event.preventDefault();
+        setNotificationsOpen(false, true);
+        return;
+      }
+      if (shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches) {
         event.preventDefault();
         setSidebarOpen(false, true);
       }
+    });
+    document.addEventListener("click", function (event) {
+      if (!notificationPanel || notificationPanel.hidden) return;
+      if (notificationPanel.contains(event.target) || notificationTrigger.contains(event.target)) return;
+      setNotificationsOpen(false, false);
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");

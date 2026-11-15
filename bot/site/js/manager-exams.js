@@ -18,7 +18,7 @@
 
   function setText(node, value) { if (node) node.textContent = value; }
   function request(url, options) {
-    return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 15000)
+    return site.attemptEndpoint(url, Object.assign({ headers: { Accept: "application/json" } }, options || {}), 6000)
       .then(function (response) { return response.json(); });
   }
   function setMessage(node, text, tone) { setText(node, text || ""); if (node) node.dataset.state = tone || "pending"; }

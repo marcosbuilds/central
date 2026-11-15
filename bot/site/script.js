@@ -4,9 +4,10 @@
 
   var currentScript = document.currentScript;
   var baseUrl = new URL("./", currentScript ? currentScript.src : document.baseURI);
-  var assetVersion = "20261114-04";
+  var assetVersion = "20261115-01";
   var pageModules = {
     home: ["js/public-media.js"],
+    studies: ["js/studies.js"],
     clips: ["js/clips.js"],
     notices: ["js/notices.js"],
     candidatura: ["js/candidature.js"],
@@ -18,7 +19,9 @@
     manager: ["js/manager-exams.js"],
     reader: ["js/reader.js"]
   };
-  var modules = ["js/site-core.js", "js/discord-identity.js"].concat(pageModules[document.body.dataset.page] || []);
+  var modules = ["js/site-core.js"];
+  if (document.body.dataset.page !== "member") modules.push("js/discord-identity.js");
+  modules = modules.concat(pageModules[document.body.dataset.page] || []);
 
   function loadModule(path) {
     return new Promise(function (resolve, reject) {

@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Painel Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261114-04">
-    <script defer src="../script.js?v=20261114-04"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261115-01">
+    <script defer src="../script.js?v=20261115-01"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -38,9 +38,9 @@
       </section>
 
       <section class="member-workspace" data-member-workspace aria-busy="true" aria-labelledby="workspace-title">
-        <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Carregando painel Peace">
-          <div class="member-skeleton-sidebar"><span></span><span></span><span></span><span></span><span></span></div>
-          <div class="member-skeleton-content"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="member-workspace-skeleton" data-member-workspace-skeleton aria-busy="true" aria-label="Validando sua sessão no painel Peace">
+          <div class="member-skeleton-sidebar"><span class="member-skeleton-brand"></span><span class="member-skeleton-profile"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span><span class="member-skeleton-nav"></span></div>
+          <div class="member-skeleton-content"><span class="member-skeleton-kicker"></span><span class="member-skeleton-heading"></span><span class="member-skeleton-profile-card"></span><span class="member-skeleton-list"></span><span class="member-skeleton-list member-skeleton-list--short"></span></div>
         </div>
         <div data-member-workspace-content hidden>
           <div class="member-workspace-shell" data-member-shell data-sidebar-open="false">
@@ -55,12 +55,11 @@
                 </div>
 
                 <nav class="member-nav" aria-label="Seções do painel">
-                  <a aria-current="page" data-member-nav-link href="/area/">Visão geral</a>
-                  <a data-member-nav-link href="/estudos/">Área de estudos</a>
-                  <a data-member-nav-link href="/avisos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg>Avisos</a>
-                  <a data-member-nav-link href="/parceiros/">Parceiros</a>
-                  <a data-member-nav-link href="/clipes/">Clipes</a>
-                  <a data-member-nav-link href="/meu-processo/">Meu processo</a>
+                  <a aria-current="page" data-member-nav-link href="/area/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>Visão geral</a>
+                  <a data-member-nav-link href="/estudos/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.2 5.2c2.9-.8 5.4-.3 7.8 1.4v12c-2.4-1.7-4.9-2.2-7.8-1.4v-12ZM19.8 5.2c-2.9-.8-5.4-.3-7.8 1.4v12c2.4-1.7 4.9-2.2-7.8-1.4v-12Z"></path><path d="M12 6.6v12"></path></svg>Área de estudos</a>
+                  <a data-member-nav-link href="/parceiros/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="8" cy="8.2" r="2.5"></circle><circle cx="16" cy="15.8" r="2.5"></circle><path d="m10 9.8 4 4.4"></path><path d="M5.5 15.5a3.6 3.6 0 0 1 5.1-1.8M13.4 10.3a3.6 3.6 0 0 1 5.1 1.8"></path></svg>Parceiros</a>
+                  <a data-member-nav-link href="/clipes/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m10 9 5 3-5 3V9Z"></path></svg>Clipes</a>
+                  <a data-member-nav-link href="/meu-processo/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.3 12.3 2.4 2.4 4.9-5"></path></svg>Meu processo</a>
                   <a data-member-nav-link data-member-manager href="/gerencia/provas/" hidden>Gerenciar provas</a>
                 </nav>
 
@@ -77,24 +76,26 @@
             <div class="member-workspace-main">
               <div class="member-workspace-toolbar">
                 <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false"><span class="member-sidebar-toggle-icon" aria-hidden="true">☰</span><span data-member-sidebar-toggle-label>Abrir menu</span></button>
-                <div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div>
+                <div class="member-toolbar-context"><span class="eyebrow">Painel Peace</span><div class="member-live-status" data-member-connection role="status" aria-live="polite">Validando sessão…</div></div>
+                <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
               </div>
 
-              <div class="member-workspace-topline">
-                <div>
-                  <p class="eyebrow">Área autenticada</p>
-                  <h1 id="workspace-title">Visão geral.</h1>
+              <div class="member-profile" id="overview">
+                <div class="member-avatar-wrap member-avatar-wrap--large"><img data-member-avatar alt="" width="72" height="72" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
+                <div class="member-profile-main">
+                  <p class="eyebrow">Perfil Peace</p>
+                  <h1 id="workspace-title">Olá, <span data-member-name>membro</span>.</h1>
+                  <p>Seu acesso, progresso e próximos passos em um só lugar.</p>
+                  <div class="member-profile-roles" data-member-roles aria-label="Cargos confirmados"><span class="member-role-chip">Membro Peace</span></div>
                 </div>
+                <div class="member-profile-status"><span class="status-mark" aria-hidden="true"></span><strong>Conta conectada</strong><small>Identidade confirmada pelo Discord</small></div>
               </div>
 
-              <div class="member-welcome" id="overview">
-                <div class="member-avatar-wrap"><img data-member-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-avatar-fallback hidden aria-hidden="true"></span></div>
-                <div>
-                  <p class="eyebrow">Visão geral</p>
-                  <h2>Olá, <span data-member-name>membro</span>.</h2>
-                  <p>Esta é uma visão resumida. Ações e suporte continuam no servidor.</p>
-                </div>
-              </div>
+              <aside class="member-notification-panel" id="member-notification-panel" data-member-notification-panel role="dialog" aria-modal="false" hidden aria-labelledby="member-notification-title">
+                <div class="member-notification-heading"><div><p class="eyebrow">Atualizações</p><h2 id="member-notification-title">Avisos</h2></div><button class="member-notification-close" type="button" data-member-notifications-close aria-label="Fechar avisos">×</button></div>
+                <div class="member-notification-list" data-member-notification-list aria-live="polite"><p class="member-notification-state">Abra para consultar os comunicados públicos.</p></div>
+                <a class="text-link" href="/avisos/">Ver todos os avisos <span aria-hidden="true">↗</span></a>
+              </aside>
 
               <div class="member-next-action" data-member-next-action></div>
 

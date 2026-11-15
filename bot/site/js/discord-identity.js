@@ -354,7 +354,7 @@
     site.discordSessionError = null;
     return site.attemptEndpoint("/api/auth/discord/session", {
       headers: { Accept: "application/json" }
-    }, 9000).then(function (response) {
+    }, 5000).then(function (response) {
       return response.json();
     }).then(function (payload) {
       if (!sessionIsReady(payload)) {

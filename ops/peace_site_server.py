@@ -130,6 +130,14 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             self._redirect("/area/", 301)
             return
 
+        if route in {"/estudos/civil", "/estudos/civil/"}:
+            self._redirect("/estudos/civil/leitor/", 301)
+            return
+
+        if route in {"/estudos/peace", "/estudos/peace/"}:
+            self._redirect("/estudos/peace/leitor/", 301)
+            return
+
         if route in {
             "/entrar",
             "/candidatura",
@@ -138,8 +146,6 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/parceiros",
             "/clipes",
             "/estudos",
-            "/estudos/civil",
-            "/estudos/peace",
             "/meu-processo",
             "/prova",
             "/gerencia/provas",
@@ -150,7 +156,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             return
 
         if route in {"/estudos/a-peace", "/estudos/a-peace/"}:
-            self._redirect("/estudos/peace/", 301)
+            self._redirect("/estudos/peace/leitor/", 301)
             return
 
         if route in ACL_API_ROUTES:
