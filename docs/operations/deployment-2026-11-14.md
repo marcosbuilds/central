@@ -67,13 +67,13 @@ Reader-specific checks:
 
 | Command | Result |
 | --- | --- |
-| `python -m pytest tests/peace -q` | 159 passed |
+| `python -m pytest tests/peace -q` | 163 passed, 1 dependency warning |
 | `node --check` for changed site JavaScript | Passed |
 | `python -m compileall -q bot` | Passed |
 | Local public-route smoke requests | 13 routes/assets returned 200 |
 | `git diff --check` | Passed |
-| `dotnet build Central.sln -c Release` | Not executed: .NET SDK unavailable on the host |
-| `dotnet test Central.sln -c Release` | Not executed: .NET SDK unavailable on the host |
+| `dotnet build Central.sln -c Release` | Passed with 0 warnings and 0 errors using .NET SDK 8.0.428 |
+| `dotnet test Central.sln -c Release --no-build` | 38 passed |
 
 ## Discord and authentication boundary
 
@@ -84,10 +84,11 @@ backend remains the authority for Discord ID, membership, and management
 permissions.
 
 The local OAuth start boundary was observed, but a complete
-OAuth callback was **not verified in this run** because the internal browser
-session remained at the Discord login screen. No authenticated identity,
-avatar, role, or manager proof is claimed by this record. The next integration
-check must use an authorized test Discord session and verify both an allowed
+OAuth callback was **not verified in this run** because Discord rejected the
+unregistered localhost callback in the test browser. No authenticated
+identity, avatar, role, or manager proof is claimed by this record. The next
+integration check must register the intended loopback callback in the Discord
+application and use an authorized test session to verify both an allowed
 manager path and a denied non-manager path without recording member data.
 
 ## Residual limits

@@ -11,6 +11,17 @@
     var content = workspace && workspace.querySelector("[data-member-workspace-content]");
     var skeleton = workspace && workspace.querySelector("[data-member-workspace-skeleton]");
     var overview = workspace && workspace.querySelector("[data-member-overview]");
+    var shell = workspace && workspace.querySelector("[data-member-shell]");
+    var sidebar = workspace && workspace.querySelector("[data-member-sidebar]");
+    var sidebarToggle = workspace && workspace.querySelector("[data-member-sidebar-toggle]");
+    var sidebarToggleLabel = workspace && workspace.querySelector("[data-member-sidebar-toggle-label]");
+    var sidebarClose = workspace && workspace.querySelector("[data-member-sidebar-close]");
+    var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
+    var sidebarName = workspace && workspace.querySelector("[data-member-sidebar-name]");
+    var sidebarUsername = workspace && workspace.querySelector("[data-member-sidebar-username]");
+    var sidebarState = workspace && workspace.querySelector("[data-member-sidebar-state]");
+    var sidebarAvatar = workspace && workspace.querySelector("[data-member-sidebar-avatar]");
+    var sidebarAvatarFallback = workspace && workspace.querySelector("[data-member-sidebar-avatar-fallback]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
     var memberAvatar = workspace && workspace.querySelector("[data-member-avatar]");
     var memberAvatarFallback = workspace && workspace.querySelector("[data-member-avatar-fallback]");
@@ -48,23 +59,64 @@
       var parts = value.split(/\s+/).filter(Boolean);
       return (parts.length > 1 ? parts[0].charAt(0) + parts[parts.length - 1].charAt(0) : value.slice(0, 2)).toUpperCase() || "D";
     }
-    function renderAvatar(identity) {
-      if (!memberAvatar) return;
+    function renderAvatarNode(imageNode, fallbackNode, identity) {
+      if (!imageNode) return;
       var profile = identity || {};
       var fallback = function () {
-        memberAvatar.hidden = true;
-        if (memberAvatarFallback) {
-          memberAvatarFallback.textContent = initials(profile);
-          memberAvatarFallback.hidden = false;
+        imageNode.hidden = true;
+        if (fallbackNode) {
+          fallbackNode.textContent = initials(profile);
+          fallbackNode.hidden = false;
         }
       };
-      memberAvatar.hidden = true;
-      if (memberAvatarFallback) memberAvatarFallback.hidden = true;
-      memberAvatar.alt = "Avatar de @" + (profile.username || "membro");
-      memberAvatar.onerror = fallback;
+      imageNode.hidden = true;
+      if (fallbackNode) fallbackNode.hidden = true;
+      imageNode.alt = "Avatar de @" + (profile.username || "membro");
+      imageNode.onerror = fallback;
       if (!profile.avatar_url) { fallback(); return; }
-      memberAvatar.src = profile.avatar_url;
-      memberAvatar.hidden = false;
+      imageNode.src = profile.avatar_url;
+      imageNode.hidden = false;
+    }
+
+    function renderAvatar(identity) {
+      renderAvatarNode(memberAvatar, memberAvatarFallback, identity);
+      renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, identity);
+    }
+
+    function renderSidebarProfile(identity) {
+      var profile = identity || {};
+      if (sidebarName) sidebarName.textContent = profile.global_name || profile.display_name || profile.username || "membro";
+      if (sidebarUsername) sidebarUsername.textContent = profile.username ? "@" + profile.username : "@discord";
+      if (sidebarState) sidebarState.textContent = "Membro Peace confirmado";
+      renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, profile);
+    }
+
+    function setSidebarOpen(open, moveFocus) {
+      if (!shell || !sidebar) return;
+      var compact = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+      var nextOpen = compact ? Boolean(open) : true;
+      shell.dataset.sidebarOpen = String(nextOpen);
+      sidebarToggle && sidebarToggle.setAttribute("aria-expanded", String(nextOpen));
+      if (sidebarToggleLabel) sidebarToggleLabel.textContent = nextOpen ? "Fechar menu" : "Abrir menu";
+      if (nextOpen) {
+        sidebar.removeAttribute("inert");
+        if (moveFocus && compact) {
+          var first = sidebar.querySelector(".member-sidebar-close, .member-nav a");
+          if (first) first.focus();
+        }
+      } else {
+        sidebar.setAttribute("inert", "");
+        if (moveFocus && sidebarToggle) sidebarToggle.focus();
+      }
+    }
+
+    function syncSidebarLocation() {
+      var hash = window.location.hash || "#overview";
+      sidebarLinks.forEach(function (link) {
+        if (!link.getAttribute("href").startsWith("#")) return;
+        if (link.getAttribute("href") === hash) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      });
     }
 
     function identityIsReady(identity) {
@@ -101,7 +153,7 @@
 
       var progress = document.createElement("section");
       progress.className = "member-progress-card member-data-block--wide";
-      progress.id = "member-progress";
+      progress.id = "member-process";
       progress.innerHTML = "<p class=\"eyebrow\">Meu progresso</p><h3>Seu processo, em um só lugar.</h3>";
       var summary = document.createElement("div");
       summary.className = "member-progress-grid";
@@ -190,6 +242,27 @@
       overview.appendChild(materials);
       if (typeof site.initMaterialCovers === "function") site.initMaterialCovers(materials);
 
+      var shortcuts = document.createElement("div");
+      shortcuts.className = "member-section-shortcuts";
+      [
+        { id: "member-notices", kicker: "Avisos", title: "Fique por dentro.", copy: "Os avisos oficiais continuam sendo publicados pela equipe nos canais da Peace.", href: "/avisos/", label: "Abrir avisos" },
+        { id: "member-partners", kicker: "Parceiros", title: "Rede da comunidade.", copy: "Consulte os parceiros publicados pela Peace em uma rota dedicada.", href: "/parceiros/", label: "Ver parceiros" },
+        { id: "member-clips", kicker: "Clipes e momentos", title: "O que aconteceu por aqui.", copy: "Momentos e clipes públicos ficam reunidos no feed da comunidade.", href: "/#momentos", label: "Ver momentos" }
+      ].forEach(function (item) {
+        var card = document.createElement("section");
+        card.className = "member-section-card";
+        card.id = item.id;
+        card.innerHTML = "<div><p class=\"eyebrow\"></p><h3></h3><p></p></div><a></a>";
+        card.querySelector(".eyebrow").textContent = item.kicker;
+        card.querySelector("h3").textContent = item.title;
+        card.querySelector("div > p:last-child").textContent = item.copy;
+        var link = card.querySelector("a");
+        link.href = item.href;
+        link.textContent = item.label + " →";
+        shortcuts.appendChild(card);
+      });
+      overview.appendChild(shortcuts);
+
       if (nextAction) {
         nextAction.textContent = "";
         var nextTitle = document.createElement("strong");
@@ -203,6 +276,8 @@
       if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
       if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
       renderAvatar(identity);
+      renderSidebarProfile(identity);
+      syncSidebarLocation();
       if (updatedAt) setConnection("Atualizado em " + date(updatedAt), "ready");
       else setConnection("Sessão e processo confirmados pelo Discord", "ready");
     }
@@ -219,7 +294,7 @@
           gateAction.innerHTML = "Solicitar setagem <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
           gateAction.removeAttribute("data-member-discord-connect");
         } else if (mode === "connect") {
-          gateAction.href = "../acessar/";
+          gateAction.href = "../acessar/?return_to=%2Farea%2F";
           gateAction.innerHTML = "Conectar Discord <span class=\"button-icon\" aria-hidden=\"true\">→</span>";
           gateAction.setAttribute("data-member-discord-connect", "");
         }
@@ -247,6 +322,7 @@
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "false"); }
       if (skeleton) skeleton.hidden = true;
       if (content) content.hidden = false;
+      setSidebarOpen(false, false);
     }
 
     function load() {
@@ -294,6 +370,32 @@
 
     if (refresh) refresh.addEventListener("click", load);
     if (retry) retry.addEventListener("click", load);
+    if (sidebarToggle) sidebarToggle.addEventListener("click", function () {
+      var open = shell && shell.dataset.sidebarOpen === "true";
+      setSidebarOpen(!open, true);
+    });
+    if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
+    sidebarLinks.forEach(function (link) {
+      link.addEventListener("click", function () {
+        if (link.getAttribute("href").startsWith("#")) {
+          syncSidebarLocation();
+          setSidebarOpen(false, false);
+        }
+      });
+    });
+    window.addEventListener("hashchange", syncSidebarLocation);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches) {
+        event.preventDefault();
+        setSidebarOpen(false, true);
+      }
+    });
+    if (window.matchMedia) {
+      var sidebarMedia = window.matchMedia("(max-width: 900px)");
+      var syncSidebarMode = function () { setSidebarOpen(sidebarMedia.matches ? shell.dataset.sidebarOpen === "true" : true, false); };
+      if (sidebarMedia.addEventListener) sidebarMedia.addEventListener("change", syncSidebarMode);
+      else if (sidebarMedia.addListener) sidebarMedia.addListener(syncSidebarMode);
+    }
     if (logout) logout.addEventListener("click", function () {
       logout.disabled = true;
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })

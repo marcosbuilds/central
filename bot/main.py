@@ -80,6 +80,7 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/entry/status": (60, 60),
     "/api/entry/repair": (24, 60),
     "/api/entry/identify": (24, 60),
+    "/api/candidature/submit": (6, 60),
     "/api/member/auth/request": (12, 600),
     "/api/member/auth/verify": (24, 600),
     "/api/member/auth/session": (120, 60),
@@ -119,6 +120,7 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/entry/status",
         "/api/entry/repair",
         "/api/entry/identify",
+        "/api/candidature/submit",
         "/api/member/auth/request",
         "/api/member/auth/verify",
         "/api/member/auth/session",
@@ -3299,6 +3301,172 @@ class PeaceBot(commands.Bot):
         session.status = "verification_pending"
         return web.json_response({"ok": True, "code": "ROLE_READY", "message": "Sua conta está pronta. Abra #verify e conclua a verificação humana.", **await self.entry_session_payload(session)})
 
+    async def public_api_candidature_submit(self, request: web.Request) -> web.Response:
+        """Persist one web candidature through the legacy set-review path."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response(
+                {"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da candidatura inválidos."},
+                status=400,
+            )
+
+        nickname = str(payload.get("nickname", "") or "").strip()
+        discovery = str(payload.get("discovery", "") or "").strip()
+        motivation = str(payload.get("motivation", "") or "").strip()
+        if not re.fullmatch(r"[^\s]{3,32}", nickname):
+            return web.json_response(
+                {"ok": False, "code": "INVALID_IN_GAME_USERNAME", "message": "O apelido precisa ter de 3 a 32 caracteres e uma única palavra."},
+                status=400,
+            )
+        if not 20 <= len(discovery) <= 240 or not 60 <= len(motivation) <= 500:
+            return web.json_response(
+                {"ok": False, "code": "INVALID_APPLICATION_FIELDS", "message": "Revise os textos da candidatura e tente novamente."},
+                status=400,
+            )
+        if not all(payload.get(key) is True for key in ("terms_city", "terms_discord", "terms_conduct")):
+            return web.json_response(
+                {"ok": False, "code": "TERMS_REQUIRED", "message": "Aceite os três termos para enviar a candidatura."},
+                status=400,
+            )
+
+        raw_entry_token = payload.get("session_token", "")
+        entry_token = self.entry_session_token(raw_entry_token)
+        if raw_entry_token and entry_token is None:
+            return web.json_response(
+                {"ok": False, "code": "INVALID_SESSION", "message": "A sessão de entrada não é válida."},
+                status=400,
+            )
+        self.prune_entry_sessions()
+        entry_session = self.entry_sessions.get(entry_token or "") if entry_token else None
+        if entry_token and entry_session is None:
+            return web.json_response(
+                {"ok": False, "code": "ENTRY_SESSION_NOT_FOUND", "message": "A sessão de entrada expirou. Refaça a conexão para continuar."},
+                status=404,
+            )
+
+        _, oauth_session = await self.public_discord_session_context(request)
+        candidate_ids: set[int] = set()
+        if oauth_session is not None:
+            candidate_ids.add(int(oauth_session["discord_user_id"]))
+        if entry_session is not None:
+            await self.refresh_entry_session(entry_session)
+            if entry_session.discord_user_id is None or entry_session.status != "verified":
+                return web.json_response(
+                    {"ok": False, "code": "ENTRY_NOT_VERIFIED", "message": "Conclua a verificação no Discord antes de enviar a candidatura."},
+                    status=409,
+                )
+            candidate_ids.add(int(entry_session.discord_user_id))
+        if not candidate_ids:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para enviar a candidatura."},
+                status=401,
+            )
+        if len(candidate_ids) != 1:
+            return web.json_response(
+                {"ok": False, "code": "DISCORD_IDENTITY_MISMATCH", "message": "A conta conectada não corresponde à entrada identificada."},
+                status=409,
+            )
+        discord_user_id = next(iter(candidate_ids))
+
+        guild = self.entry_guild()
+        if guild is None or not self.is_ready() or self.is_closed():
+            return web.json_response(
+                {"ok": False, "code": "DISCORD_NOT_READY", "message": "O Peace Tools ainda está conectando ao Discord."},
+                status=503,
+            )
+        member, member_state = await self.public_discord_member_state(discord_user_id)
+        if member_state == "unavailable":
+            return web.json_response(
+                {"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "Não consegui confirmar sua conta no servidor agora."},
+                status=503,
+            )
+        if member is None:
+            return web.json_response(
+                {"ok": False, "code": "ENTRY_MEMBER_NOT_FOUND", "message": "Entre na Peace e conclua a verificação antes de enviar a candidatura."},
+                status=409,
+            )
+        if self.public_member_has_peace_role(member):
+            return web.json_response(
+                {"ok": False, "code": "PEACE_MEMBER", "message": "Sua conta já possui o cargo Peace. Não é necessário pedir setagem."},
+                status=409,
+            )
+        visitor_role = role_named(
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        if visitor_role is None or visitor_role not in member.roles:
+            return web.json_response(
+                {"ok": False, "code": "ENTRY_NOT_VERIFIED", "message": "Conclua a verificação humana no Discord antes de enviar a candidatura."},
+                status=409,
+            )
+        if not application_path_open("player", self.settings):
+            return web.json_response(
+                {"ok": False, "code": "APPLICATION_CLOSED", "message": "As vagas de Player estão fechadas no momento."},
+                status=409,
+            )
+        if guild.get_role(getattr(self.settings, "peace_role_id", None)) is None:
+            return web.json_response(
+                {"ok": False, "code": "ROLE_NOT_CONFIGURED", "message": "A configuração do cargo Peace está incompleta."},
+                status=503,
+            )
+
+        try:
+            pending = self.database.pending_set_request_for_user(discord_user_id)
+            if pending is not None:
+                if not await self.publish_pending_set_card(pending):
+                    return web.json_response(
+                        {"ok": False, "code": "SET_REVIEW_UNAVAILABLE", "message": "O pedido existe, mas não consegui reparar o cartão do scan-only agora."},
+                        status=503,
+                    )
+                return web.json_response(
+                    {
+                        "ok": True,
+                        "status": "pending",
+                        "request_id": int(pending["id"]),
+                        "idempotent": True,
+                        "message": "Sua candidatura já está aguardando análise; o cartão de aprovação foi sincronizado.",
+                    }
+                )
+            request_id, created = self.database.save_pending_set_request(
+                discord_user_id=discord_user_id,
+                in_game_username=nickname,
+                rg_in_game="",
+                telefone_in_game="",
+                application_discovery=discovery,
+                application_motivation=motivation,
+                source="site:candidatura",
+                recruiter_user_id=None,
+            )
+            saved_request = self.database.set_request(request_id)
+            if saved_request is None or not await self.publish_pending_set_card(saved_request):
+                return web.json_response(
+                    {"ok": False, "code": "SET_REVIEW_UNAVAILABLE", "message": "Salvei sua candidatura, mas não consegui publicar o cartão de análise agora. Tente novamente em instantes."},
+                    status=503,
+                )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui registrar a candidatura web", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "APPLICATION_UNAVAILABLE", "message": "Não consegui registrar sua candidatura agora."},
+                status=503,
+            )
+        return web.json_response(
+            {
+                "ok": True,
+                "status": "pending",
+                "request_id": int(request_id),
+                "idempotent": not created,
+                "message": "Candidatura já estava no scan-only e foi sincronizada." if not created else "Candidatura enviada ao scan-only para análise da equipe.",
+            }
+        )
+
     async def public_member_auth_request(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
@@ -5773,6 +5941,7 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/entry/status", self.public_api_entry_status)
         app.router.add_post("/api/entry/repair", self.public_api_entry_repair)
         app.router.add_post("/api/entry/identify", self.public_entry_identify_member)
+        app.router.add_post("/api/candidature/submit", self.public_api_candidature_submit)
         app.router.add_post("/api/member/auth/request", self.public_member_auth_request)
         app.router.add_post("/api/member/auth/verify", self.public_member_auth_verify)
         app.router.add_post("/api/member/auth/session", self.public_member_auth_session)
@@ -5797,6 +5966,7 @@ class PeaceBot(commands.Bot):
             "/api/entry/status",
             "/api/entry/repair",
             "/api/entry/identify",
+            "/api/candidature/submit",
             "/api/member/auth/request",
             "/api/member/auth/verify",
             "/api/member/auth/session",
@@ -7920,6 +8090,7 @@ class PeaceBot(commands.Bot):
 
     def set_approval_embed(self, request) -> discord.Embed:
         selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer Staff ou Management"
+        is_site_application = str(request["source"] or "").casefold().startswith("site:")
         embed = discord.Embed(
             title="Set pendente de aprovação",
             description=(
@@ -7931,8 +8102,14 @@ class PeaceBot(commands.Bot):
             ),
             color=0x5865F2,
         )
-        embed.add_field(name="Telefone in-game", value=f"`{redact(str(request['telefone_in_game']), limit=100)}`", inline=True)
-        embed.add_field(name="RG in-game", value=f"`{redact(str(request['rg_in_game']), limit=100)}`", inline=True)
+        if is_site_application:
+            discovery = request["application_discovery"] or request["telefone_in_game"]
+            motivation = request["application_motivation"] or request["rg_in_game"]
+            embed.add_field(name="Como conheceu", value=redact(str(discovery), limit=240), inline=False)
+            embed.add_field(name="Motivação", value=redact(str(motivation), limit=500), inline=False)
+        else:
+            embed.add_field(name="Telefone in-game", value=f"`{redact(str(request['telefone_in_game']), limit=100)}`", inline=True)
+            embed.add_field(name="RG in-game", value=f"`{redact(str(request['rg_in_game']), limit=100)}`", inline=True)
         embed.set_footer(text=f"set_request:{request['id']}")
         return embed
 
@@ -7962,30 +8139,37 @@ class PeaceBot(commands.Bot):
         embed.set_footer(text="Peace · Player set")
         return embed
 
-    async def sync_pending_set_panels(self) -> None:
-        if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
-            return
-        channel = self.guild.get_channel(self.settings.scan_channel_id)
+    async def publish_pending_set_card(self, request) -> bool:
+        """Create or repair one actionable legacy set card in scan-only."""
+        scan_channel_id = getattr(self.settings, "scan_channel_id", None)
+        if self.guild is None or self.user is None or scan_channel_id is None:
+            return False
+        channel = self.guild.get_channel(scan_channel_id)
         if not isinstance(channel, discord.TextChannel):
-            return
+            return False
+        marker = f"peace_set_approve_{request['id']}"
         try:
-            for request in self.database.pending_set_requests():
-                marker = f"peace_set_approve_{request['id']}"
-                found = None
-                async for message in channel.history(limit=100):
-                    if message.author.id == self.user.id and marker in self.message_custom_ids(message):
-                        found = message
-                        break
-                if found is None:
-                    await channel.send(
-                        embed=self.set_approval_embed(request),
-                        view=self.set_approval_view(int(request["id"])),
-                        allowed_mentions=discord.AllowedMentions(users=True),
-                    )
-                else:
-                    await found.edit(embed=self.set_approval_embed(request), view=self.set_approval_view(int(request["id"])))
-        except (discord.Forbidden, discord.HTTPException):
-            log.info("Não foi possível sincronizar pedidos de set pendentes")
+            async for message in channel.history(limit=100):
+                if message.author.id != self.user.id or marker not in self.message_custom_ids(message):
+                    continue
+                await message.edit(
+                    embed=self.set_approval_embed(request),
+                    view=self.set_approval_view(int(request["id"])),
+                )
+                return True
+            await channel.send(
+                embed=self.set_approval_embed(request),
+                view=self.set_approval_view(int(request["id"])),
+                allowed_mentions=discord.AllowedMentions(users=True),
+            )
+            return True
+        except (discord.Forbidden, discord.HTTPException, AttributeError):
+            log.info("Não foi possível publicar o pedido de set %s no scan-only", request["id"], exc_info=True)
+            return False
+
+    async def sync_pending_set_panels(self) -> None:
+        for request in self.database.pending_set_requests():
+            await self.publish_pending_set_card(request)
 
     def developer_approval_view(self, request_id: int) -> DeveloperApprovalView:
         view = self.developer_approval_views.get(request_id)
@@ -9298,26 +9482,27 @@ class PeaceBot(commands.Bot):
         if len(f"N ⎰ {draft.in_game_username} 99999") > 32:
             await respond(interaction, "Esse apelido ultrapassa o limite de 32 caracteres.")
             return
-        request_id = self.database.save_set_request(
+        request_id, created = self.database.save_pending_set_request(
             discord_user_id=member.id,
             in_game_username=draft.in_game_username,
             rg_in_game=draft.rg_in_game,
             telefone_in_game=draft.telefone_in_game,
             source=source,
             recruiter_user_id=recruiter_user_id,
-            status="pending",
         )
         request = self.database.set_request(request_id)
         if request is None:
             await respond(interaction, "Não consegui registrar seu pedido para aprovação.")
             return
-        await self.send_to_channel(
-            self.settings.scan_channel_id,
-            embed=self.set_approval_embed(request),
-            view=self.set_approval_view(request_id),
-        )
+        published = await self.publish_pending_set_card(request)
+        if not published:
+            await respond(interaction, "Registrei o pedido, mas não consegui publicar o cartão no scan-only. A equipe poderá sincronizá-lo novamente.")
+            return
         self.drafts.pop(interaction.user.id, None)
-        await respond(interaction, "Pedido enviado ao scan-only. Staff ou Management precisa aprovar o set manualmente antes da liberação.")
+        await respond(
+            interaction,
+            "Pedido já estava aguardando aprovação." if not created else "Pedido enviado ao scan-only. Staff ou Management precisa aprovar o set manualmente antes da liberação.",
+        )
 
     def can_approve_set_request(self, request, member: discord.Member) -> bool:
         # Historical requests may contain a former recruiter ID, but that ID

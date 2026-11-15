@@ -109,7 +109,7 @@
 
   function setConnectionState(state) {
     document.body.dataset.discordState = state;
-    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]");
+    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-connect]");
     controls.forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       if (state === "loading" || state === "connected") node.hidden = true;
@@ -279,7 +279,7 @@
   }
 
   function hideConnectedDuplicates(connected, state) {
-    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
+    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-connect]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       node.hidden = connected || state === "loading" || state === "retry";
     });

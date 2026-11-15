@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS set_requests (
     in_game_username TEXT NOT NULL,
     rg_in_game TEXT NOT NULL,
     telefone_in_game TEXT NOT NULL,
+    application_discovery TEXT,
+    application_motivation TEXT,
     source TEXT NOT NULL,
     recruiter_user_id TEXT,
     status TEXT NOT NULL DEFAULT 'approved',
@@ -428,6 +430,11 @@ class PeaceDatabase:
                 connection.execute("ALTER TABLE tickets ADD COLUMN voice_channel_id TEXT")
             if "closed_by" not in columns:
                 connection.execute("ALTER TABLE tickets ADD COLUMN closed_by TEXT")
+            set_request_columns = {row["name"] for row in connection.execute("PRAGMA table_info(set_requests)")}
+            if "application_discovery" not in set_request_columns:
+                connection.execute("ALTER TABLE set_requests ADD COLUMN application_discovery TEXT")
+            if "application_motivation" not in set_request_columns:
+                connection.execute("ALTER TABLE set_requests ADD COLUMN application_motivation TEXT")
             pool_columns = {row["name"] for row in connection.execute("PRAGMA table_info(peace_id_pool)")}
             if "status" not in pool_columns:
                 connection.execute(
@@ -2357,6 +2364,8 @@ class PeaceDatabase:
         in_game_username: str,
         rg_in_game: str,
         telefone_in_game: str,
+        application_discovery: str | None = None,
+        application_motivation: str | None = None,
         source: str,
         recruiter_user_id: int | None,
         status: str = "approved",
@@ -2368,17 +2377,65 @@ class PeaceDatabase:
                 """
                 INSERT INTO set_requests (
                     discord_user_id, in_game_username, rg_in_game, telefone_in_game,
+                    application_discovery, application_motivation,
                     source, recruiter_user_id, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(discord_user_id), in_game_username, rg_in_game, telefone_in_game,
+                    application_discovery,
+                    application_motivation,
                     source, str(recruiter_user_id) if recruiter_user_id else None,
                     status, timestamp, timestamp,
                 ),
             )
             connection.commit()
             return int(cursor.lastrowid)
+
+    def save_pending_set_request(
+        self,
+        *,
+        discord_user_id: int,
+        in_game_username: str,
+        rg_in_game: str,
+        telefone_in_game: str,
+        source: str,
+        recruiter_user_id: int | None,
+        application_discovery: str | None = None,
+        application_motivation: str | None = None,
+    ) -> tuple[int, bool]:
+        """Create one pending set request, serializing duplicate submissions."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                """
+                SELECT id FROM set_requests
+                WHERE discord_user_id = ? AND status = 'pending'
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(discord_user_id),),
+            ).fetchone()
+            if existing is not None:
+                return int(existing["id"]), False
+            cursor = connection.execute(
+                """
+                INSERT INTO set_requests (
+                    discord_user_id, in_game_username, rg_in_game, telefone_in_game,
+                    application_discovery, application_motivation,
+                    source, recruiter_user_id, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                """,
+                (
+                    str(discord_user_id), in_game_username, rg_in_game, telefone_in_game,
+                    application_discovery, application_motivation,
+                    source, str(recruiter_user_id) if recruiter_user_id else None,
+                    timestamp, timestamp,
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid), True
 
     def set_request(self, request_id: int | str) -> sqlite3.Row | None:
         self.initialize()

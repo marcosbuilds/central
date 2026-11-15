@@ -1376,6 +1376,122 @@ def test_peace_process_route_rechecks_live_peace_role_without_changing_candidate
     assert unavailable["code"] == "PEACE_MEMBERSHIP_UNAVAILABLE"
 
 
+def test_public_candidature_persists_pending_request_and_repairs_scan_card_idempotently(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.settings.set_vagas_abertas = True
+    bot.settings.scan_channel_id = 600
+    discord_user_id = 12345678901234567
+    session_token = bot.database.create_discord_oauth_session(
+        discord_user_id=str(discord_user_id),
+        username="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        avatar_hash="avatar-hash",
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    visitor = SimpleNamespace(id=200, name="Visitante")
+    member = SimpleNamespace(id=discord_user_id, roles=[visitor], bot=False)
+    bot.guild = SimpleNamespace(
+        get_role=lambda role_id: visitor if role_id == 200 else SimpleNamespace(id=100, name="Peace") if role_id == 100 else None,
+        get_member=lambda user_id: member if user_id == discord_user_id else None,
+        roles=[visitor],
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+    bot.publish_pending_set_card = AsyncMock(return_value=True)
+    payload = {
+        "nickname": "candidate",
+        "discovery": "Conheci a Peace por uma indicação de amigos.",
+        "motivation": "Quero participar da comunidade com respeito, aprender as regras e contribuir com uma presença consistente.",
+        "terms_city": True,
+        "terms_discord": True,
+        "terms_conduct": True,
+    }
+
+    status, first = run_configured_api(
+        bot,
+        "/api/candidature/submit",
+        method="POST",
+        payload=payload,
+        cookies={"peace_discord_session": session_token},
+    )
+
+    assert status == 200
+    assert first["ok"] is True
+    assert first["idempotent"] is False
+    request = bot.database.set_request(first["request_id"])
+    assert request is not None
+    assert request["status"] == "pending"
+    assert request["application_discovery"] == payload["discovery"]
+    assert request["application_motivation"] == payload["motivation"]
+
+    status, second = run_configured_api(
+        bot,
+        "/api/candidature/submit",
+        method="POST",
+        payload=payload,
+        cookies={"peace_discord_session": session_token},
+    )
+
+    assert status == 200
+    assert second["request_id"] == first["request_id"]
+    assert second["idempotent"] is True
+    assert len(bot.database.pending_set_requests()) == 1
+    assert bot.publish_pending_set_card.await_count == 2
+
+
+def test_public_candidature_requires_verified_visitor_and_discord_session(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.settings.set_vagas_abertas = True
+    discord_user_id = 12345678901234567
+    session_token = bot.database.create_discord_oauth_session(
+        discord_user_id=str(discord_user_id),
+        username="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        avatar_hash=None,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    member = SimpleNamespace(id=discord_user_id, roles=[], bot=False)
+    bot.guild = SimpleNamespace(
+        get_role=lambda role_id: SimpleNamespace(id=200, name="Visitante") if role_id == 200 else None,
+        get_member=lambda user_id: member if user_id == discord_user_id else None,
+        roles=[],
+    )
+    bot.is_ready = lambda: True
+    bot.is_closed = lambda: False
+    payload = {
+        "nickname": "candidate",
+        "discovery": "Conheci a Peace por uma indicação de amigos.",
+        "motivation": "Quero participar da comunidade com respeito, aprender as regras e contribuir com uma presença consistente.",
+        "terms_city": True,
+        "terms_discord": True,
+        "terms_conduct": True,
+    }
+
+    status, rejected = run_configured_api(
+        bot,
+        "/api/candidature/submit",
+        method="POST",
+        payload=payload,
+        cookies={"peace_discord_session": session_token},
+    )
+
+    assert status == 409
+    assert rejected["code"] == "ENTRY_NOT_VERIFIED"
+    assert bot.database.pending_set_requests() == []
+
+    status, no_session = run_configured_api(
+        bot,
+        "/api/candidature/submit",
+        method="POST",
+        payload=payload,
+    )
+
+    assert status == 401
+    assert no_session["code"] == "OAUTH_SESSION_INVALID"
+
+
 def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
     from bot.main import EntryInviteSession
 
@@ -1621,8 +1737,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261114-02"' in opening_html
-    assert 'src="/script.js?v=20261114-02"' in opening_html
+    assert 'href="/styles.css?v=20261114-03"' in opening_html
+    assert 'src="/script.js?v=20261114-03"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1665,8 +1781,8 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261114-02"' in html
-        assert 'src="/script.js?v=20261114-02"' in html
+        assert 'href="/styles.css?v=20261114-03"' in html
+        assert 'src="/script.js?v=20261114-03"' in html
         assert 'aria-label="Páginas públicas"' in html
     assert "Apostila Civil" in studies_html and "Manual da Peace" in studies_html
     assert "Leitor visual disponível." in civil_html and "Leitor visual disponível." in peace_html
@@ -1721,9 +1837,9 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261114-02" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261114-03" in (site_root / "styles.css").read_text(encoding="utf-8")
     reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
     assert 'page.matches("figure.reader-page")' in reader_script
     civil_notes = reader_script.split("civil: [", 1)[1].split("peace: [", 1)[0]
@@ -1772,11 +1888,12 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
     assert 'class="member-sidebar"' in member_html
-    assert 'href="/#momentos"' in member_html
-    assert 'href="/estudos/"' in member_html
-    assert 'href="/avisos/"' in member_html
-    assert 'href="/parceiros/"' in member_html
-    assert 'href="/meu-processo/"' in member_html
+    assert 'href="#member-clips"' in member_html
+    assert 'href="#member-materials"' in member_html
+    assert 'href="#member-notices"' in member_html
+    assert 'href="#member-partners"' in member_html
+    assert 'href="#member-process"' in member_html
+    assert 'href="/area/#overview"' in member_html
     assert 'data-member-retry' in member_html
     assert 'data-member-workspace-skeleton' in member_html
     assert '/clipes/' not in member_html
@@ -1784,10 +1901,12 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "data-preview-toggle" not in member_html
     assert "data-preview-screen" not in member_html
     assert "prévia" not in member_html.lower()
-    assert "member-header" in member_html
+    assert "member-header" not in member_html
+    assert "member-sidebar-profile" in member_html
+    assert "member-sidebar-toggle" in member_html
     assert "site-header site-header--area" not in member_html
     assert 'data-workspace-menu' not in member_html
-    assert "workspace-shell" not in member_html
+    assert 'class="workspace-shell"' not in member_html
     assert "registros abaixo são sintéticos" not in member_html
     assert 'data-preview-toggle' not in script
     assert 'data-member-preview' not in script
@@ -1796,11 +1915,12 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
-    assert member_html.count("<h1") == 1
+    assert member_html.count("<h1") == 2  # one gate heading and one authenticated workspace heading
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
     assert "data.updated_at" in member_script
+    assert 'requestedReturn === "/area/"' in (site_root / "js" / "login.js").read_text(encoding="utf-8")
     assert "getDiscordSession" in member_script
     assert "is_peace_member" in member_script
     assert "showConnectedNonMember" in member_script

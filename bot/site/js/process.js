@@ -196,12 +196,15 @@
   function loadProcess() {
     if (retryButton) { retryButton.disabled = true; retryButton.hidden = true; }
     showStatus("Validando sessão e processo…", "pending");
-    request("/api/auth/discord/session")
+    var sessionRequest = typeof site.getDiscordSession === "function"
+      ? site.getDiscordSession()
+      : request("/api/auth/discord/session");
+    sessionRequest
       .then(function (session) {
         if (!session || session.ok !== true || !session.identity) {
-          var sessionError = new Error("Sessão Discord inválida.");
-          sessionError.status = 401;
-          throw sessionError;
+          var sharedError = site.discordSessionError || new Error("Sessão Discord inválida.");
+          if (!sharedError.status) sharedError.status = 401;
+          throw sharedError;
         }
         return request("/api/exams/process").then(function (process) {
           if (!process || process.ok !== true || !process.identity || !Array.isArray(process.assignments)) {

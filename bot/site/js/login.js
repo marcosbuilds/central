@@ -10,6 +10,8 @@
     var connect = document.querySelector("[data-login-discord]");
     var params = new URLSearchParams(window.location.search);
     var oauthStatus = params.get("oauth");
+    var requestedReturn = params.get("return_to");
+    if (!requestedReturn || requestedReturn.charAt(0) !== "/" || requestedReturn.indexOf("//") === 0) requestedReturn = "/acessar/";
     if (oauthStatus) {
       params.delete("oauth");
       window.history.replaceState({}, document.title, window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash);
@@ -30,10 +32,15 @@
       var server = session.server || {};
       show(server.is_peace_member === true ? "Discord confirmado. Abrindo o painel Peace…" : "Discord confirmado. Abrindo seu próximo passo…", "success");
       window.setTimeout(function () {
-        window.location.replace(server.is_peace_member === true ? "/area/" : "/meu-processo/");
+        var destination = server.is_peace_member === true
+          ? "/area/"
+          : requestedReturn === "/area/"
+            ? "/area/"
+            : "/meu-processo/";
+        window.location.replace(destination);
       }, 180);
     });
-    if (connect) connect.href = "/api/auth/discord/start?return_to=" + encodeURIComponent("/acessar/");
+    if (connect) connect.href = "/api/auth/discord/start?return_to=" + encodeURIComponent(requestedReturn);
   }
 
   site.initLogin = initLogin;

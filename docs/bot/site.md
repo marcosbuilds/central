@@ -235,18 +235,22 @@ rule.
 The authenticated `/area/` panel uses a responsive side navigation. It is a
 navigation aid, not an authorization boundary: every destination must keep its
 own server-side checks and a hidden menu item must not be treated as protection.
-The current destinations are:
+The sidebar stays inside the authenticated panel. Its destinations are local
+fragment targets for the content already rendered in `/area/`:
 
 - `#overview` — the confirmed Peace overview;
-- `/estudos/` — public study library;
-- `/avisos/` — public notices;
-- `/parceiros/` — public partners;
-- `/#momentos` — the home media section for clips and moments (there is no
-  `/clipes/` route);
-- `/meu-processo/` — the authenticated Discord-linked process;
-- `/discord` — the public Discord destination;
+- `#member-materials` — study covers and links to the public readers;
+- `#member-notices` — the notices summary and its public route link;
+- `#member-partners` — the partners summary and its public route link;
+- `#member-clips` — the clips/moments summary and its public feed link;
+- `#member-process` — the candidate process summary;
+- the Discord invite — an explicitly external destination opened in a new tab;
 - `/gerencia/provas/` — shown only for the manager capability and still guarded
   by the server.
+
+The cards may link to public study, notices, partners, or media pages for the
+full resource. Those links are content actions, not sidebar navigation, and
+the authenticated panel never uses them as an authorization boundary.
 
 While the Discord session, live membership result, or process response is
 pending, the panel content remains behind a skeleton. A `401` offers an

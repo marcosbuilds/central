@@ -16,6 +16,7 @@
 /api/entry/status https://peace-tools-8be02694.aclclouds.online/api/entry/status 200!
 /api/entry/repair https://peace-tools-8be02694.aclclouds.online/api/entry/repair 200!
 /api/entry/identify https://peace-tools-8be02694.aclclouds.online/api/entry/identify 200!
+/api/candidature/submit https://peace-tools-8be02694.aclclouds.online/api/candidature/submit 200!
 /api/member/auth/request https://peace-tools-8be02694.aclclouds.online/api/member/auth/request 200!
 /api/member/auth/verify https://peace-tools-8be02694.aclclouds.online/api/member/auth/verify 200!
 /api/member/auth/session https://peace-tools-8be02694.aclclouds.online/api/member/auth/session 200!

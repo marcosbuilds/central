@@ -68,6 +68,7 @@
     var existingPreviousFocus = null;
     var entryInviteWindowName = "peace-discord-invite";
     var candidatureToastTimer = null;
+    var applicationSubmitted = false;
 
     function showCandidatureToast(message) {
       if (!candidatureToast) return;
@@ -544,6 +545,7 @@
           discord: Boolean(getField("terms-discord") && getField("terms-discord").checked),
           conduct: Boolean(getField("terms-conduct") && getField("terms-conduct").checked)
         },
+        submitted: applicationSubmitted,
         savedAt: Date.now()
       };
 
@@ -823,6 +825,54 @@
 
     var submitButton = wizard.querySelector("[data-application-submit]");
     var result = wizard.querySelector("[data-application-result]");
+    function parseApplicationResponse(response) {
+      return response.text().then(function (raw) {
+        var payload = null;
+        try { payload = raw ? JSON.parse(raw) : null; } catch (error) { payload = null; }
+        if (!payload || payload.ok !== true) throw friendlyError(payload, response.status, "Não foi possível enviar a candidatura agora.");
+        return payload;
+      });
+    }
+
+    function submitApplication() {
+      var entryToken = (entrySession && entrySession.session_token) || readEntryToken();
+      var payload = {
+        session_token: entryToken || "",
+        nickname: getField("nickname") ? getField("nickname").value.trim() : "",
+        discovery: getField("discovery") ? getField("discovery").value.trim() : "",
+        motivation: getField("motivation") ? getField("motivation").value.trim() : "",
+        terms_city: Boolean(getField("terms-city") && getField("terms-city").checked),
+        terms_discord: Boolean(getField("terms-discord") && getField("terms-discord").checked),
+        terms_conduct: Boolean(getField("terms-conduct") && getField("terms-conduct").checked)
+      };
+      if (result) result.textContent = "Validando sua conta e publicando o pedido no scan-only…";
+      setButtonBusy(submitButton, true, "Enviando…");
+      return attemptEndpoint("/api/candidature/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload)
+      }, 60000)
+        .then(parseApplicationResponse)
+        .then(function (responsePayload) {
+          applicationSubmitted = true;
+          saveDraft();
+          setStage(4, false);
+          if (result) result.textContent = responsePayload.message || "Candidatura enviada ao scan-only para análise.";
+          showCandidatureToast(responsePayload.message || "Candidatura enviada para análise.");
+          return responsePayload;
+        })
+        .catch(function (error) {
+          if (error && error.code === "PEACE_MEMBER") {
+            window.location.replace("/area/");
+            return;
+          }
+          if (error && error.code === "ENTRY_NOT_VERIFIED") setStage(2, false);
+          if (result) result.textContent = error.message || "Não foi possível enviar a candidatura agora.";
+          throw error;
+        })
+        .finally(function () { setButtonBusy(submitButton, false); });
+    }
+
     if (submitButton) submitButton.addEventListener("click", function () {
       var missingTerm = Array.prototype.slice.call(wizard.querySelectorAll('[name^="terms-"]')).find(function (term) {
         return !term.checked;
@@ -832,9 +882,7 @@
         missingTerm.focus();
         return;
       }
-      saveDraft();
-      setStage(4, false);
-      showCandidatureToast("Candidatura enviada para análise.");
+      submitApplication().catch(function () { /* message is visible in the live region */ });
     });
 
     window.addEventListener("pagehide", function () { saveDraft(); });
@@ -854,7 +902,8 @@
     });
     updateReview();
     updateWizard(draft && draft.wizardStep ? draft.wizardStep : 1, false);
-    setStage(draft && draft.stage ? draft.stage : 1, false);
+    applicationSubmitted = Boolean(draft && draft.submitted === true);
+    setStage(applicationSubmitted && draft && draft.stage ? draft.stage : (draft && draft.stage ? Math.min(3, draft.stage) : 1), false);
     restoring = false;
 
     manualEntryIdentity = readManualEntry();
