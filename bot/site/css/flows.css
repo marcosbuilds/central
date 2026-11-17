@@ -11,7 +11,7 @@
 @keyframes entry-loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .entry-loading-spinner { animation: none; } }
 .flow-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; width: min(100%, var(--content)); margin: 0 auto; padding: 1.1rem 1.25rem; }
-.flow-header--minimal { grid-template-columns: auto auto; justify-content: space-between; }
+.flow-header--minimal { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); justify-content: initial; }
 .flow-header-context { display: inline-flex; align-items: center; justify-self: center; gap: 0.6rem; color: var(--muted); font-size: 0.72rem; }
 .flow-header-context small { color: var(--quiet); font-size: 0.62rem; }
 .flow-header-link, .flow-header-nav a { color: var(--muted); font-size: 0.74rem; font-weight: 700; transition: color 180ms var(--ease-fast); }
@@ -397,7 +397,7 @@ body[data-page="candidatura"] [data-entry-connect] { min-width: 15rem; }
   .flow-footer { grid-template-columns: 1fr auto; }
 }
 
-.flow-header.flow-header--minimal { grid-template-columns: auto auto; justify-content: space-between; }
+.flow-header.flow-header--minimal { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); justify-content: initial; }
 
 /* Hierarchy pass: keep the next action in the first useful viewport. */
 :root {

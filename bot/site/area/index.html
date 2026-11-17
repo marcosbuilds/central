@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Área de membros — Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261115-07">
-    <script defer src="../script.js?v=20261115-07"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261116-06">
+    <script defer src="../script.js?v=20261116-06"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -54,7 +54,7 @@
           </div>
         </div>
         <div data-member-workspace-content hidden>
-          <div class="member-workspace-shell" data-member-shell data-sidebar-open="false">
+          <div class="member-workspace-shell" data-member-shell data-sidebar-open="false" data-sidebar-collapsed="false">
             <aside class="member-sidebar" id="member-sidebar" data-member-sidebar aria-label="Navegação da área de membros" inert>
               <div class="member-sidebar-inner">
                 <div class="member-sidebar-topline">
@@ -62,34 +62,44 @@
                     <span class="brand-mark"><img src="../assets/peace-bird.png" alt="" width="1254" height="1254"></span>
                     <span class="brand-lockup"><strong>PEACE</strong><small>MEMBROS</small></span>
                   </a>
-                  <button class="member-sidebar-close" type="button" data-member-sidebar-close aria-label="Fechar menu"><span aria-hidden="true">×</span></button>
+                  <button class="member-sidebar-collapse" type="button" data-member-sidebar-collapse aria-label="Minimizar menu" aria-expanded="true">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H6.5A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg>
+                  </button>
                 </div>
 
                 <nav class="member-nav" aria-label="Seções da área de membros">
                   <div class="member-nav-group">
                     <p class="member-nav-label">Peace</p>
-                  <a aria-current="page" data-member-nav-link data-member-view-link="overview" href="/area/">Visão geral</a>
-                  <a data-member-nav-link data-member-view-link="library" href="/estudos/">Biblioteca</a>
-                  <a data-member-nav-link data-member-view-link="partners" href="/parceiros/">Parceiros</a>
-                  <a data-member-nav-link data-member-view-link="clips" href="/clipes/"><span>Clipes</span><span class="member-nav-count" data-member-nav-count="clips" hidden>0</span></a>
-                  <a data-member-nav-link href="/meu-processo/"><span>Processo e provas</span><span class="member-nav-count" data-member-nav-count="proofs" hidden>0</span></a>
+                  <a aria-current="page" data-member-nav-link data-member-view-link="overview" href="/area/"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg><span>Visão geral</span></a>
+                  <a data-member-nav-link data-member-view-link="library" href="/area/?view=library"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21.5v-16Z"></path><path d="M5 5.5v16M9 7h6M9 11h6"></path></svg><span>Biblioteca</span></a>
+                  <a data-member-nav-link data-member-view-link="partners" href="/area/?view=partners"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="2.5"></circle><circle cx="16" cy="16" r="2.5"></circle><path d="m10 10 4 4M5 16a4 4 0 0 1 5-3M14 11a4 4 0 0 1 5 3"></path></svg><span>Parceiros</span></a>
+                  <a data-member-nav-link data-member-view-link="clips" href="/area/?view=clips"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m10 9 5 3-5 3V9Z"></path></svg><span>Clipes</span><span class="member-nav-count" data-member-nav-count="clips" hidden>0</span></a>
+                  <a data-member-nav-link data-member-view-link="process" href="/area/?view=process"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="m8.5 12.2 2.4 2.4 4.8-5"></path></svg><span>Processo e provas</span><span class="member-nav-count" data-member-nav-count="proofs" hidden>0</span></a>
                   </div>
                   <div class="member-nav-group member-nav-group--management" data-member-management-group hidden>
                     <p class="member-nav-label">Gerência</p>
-                    <a data-member-nav-link data-member-manager href="/gerencia/provas/"><span>Gerenciar provas</span></a>
+                    <a data-member-nav-link data-member-view-link="manager" data-member-manager href="/area/?view=manager"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"></path><path d="M8 9h8M8 13h5M8 16h3"></path></svg><span>Gerenciar provas</span></a>
+                  </div>
+                  <div class="member-nav-group member-nav-group--operations" data-member-scan-group hidden>
+                    <p class="member-nav-label">Operação</p>
+                    <a data-member-nav-link data-member-view-link="scan" data-member-scan href="/area/?view=scan"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M8 12h8M12 8v8"></path></svg><span>Scan-only</span></a>
+                  </div>
+                  <div class="member-nav-group member-nav-group--investigation" data-member-investigation-group hidden>
+                    <p class="member-nav-label">Investigação</p>
+                    <a data-member-nav-link data-member-view-link="investigation" data-member-investigation href="/area/?view=investigation"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4.5 4.5M8.5 10.5h4"></path></svg><span>Casos e ocorrências</span></a>
                   </div>
                   <div class="member-nav-group member-nav-group--staff">
-                    <p class="member-nav-label">Staff</p>
-                    <p class="member-nav-note">Controles internos continuam no Discord.</p>
+                    <p class="member-nav-label">Comunidade</p>
+                    <a data-member-nav-link data-member-view-link="notices" href="/area/?view=notices"><svg class="member-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span>Avisos</span><span class="member-nav-count" data-member-nav-count="notices" hidden>0</span></a>
                   </div>
                 </nav>
 
                 <div class="member-sidebar-bottom">
                   <div class="member-sidebar-profile" data-member-sidebar-profile>
                     <div class="member-sidebar-avatar-wrap"><img data-member-sidebar-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-sidebar-avatar-fallback hidden aria-hidden="true"></span></div>
-                    <div class="member-sidebar-profile-copy"><strong data-member-sidebar-name>membro</strong><span data-member-sidebar-username>@discord</span><small><span class="status-mark" aria-hidden="true"></span><span data-member-sidebar-state>Membro Peace confirmado</span></small></div>
+                    <div class="member-sidebar-profile-copy"><strong data-member-sidebar-name>membro</strong><span data-member-sidebar-username>@discord</span></div>
+                    <button class="member-sidebar-logout" data-member-logout type="button" aria-label="Sair da conta Discord"><svg class="member-logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg></button><span class="sr-only" data-member-logout-status role="status" aria-live="polite"></span>
                   </div>
-                  <button class="member-sidebar-logout" data-member-logout type="button"><svg class="member-logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg><span>Sair da conta</span></button>
                 </div>
               </div>
             </aside>
@@ -97,7 +107,7 @@
 
             <div class="member-workspace-main">
               <div class="member-workspace-toolbar">
-                <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false" aria-label="Abrir menu"><span class="member-sidebar-toggle-icon" data-member-sidebar-toggle-icon aria-hidden="true">☰</span></button>
+                <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false" aria-label="Abrir menu"><span class="member-sidebar-toggle-icon" data-member-sidebar-toggle-icon aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14M5 12h14M5 17h14"></path></svg></span></button>
                 <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title>Visão geral</strong><div class="member-live-status" data-member-connection role="status" aria-live="polite" hidden>Validando sessão…</div></div>
                 <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
               </div>
@@ -152,7 +162,7 @@
               </section>
 
               <section class="member-view member-partners-view" data-member-view="partners" hidden aria-labelledby="member-partners-title">
-                <h1 id="member-partners-title">Parceiros</h1>
+                <div class="member-view-heading"><div><p class="eyebrow">Curadoria pública</p><h1 id="member-partners-title">Parceiros</h1></div><button class="button button--light" type="button" data-member-partner-open hidden aria-haspopup="dialog" aria-controls="member-partner-modal">Adicionar parceiro <span class="button-icon" aria-hidden="true">+</span></button></div>
                 <p class="member-view-lede">Projetos aprovados pela gestão, com o contexto necessário para a comunidade entender por que estão aqui.</p>
                 <div class="member-partner-list" data-member-partners-list role="list" aria-live="polite">
                   <p class="member-block-state">Consultando parceiros publicados…</p>
@@ -173,10 +183,181 @@
                 </section>
                 <div class="site-toast clips-toast" data-clips-toast role="status" aria-live="polite" hidden></div>
               </section>
+
+              <section class="member-view member-process-view" data-member-view="process" hidden aria-labelledby="member-process-title">
+                <div class="member-view-heading">
+                  <div><p class="eyebrow">Acompanhamento privado</p><h1 id="member-process-title">Meu processo</h1></div>
+                  <p>Seu Discord ID é a fonte de identidade. Veja atribuições, prazos e resultados sem sair da área.</p>
+                </div>
+                <section class="member-panel" aria-labelledby="member-process-summary-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Resumo</p><h2 id="member-process-summary-title">Próximo passo</h2></div><span class="status-tag status-tag--planned" data-member-process-status>Aguardando dados</span></div>
+                  <div class="member-process-summary" data-member-process-summary><p class="member-block-state">Consultando seu processo…</p></div>
+                </section>
+                <section class="member-panel" aria-labelledby="member-process-assignments-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Histórico</p><h2 id="member-process-assignments-title">Minhas atribuições</h2></div><span class="member-view-count" data-member-process-count>0 provas</span></div>
+                  <div class="member-process-assignments" data-member-process-assignments><p class="member-block-state">Consultando atribuições…</p></div>
+                </section>
+              </section>
+
+              <section class="member-view member-manager-view" data-member-view="manager" hidden aria-labelledby="member-manager-title">
+                <div class="member-view-heading">
+                  <div><p class="eyebrow">Gerência autorizada</p><h1 id="member-manager-title">Gerenciar provas</h1></div>
+                  <button class="button button--light" type="button" data-member-manager-open aria-haspopup="dialog" aria-controls="member-manager-modal">Gerar atribuição <span class="button-icon" aria-hidden="true">+</span></button>
+                </div>
+                <section class="member-panel" aria-labelledby="member-manager-history-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Minhas atribuições</p><h2 id="member-manager-history-title">Candidatos e resultados</h2></div><span class="member-view-count" data-member-manager-count>0 registros</span></div>
+                  <div class="member-manager-list" data-member-manager-list><p class="member-block-state">Consultando atribuições…</p></div>
+                </section>
+                <section class="member-panel member-scan-panel" aria-labelledby="member-scan-summary-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Operação Discord</p><h2 id="member-scan-summary-title">Scan-only</h2></div><span class="status-tag status-tag--ready">Canal oficial</span></div>
+                  <p class="member-view-lede">A triagem operacional, entrevistas e aprovações continuam no canal scan-only do Discord. O site mostra apenas o acesso autorizado.</p>
+                  <a class="button button--outline" data-member-scan-link href="/discord/" target="_blank" rel="noopener noreferrer">Abrir scan-only <span class="button-icon" aria-hidden="true">↗</span></a>
+                </section>
+              </section>
+
+              <section class="member-view member-scan-view" data-member-view="scan" hidden aria-labelledby="member-scan-title">
+                <div class="member-view-heading"><div><p class="eyebrow">Operação Discord</p><h1 id="member-scan-title">Scan-only</h1></div><span class="status-tag status-tag--ready">Acesso operacional</span></div>
+                <section class="member-panel member-scan-panel" aria-labelledby="member-scan-panel-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Triagem e entrevistas</p><h2 id="member-scan-panel-title">O canal certo para cada decisão.</h2></div></div>
+                  <p class="member-view-lede">Entrevistas, aprovações e recusas são publicadas pelo bot no canal scan-only já existente. O site não replica mensagens privadas nem tenta substituir o Discord.</p>
+                  <a class="button button--light" data-member-scan-link href="/discord/" target="_blank" rel="noopener noreferrer">Abrir scan-only <span class="button-icon" aria-hidden="true">↗</span></a>
+                </section>
+              </section>
+
+              <section class="member-view member-investigation-view" data-member-view="investigation" hidden aria-labelledby="member-investigation-title">
+                <div class="member-view-heading"><div><p class="eyebrow">Acesso investigativo</p><h1 id="member-investigation-title">Casos e ocorrências</h1></div><button class="button button--light" type="button" data-member-investigation-open aria-haspopup="dialog" aria-controls="member-investigation-modal">Novo caso <span class="button-icon" aria-hidden="true">+</span></button></div>
+                <p class="member-view-lede">Registre ocorrências e referências controladas sem misturar evidências investigativas ao feed público de clipes.</p>
+                <section class="member-panel" aria-labelledby="member-investigation-list-title">
+                  <div class="member-section-heading"><div><p class="eyebrow">Trilha de trabalho</p><h2 id="member-investigation-list-title">Casos registrados</h2></div><span class="member-view-count" data-member-investigation-count>0 casos</span></div>
+                  <div class="member-investigation-list" data-member-investigation-list><p class="member-block-state">Consultando casos investigativos…</p></div>
+                </section>
+              </section>
+
+              <section class="member-view member-notices-view" data-member-view="notices" hidden aria-labelledby="member-notices-title">
+                <div class="member-view-heading"><div><p class="eyebrow">Atualizações</p><h1 id="member-notices-title">Avisos</h1></div><div class="member-view-heading-actions"><p>Comunicados públicos e orientações recentes da Peace.</p><button class="button button--light" type="button" data-member-notice-open hidden aria-haspopup="dialog" aria-controls="member-notice-modal">Publicar aviso <span class="button-icon" aria-hidden="true">+</span></button></div></div>
+                <section class="member-panel"><div class="member-notices-list" data-member-notices-view-list><p class="member-block-state">Consultando avisos públicos…</p></div></section>
+              </section>
             </div>
           </div>
         </div>
       </section>
     </main>
+
+    <section class="member-modal" data-member-manager-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-manager-modal-title" aria-describedby="member-manager-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-manager-close aria-label="Fechar geração de atribuição"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Nova atribuição</p>
+        <h2 id="member-manager-modal-title">Gerar uma prova</h2>
+        <p class="member-view-lede" id="member-manager-modal-description">Preencha o Discord ID e o username atual do candidato. A prova ficará vinculada ao ID informado.</p>
+        <form data-member-manager-form>
+          <div class="member-manager-form-grid">
+            <label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" autocomplete="off" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" required placeholder="somente números"></label>
+            <label class="field"><span>Username do candidato</span><input name="candidate_username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="2" maxlength="80" required placeholder="ex.: peaceiro"></label>
+            <label class="field"><span>Tipo de prova</span><select name="exam_type"><option value="tier_i">Tier I · Civil</option></select></label>
+            <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-manager-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-manager-submit><span data-button-label>Gerar atribuição</span> <span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-manager-form-status role="status" aria-live="polite"></p>
+          <div class="member-generated-link" data-member-manager-generated hidden><small>Link da prova</small><a data-member-manager-generated-link href="#" target="_blank" rel="noopener noreferrer"></a></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="member-modal" data-member-investigation-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-investigation-modal-title" aria-describedby="member-investigation-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-investigation-close aria-label="Fechar novo caso"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Registro investigativo</p>
+        <h2 id="member-investigation-modal-title">Abrir ocorrência</h2>
+        <p class="member-view-lede" id="member-investigation-modal-description">Crie um caso com o mínimo necessário. Evidências entram depois como referências controladas.</p>
+        <form data-member-investigation-form>
+          <div class="member-manager-form-grid">
+            <label class="field"><span>Título do caso</span><input name="title" maxlength="120" required placeholder="Ex.: Ocorrência no canal de voz"></label>
+            <label class="field"><span>Discord ID envolvido <em>(opcional)</em></span><input name="subject_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" placeholder="somente números"></label>
+            <label class="field member-form-field--wide"><span>Resumo da ocorrência</span><textarea name="summary" rows="5" minlength="10" maxlength="4000" required placeholder="Descreva o que precisa ser verificado, sem incluir dados desnecessários."></textarea></label>
+            <label class="field"><span>ID do investigador responsável <em>(opcional)</em></span><input name="assigned_to_discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" placeholder="somente números"></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-investigation-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-investigation-submit><span data-button-label>Registrar caso</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-investigation-form-status role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="member-modal" data-member-evidence-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-evidence-modal-title" aria-describedby="member-evidence-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-evidence-close aria-label="Fechar nova evidência"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Referência controlada</p>
+        <h2 id="member-evidence-modal-title">Adicionar evidência</h2>
+        <p class="member-view-lede" id="member-evidence-modal-description">Use links HTTPS, IDs de mensagens Discord e observações. Uploads ficam fora desta primeira etapa.</p>
+        <form data-member-evidence-form>
+          <input type="hidden" name="case_id">
+          <div class="member-manager-form-grid">
+            <label class="field"><span>Título</span><input name="title" maxlength="120" required placeholder="Ex.: Clipe do momento"></label>
+            <label class="field"><span>Tipo</span><select name="type"><option value="occurrence">Ocorrência</option><option value="discord_message">Mensagem Discord</option><option value="clip">Clipe</option><option value="reference">Referência</option><option value="note">Observação</option></select></label>
+            <label class="field"><span>Classificação</span><select name="classification"><option value="reference">Referência</option><option value="confirmed">Comprovado</option></select></label>
+            <label class="field"><span>ID da mensagem Discord <em>(opcional)</em></span><input name="discord_message_id" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" placeholder="somente números"></label>
+            <label class="field member-form-field--wide"><span>Link HTTPS <em>(opcional)</em></span><input name="source_url" type="url" maxlength="500" placeholder="https://discord.com/channels/…"></label>
+            <label class="field member-form-field--wide"><span>Observação</span><textarea name="note" rows="5" minlength="2" maxlength="4000" required placeholder="O que esta referência demonstra ou precisa esclarecer?"></textarea></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-evidence-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-evidence-submit><span data-button-label>Adicionar evidência</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-evidence-form-status role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="member-modal" data-member-approval-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-approval-modal-title" aria-describedby="member-approval-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-approval-close aria-label="Fechar geração de aprovação"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Decisão posterior obrigatória</p>
+        <h2 id="member-approval-modal-title">Gerar aprovação privada</h2>
+        <p class="member-view-lede" id="member-approval-modal-description">Explique o que você espera dos avaliadores. Eles precisarão confirmar ciência antes de aprovar ou reprovar o caso.</p>
+        <form data-member-approval-form>
+          <input type="hidden" name="case_id">
+          <div class="member-manager-form-grid">
+            <label class="field member-form-field--wide"><span>Expectativa para os avaliadores</span><textarea name="expected_outcome" rows="6" minlength="10" maxlength="2000" required placeholder="Ex.: espero que avaliem se o caso está concluído, se exige limpeza ou se precisa de intervenção."></textarea><small>Esta decisão será exibida antes da confirmação de aprovação.</small></label>
+            <label class="field member-form-field--wide"><span>Discord IDs dos avaliadores</span><textarea name="evaluator_discord_user_ids" rows="5" minlength="15" required placeholder="Um ID por linha"></textarea><small>O link será privado e só abrirá para o Discord ID correspondente.</small></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-approval-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-approval-submit><span data-button-label>Gerar links</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-approval-form-status role="status" aria-live="polite"></p>
+          <div class="member-generated-links" data-member-approval-generated hidden></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="member-modal" data-member-notice-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-notice-modal-title" aria-describedby="member-notice-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-notice-close aria-label="Fechar publicação de aviso"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Mural público</p>
+        <h2 id="member-notice-modal-title">Publicar aviso</h2>
+        <p class="member-view-lede" id="member-notice-modal-description">O bot envia este comunicado ao canal público oficial com seu avatar de autor.</p>
+        <form data-member-notice-form>
+          <div class="member-manager-form-grid">
+            <label class="field member-form-field--wide"><span>Título</span><input name="title" maxlength="120" required placeholder="Ex.: Atualização do processo"></label>
+            <label class="field member-form-field--wide"><span>Texto</span><textarea name="body" rows="6" minlength="5" maxlength="2000" required placeholder="Escreva somente o que deve ficar público."></textarea></label>
+            <label class="field member-form-field--wide"><span>Imagem HTTPS <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-notice-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-notice-submit><span data-button-label>Publicar aviso</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-notice-form-status role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="member-modal" data-member-partner-modal hidden role="dialog" aria-modal="true" aria-labelledby="member-partner-modal-title" aria-describedby="member-partner-modal-description">
+      <div class="member-modal-dialog">
+        <button class="member-modal-close" type="button" data-member-partner-close aria-label="Fechar cadastro de parceiro"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
+        <p class="eyebrow">Curadoria</p>
+        <h2 id="member-partner-modal-title">Adicionar parceiro</h2>
+        <p class="member-view-lede" id="member-partner-modal-description">A publicação será enviada ao canal oficial de parceiros e ficará pública para a Peace.</p>
+        <form data-member-partner-form>
+          <div class="member-manager-form-grid">
+            <label class="field member-form-field--wide"><span>Nome do projeto</span><input name="title" maxlength="120" required placeholder="Ex.: Projeto Peaceiro"></label>
+            <label class="field member-form-field--wide"><span>Descrição</span><textarea name="description" rows="5" minlength="5" maxlength="1200" required placeholder="Explique o projeto e a relação aprovada com a Peace."></textarea></label>
+            <label class="field"><span>Link HTTPS <em>(opcional)</em></span><input name="url" type="url" maxlength="500" placeholder="https://…"></label>
+            <label class="field"><span>Imagem HTTPS <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
+          </div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-partner-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-partner-submit><span data-button-label>Adicionar parceiro</span><span class="button-spinner" aria-hidden="true"></span></button></div>
+          <p class="form-status" data-member-partner-form-status role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
   </body>
 </html>

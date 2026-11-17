@@ -101,14 +101,15 @@ JavaScript. No static page creates an application, approval, or member record.
 The `/area/` route is the member-area UI shell. Without a valid authenticated
 session it shows only an access gate; it never renders a member workspace,
 investigative case, or synthetic record. With the public member session it
-revalidates the cookie/bearer and the live Peace role, then loads a read-only
-profile and process summary. Public notices are kept in the separate notices
-feed and loaded on demand by the overview bell; they do not block the initial
-workspace request. Investigator data is omitted from the payload unless the
-live member has `Investigator` or `Lead Investigator`. When present, the block
-reads from the site-owned investigative surface and does not read an
-investigation category or channel from Discord. Query strings such as
-`?preview=member` and `?preview=investigativa` cannot bypass this gate.
+revalidates the cookie/bearer and the live Peace role, then loads the profile,
+process summary, and only the actions authorized by the current capability.
+Public notices are kept in the separate notices feed and loaded on demand by
+the overview bell; they do not block the initial workspace request.
+Investigator data and actions are omitted from the payload unless the live
+member has `Investigator` or `Lead Investigator`. When present, the block reads
+from the site-owned investigative surface and does not read an investigation
+category or channel from Discord. Query strings such as `?preview=member` and
+`?preview=investigativa` cannot bypass this gate.
 Every public API route also has a bounded in-process rate limit; the member
 overview keeps a separate per-member refresh throttle. Source blocks report
 `ready`, `empty`, or `unavailable` with `stale` metadata rather than presenting
@@ -134,8 +135,9 @@ The route boundary is explicit:
 - Peace role required: `/area/`. The static shell may be delivered by the
   public host, but the workspace remains hidden until the live Discord session,
   Peace role, profile, and process response all pass their server-side checks.
-- Gerência role required: `/gerencia/provas/` and its assignment API. A menu
-  item or static HTML page is never an authorization boundary.
+- Gerência role required: `/area/?view=manager` and its assignment API. The
+  historical `/gerencia/provas/` path only redirects into that authenticated
+  view; a menu item or static HTML page is never an authorization boundary.
 
 The public shell makes the selection contract visible and active: the Civil
 page explains that the question bank is shared while the per-attempt order may
@@ -206,6 +208,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/termos`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell; its content is revealed only after the Discord session, live Peace role, and candidate process are confirmed |
+| Netlify `/investigacao/aprovacao/` | serves the private evaluator page; the token is useless without the matching authenticated Discord account |
 | Netlify `/api/status` | proxies only the public backend status contract |
 | Netlify `/api/media` | proxies the bounded public Discord media feed |
 | Netlify `/api/entry/start` | creates or resumes one short-lived, single-use Discord invite |
@@ -228,6 +231,11 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
 | Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
 | Netlify `/api/exams/assignments` | allows only Gerência to create and list assignments |
+| Netlify `/api/investigations` | lists or creates site-owned investigative cases for members with `Investigator` or `Lead Investigator` |
+| Netlify `/api/investigations/{case_id}` | reads a case or moves it through the investigator lifecycle; archiving requires unanimous approval |
+| Netlify `/api/investigations/{case_id}/evidence` | records a bounded occurrence, confirmed clip, Discord message, or HTTPS reference while the case is still editable |
+| Netlify `/api/investigations/{case_id}/approval-links` | records the investigator expectation and creates one hashed, expiring private link per evaluator Discord ID |
+| Netlify `/api/investigation-approvals/{token}` | lets only the evaluator bound to the token read the case and submit one acknowledged approve/reject decision with an observation |
 | ACLClouds `/healthz` | returns a no-store JSON liveness response |
 | ACLClouds `/api/status` | returns bot readiness without member data or secrets |
 | ACLClouds `/api/entry/start` | creates/resumes the 30-minute invite in the verification channel |
@@ -243,6 +251,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
 | ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
 | ACLClouds `/api/peace/process` | rechecks the live Peace role before returning member-area process data; 401, 403, or 503 remain distinct |
+| ACLClouds `/api/investigations*` | serves the investigator-only case, evidence, lifecycle, and private approval contracts; the ACL stores only approval-token hashes |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
 The ACLClouds process binds to `PEACE_API_HOST` and `PEACE_API_PORT`; when the
@@ -269,8 +278,14 @@ notices panel on demand:
 - `/clipes/` — the clip view inside the member area, with the public library as its direct route;
 - `/termos/` — the public Terms of Use, privacy, and data-collection document;
 - `/meu-processo/` — candidate-owned process view;
-- `/gerencia/provas/` — shown only for the manager capability and still guarded
-  by the server.
+- `/area/?view=manager` — shown only for the manager capability and still
+  guarded by the server. `/gerencia/provas/` remains a compatibility redirect.
+- `/area/?view=scan` — the existing scan-only Discord handoff for Staff,
+  Gerência, and Founder; the site links to the configured channel and does not
+  copy its private messages into the public shell.
+- `/area/?view=investigation` — investigator-only case workspace. It contains
+  the case register, evidence/clip references, a read-only audit trail, and the
+  approval-link action.
 
 There is no Discord category in the sidebar. Discord remains an explicit
 external action in the account control and in entry flows. Public destinations
@@ -304,12 +319,45 @@ and does not grant access to the panel.
 Candidate process and exam surfaces use the same contextual header pattern: the
 route title stays in the header and the next authenticated action appears first.
 Supporting identity boundaries and process stages are available below the action
-instead of preceding it. The Gerência exam surface is intentionally limited to a
-return link, connected-account control, assignment disclosure, and assignment
-history. Attempt review, answer-key inspection, rejection, and retry decisions
-remain deferred until the server exposes the corresponding manager-authorized
-detail endpoints; the current assignment API cannot truthfully render those
-controls.
+instead of preceding it. The Gerência surface is a view inside `/area/`, with a
+centralized assignment modal, candidate history, expandable result review,
+avatar/profile identity and copyable Discord ID. The legacy route only redirects
+there, so it cannot drift into a second form or navigation model.
+
+### Investigator approval workflow
+
+The investigative surface is site-owned and intentionally separate from the
+public clips feed and from Discord channel history. Its lifecycle is:
+
+```text
+open → under_review → pending_approval → approved → archived
+                                  ↘ rejected → under_review
+```
+
+An investigator first registers the occurrence, then attaches bounded
+references: a confirmed clip, a Discord message ID, an HTTPS origin, or a
+written observation. Before approval links can be generated, the investigator
+must answer a plain-text question describing what the reviewers are expected to
+decide, for example whether the case is ready for conclusion, needs cleanup, or
+requires intervention. The answer is copied into every evaluator link and is
+immutable for that approval round.
+
+Each evaluator receives a distinct link. The link contains only a one-time
+opaque token in the URL; the database persists its hash, the evaluator Discord
+ID, the expectation, the expiry, and the decision state. The evaluator must
+connect the exact Discord account named by the link, can read the case and
+evidence, and cannot see other evaluator links or the internal audit actor IDs.
+Before submitting a decision, the evaluator must acknowledge that they read the
+expectation and understand that their decision is part of the continuation of
+the case. Approval or rejection always requires a written observation.
+
+All evaluators must approve for the case to become `approved`. A rejection or
+expired round moves the case to `rejected`; an investigator may reopen it for a
+new review round. Evidence cannot be appended after a review round starts, and
+only an approved case may be archived/concluded. The browser hides controls for
+convenience, but every role, token, transition, acknowledgement, expiry, and
+case ownership check is enforced by the ACL API. This prevents a copied link,
+stale role, replayed decision, or direct PATCH request from bypassing the flow.
 
 ## Configuration boundary
 
@@ -329,6 +377,12 @@ seconds, default 300).
 `PEACE_SITE_PARTNERS_CHANNEL_ID` optionally identifies the partner source for
 the authenticated overview. Investigation data is site-owned and has no
 Discord channel or category configuration.
+`DISCORD_INTERVIEW_CHANNEL_ID` is the optional dedicated destination for the
+developer interview review card. When it is empty, the bot deliberately falls
+back to the existing `DISCORD_SCAN_CHANNEL_ID` (the committed example keeps
+that channel configured as the scan-only review surface). Both destinations
+publish the candidate avatar and persistent approve/reject controls; the
+database transition is still checked before any role change or follow-up DM.
 `DISCORD_INVESTIGATOR_ROLE_ID` and
 `DISCORD_LEAD_INVESTIGATOR_ROLE_ID` are the preferred stable production role
 IDs. The bot creates the canonical zero-permission roles when needed and may

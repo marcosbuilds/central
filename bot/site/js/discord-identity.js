@@ -88,7 +88,7 @@
   }
 
   function connectLink(host) {
-    var link = createElement("a", "button button--outline flow-header-cta discord-connect-action");
+    var link = createElement("a", "button button--light flow-header-cta discord-connect-action");
     link.href = "/api/auth/discord/start?return_to=" + encodeURIComponent(returnTo());
     link.setAttribute("data-discord-connect", "");
     link.setAttribute("aria-label", "Conectar Discord");
@@ -123,8 +123,15 @@
     var loading = createElement("span", "discord-identity-loading");
     loading.setAttribute("role", "status");
     loading.setAttribute("aria-live", "polite");
-    loading.appendChild(createElement("span", "discord-identity-loading-avatar"));
-    loading.appendChild(createElement("span", "discord-identity-loading-copy", "Validando Discord…"));
+    var icon = document.createElement("img");
+    icon.className = "discord-identity-loading-icon";
+    icon.src = "/assets/discord.svg";
+    icon.alt = "";
+    icon.setAttribute("aria-hidden", "true");
+    icon.width = 20;
+    icon.height = 16;
+    loading.appendChild(icon);
+    loading.appendChild(createElement("span", "discord-identity-loading-copy", "Conectando Discord…"));
     host.appendChild(loading);
   }
 
@@ -132,6 +139,10 @@
     var link = createElement("a", "discord-identity-menu-link", label);
     link.href = href;
     link.setAttribute("role", "menuitem");
+    if (href === "/discord" || href.indexOf("/discord/") === 0) {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
     menu.appendChild(link);
   }
 
@@ -142,6 +153,7 @@
     var id = "peace-discord-menu-" + (++identityCounter);
     var trigger = createElement("button", "discord-identity-trigger");
     trigger.type = "button";
+    trigger.setAttribute("aria-label", "Conta Discord: " + username(session) + ". Abrir menu");
     trigger.setAttribute("aria-expanded", "false");
     trigger.setAttribute("aria-controls", id);
     trigger.setAttribute("aria-haspopup", "menu");
@@ -184,9 +196,7 @@
     menu.setAttribute("role", "menu");
     menu.hidden = true;
     var menuHeading = createElement("div", "discord-identity-menu-heading");
-    text(menuHeading, "Conta conectada");
-    var menuIdentity = createElement("strong", "discord-identity-menu-user", username(session));
-    menuHeading.appendChild(menuIdentity);
+    text(menuHeading, "Atalhos");
     menu.appendChild(menuHeading);
     menuLink(menu, "Estudos", "/estudos/");
     menuLink(menu, "Meu processo", "/meu-processo/");
@@ -195,11 +205,19 @@
     if (server.is_peace_member === true) menuLink(menu, "Área de membros", "/area/");
     else if (server.state === "member" || server.state === "not_member") menuLink(menu, "Solicitar setagem", "/entrar/");
     else menuLink(menu, "Verificar status", "/meu-processo/");
-    if (server.is_manager === true) menuLink(menu, "Gerenciar provas", "/gerencia/provas/");
+    if (server.is_manager === true) menuLink(menu, "Gerenciar provas", "/area/?view=manager");
     menuLink(menu, "Entrar no Discord", "/discord");
-    var logout = createElement("button", "discord-identity-menu-logout", "Sair da conta");
+    var logout = createElement("button", "discord-identity-menu-logout");
     logout.type = "button";
     logout.setAttribute("role", "menuitem");
+    logout.setAttribute("aria-label", "Sair da conta Discord");
+    var logoutIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    logoutIcon.setAttribute("viewBox", "0 0 24 24");
+    logoutIcon.setAttribute("aria-hidden", "true");
+    logoutIcon.setAttribute("focusable", "false");
+    logoutIcon.innerHTML = '<path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="m13 8 4 4-4 4M17 12H8"></path>';
+    logout.appendChild(logoutIcon);
+    logout.appendChild(createElement("span", "discord-identity-menu-logout-label", "Sair da conta"));
     menu.appendChild(logout);
 
     function close() {

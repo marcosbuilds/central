@@ -13,7 +13,8 @@
 /estudos/civil/leitor /estudos/civil/leitor/ 301
 /estudos/peace/leitor /estudos/peace/leitor/ 301
 /prova /prova/ 301
-/gerencia/provas /gerencia/provas/ 301
+/gerencia/provas /area/?view=manager 301!
+/gerencia/provas/ /area/?view=manager 301!
 /api/status https://peace-tools-8be02694.aclclouds.online/api/status 200!
 /api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!
 /api/clips https://peace-tools-8be02694.aclclouds.online/api/clips 200!
@@ -32,9 +33,17 @@
 /api/auth/discord/session https://peace-tools-8be02694.aclclouds.online/api/auth/discord/session 200!
 /api/auth/discord/logout https://peace-tools-8be02694.aclclouds.online/api/auth/discord/logout 200!
 /api/notices https://peace-tools-8be02694.aclclouds.online/api/notices 200!
+/api/partners https://peace-tools-8be02694.aclclouds.online/api/partners 200!
+/api/investigations https://peace-tools-8be02694.aclclouds.online/api/investigations 200!
+/api/investigations/:case_id https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id 200!
+/api/investigations/:case_id/evidence https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id/evidence 200!
+/api/investigations/:case_id/approval-links https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id/approval-links 200!
+/api/investigation-approvals/:token https://peace-tools-8be02694.aclclouds.online/api/investigation-approvals/:token 200!
 /api/exams/process https://peace-tools-8be02694.aclclouds.online/api/exams/process 200!
 /api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!
 /api/exams/access https://peace-tools-8be02694.aclclouds.online/api/exams/access 200!
 /api/exams/start https://peace-tools-8be02694.aclclouds.online/api/exams/start 200!
 /api/exams/submit https://peace-tools-8be02694.aclclouds.online/api/exams/submit 200!
+/api/exams/review https://peace-tools-8be02694.aclclouds.online/api/exams/review 200!
+/api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!
 /api/exams/assignments https://peace-tools-8be02694.aclclouds.online/api/exams/assignments 200!

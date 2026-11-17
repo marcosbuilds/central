@@ -165,6 +165,7 @@ class Settings:
     operations_channel_id: int | None
     absence_channel_id: int | None
     scan_channel_id: int | None
+    interview_channel_id: int | None
     ticket_category_id: int | None
     closed_ticket_category_id: int | None
     staff_role_id: int | None
@@ -187,6 +188,7 @@ class Settings:
     website_media_channel_id: int | None
     website_clips_channel_id: int | None
     website_partners_channel_id: int | None
+    website_notices_channel_id: int | None
     website_media_cache_seconds: int
     peace_timezone: str
     investigator_role_id: int | None
@@ -239,6 +241,7 @@ class Settings:
             operations_channel_id=_optional_int_env("DISCORD_OPERATIONS_CHANNEL_ID"),
             absence_channel_id=_optional_int_env("DISCORD_ABSENCE_CHANNEL_ID"),
             scan_channel_id=_optional_int_env("DISCORD_SCAN_CHANNEL_ID"),
+            interview_channel_id=_optional_int_env("DISCORD_INTERVIEW_CHANNEL_ID"),
             ticket_category_id=_optional_int_env("DISCORD_TICKET_CATEGORY_ID"),
             closed_ticket_category_id=_optional_int_env("DISCORD_CLOSED_TICKET_CATEGORY_ID"),
             staff_role_id=_optional_int_env("DISCORD_STAFF_ROLE_ID"),
@@ -271,6 +274,7 @@ class Settings:
             website_media_channel_id=_optional_int_env("PEACE_SITE_MEDIA_CHANNEL_ID"),
             website_clips_channel_id=_optional_int_env("PEACE_SITE_CLIPS_CHANNEL_ID"),
             website_partners_channel_id=_optional_int_env("PEACE_SITE_PARTNERS_CHANNEL_ID"),
+            website_notices_channel_id=_optional_int_env("PEACE_SITE_NOTICES_CHANNEL_ID"),
             website_media_cache_seconds=max(30, _int_env("PEACE_SITE_MEDIA_CACHE_SECONDS", 300)),
             peace_timezone=os.getenv("PEACE_TIMEZONE", "America/Sao_Paulo").strip() or "America/Sao_Paulo",
             investigator_role_id=_optional_int_env("DISCORD_INVESTIGATOR_ROLE_ID"),

@@ -37,6 +37,7 @@ if __package__ == "bot":
         materialize_exam,
         parse_answer_key,
         public_exam_payload,
+        public_exam_review_payload,
     )
     from .core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from .integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
@@ -52,6 +53,7 @@ else:
         materialize_exam,
         parse_answer_key,
         public_exam_payload,
+        public_exam_review_payload,
     )
     from core.identity import alias_from_nickname, build_peace_nickname, prefix_for_roles
     from integrations.iris import Iris, IrisError, IRIS_SYSTEM, prompt_for_ticket
@@ -83,6 +85,9 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/media": (12, 60),
     "/api/clips": (60, 60),
     "/api/notices": (30, 60),
+    "/api/partners": (30, 60),
+    "/api/investigations": (60, 60),
+    "/api/investigation-approvals": (30, 60),
     "/api/entry/start": (12, 60),
     "/api/entry/status": (60, 60),
     "/api/entry/repair": (24, 60),
@@ -102,6 +107,7 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/exams/access": (24, 60),
     "/api/exams/start": (12, 60),
     "/api/exams/submit": (3, 60),
+    "/api/exams/review": (30, 60),
     "/api/exams/assignments": (30, 60),
 }
 PUBLIC_API_ORIGINS = frozenset(
@@ -142,14 +148,21 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/exams/access",
         "/api/exams/start",
         "/api/exams/submit",
+        "/api/exams/review",
         "/api/exams/assignments",
         "/api/clips",
+        "/api/notices",
+        "/api/partners",
+        "/api/investigations",
+        "/api/investigation-approvals",
     }
 )
 ENTRY_INVITE_MAX_AGE_SECONDS = 30 * 60
 ENTRY_INVITE_MAX_USES = 2
 ENTRY_INVITE_PROPAGATION_GRACE_SECONDS = 30
 ENTRY_SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+PUBLIC_INVESTIGATION_APPROVAL_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}")
+INVESTIGATION_APPROVAL_MAX_AGE = timedelta(days=7)
 AUTH_SESSION_MAX_TTL_SECONDS = 7 * 24 * 60 * 60
 MAX_SQLITE_INTEGER = 2**63 - 1
 TICKET_IDS = {
@@ -175,6 +188,7 @@ VERIFICATION_PANEL_MARKER = "verification:panel"
 VERIFICATION_ASSET = "verification.png"
 VERIFICATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 NOT_VERIFIED_ROLE_NAME = "Not Verified"
+PEACE_ROLE_NAME = "Peace"
 INTERN_ROLE_NAME = "Estagiário"
 VISITOR_ROLE_NAME = "Visitante"
 INVESTIGATOR_ROLE_NAME = "Investigador"
@@ -399,9 +413,11 @@ def role_hoist_map(roles) -> dict[str, bool]:
 def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
     """Resolve configured roles while keeping local development configuration optional."""
     if role_id is not None:
-        role = guild.get_role(role_id)
-        if role is not None:
-            return role
+        get_role = getattr(guild, "get_role", None)
+        if callable(get_role):
+            role = get_role(role_id)
+            if role is not None:
+                return role
     normalized = {name.casefold() for name in names if name}
     if not normalized:
         return None
@@ -409,6 +425,37 @@ def role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discor
         lambda role: role.name.casefold() in normalized,
         getattr(guild, "roles", ()),
     )
+
+
+def member_has_named_role(
+    member: discord.Member,
+    guild: discord.Guild | None,
+    role_id: int | None,
+    *names: str,
+) -> bool:
+    """Resolve a live member role by ID first, then by its canonical names.
+
+    The Discord cache can expose a member with a complete role list while the
+    guild role cache is still warming up.  Public identity endpoints must not
+    turn that temporary shape into a false verification-pending state.
+    """
+    if role_member(member, role_id):
+        return True
+    normalized = {name.casefold() for name in names if name}
+    if not normalized:
+        return False
+    # Prefer direct evidence from the live member while the guild role cache
+    # is warming up or a deployment is migrating from an old role ID.
+    if any(
+        str(getattr(role, "name", "")).casefold() in normalized
+        for role in getattr(member, "roles", ())
+    ):
+        return True
+    if guild is not None:
+        resolved = role_named(guild, role_id, *names)
+        if resolved is not None:
+            return resolved in getattr(member, "roles", ())
+    return False
 
 
 def unique_role_named(guild: discord.Guild, role_id: int | None, *names: str) -> discord.Role | None:
@@ -1091,6 +1138,16 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
         if self.bot.database.pending_developer_request_for_user(interaction.user.id) is not None:
             await respond(interaction, "Você já possui uma candidatura Dev em análise ou integração.")
             return
+        # Keep the existing scan-only channel as a safe fallback while a
+        # dedicated interview destination is rolled out. Both paths publish
+        # the same avatar-bearing approval card with persistent actions.
+        review_channel_id = (
+            getattr(self.bot.settings, "interview_channel_id", None)
+            or getattr(self.bot.settings, "scan_channel_id", None)
+        )
+        if review_channel_id is None:
+            await respond(interaction, "O canal de análise da equipe ainda não está configurado. Avise a Staff.")
+            return
         request_id = self.bot.database.save_developer_request(
             discord_user_id=interaction.user.id,
             full_name=draft.full_name,
@@ -1106,11 +1163,18 @@ class DeveloperExperienceModal(discord.ui.Modal, title="Entrevista dev · etapa 
         if request is None:
             await respond(interaction, "Não consegui registrar sua entrevista; tente novamente.")
             return
-        await self.bot.send_to_channel(
-            self.bot.settings.scan_channel_id,
-            embed=self.bot.developer_request_embed(request),
+        candidate_avatar_url = getattr(getattr(interaction.user, "display_avatar", None), "url", None)
+        published = await self.bot.send_to_channel(
+            review_channel_id,
+            embed=self.bot.developer_request_embed(request, candidate_avatar_url=candidate_avatar_url),
             view=self.bot.developer_approval_view(request_id),
         )
+        if not published:
+            await respond(
+                interaction,
+                "Registrei sua entrevista, mas não consegui publicar o cartão no canal de análise. A equipe poderá sincronizá-lo novamente.",
+            )
+            return
         await respond(
             interaction,
             "Currículo enviado ao scan-only. A entrevista manual será feita na call de suporte; depois da avaliação, a equipe avisará se você foi aprovado para entrar no time.",
@@ -1122,6 +1186,7 @@ class DeveloperApprovalView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.request_id = request_id
+        self.processing = False
         request = bot.database.developer_request(request_id)
         self.phase = "interview" if request is None or request["status"] == "pending" else "member"
         approve = discord.ui.Button(
@@ -1147,7 +1212,14 @@ class DeveloperApprovalView(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
+    def enable_all(self) -> None:
+        for item in self.children:
+            item.disabled = False
+
     async def guard(self, interaction: discord.Interaction):
+        if self.processing:
+            await respond(interaction, "Esta candidatura já está sendo processada. Aguarde a confirmação no canal.")
+            return None
         request = self.bot.database.developer_request(self.request_id)
         if request is None or request["status"] not in {"pending", "interview_scheduled"}:
             await respond(interaction, "Esta candidatura já foi processada.")
@@ -1157,6 +1229,8 @@ class DeveloperApprovalView(discord.ui.View):
         if not allowed:
             await respond(interaction, "Somente Staff ou Management autorizado pode analisar candidaturas Dev.")
             return None
+        self.processing = True
+        self.disable_all()
         return request
 
     async def approve(self, interaction: discord.Interaction) -> None:
@@ -1165,11 +1239,25 @@ class DeveloperApprovalView(discord.ui.View):
             return
         await interaction.response.defer()
         if request["status"] == "pending":
-            self.bot.database.update_developer_request(self.request_id, status="interview_scheduled")
+            updated = self.bot.database.update_developer_request(
+                self.request_id,
+                status="interview_scheduled",
+                expected_status="pending",
+            )
+            if updated is None or updated["status"] != "interview_scheduled":
+                self.processing = False
+                self.enable_all()
+                if interaction.message is not None:
+                    await interaction.message.edit(content="Esta candidatura já foi processada por outra ação.", view=self)
+                return
             sent = await self.bot.send_developer_interview_notice(request)
             updated = self.bot.database.developer_request(self.request_id) or request
             next_view = DeveloperApprovalView(self.bot, self.request_id)
             self.bot.developer_approval_views[self.request_id] = next_view
+            self.bot.add_view(next_view)
+            guild = interaction.guild or self.bot.guild
+            candidate = await self.bot.member(guild, int(request["discord_user_id"])) if guild else None
+            candidate_avatar_url = getattr(getattr(candidate, "display_avatar", None), "url", None) if candidate is not None else None
             if interaction.message is not None:
                 text = (
                     "✅ Entrevista aprovada. O candidato foi avisado para fazer a entrevista manual na call de suporte. "
@@ -1179,7 +1267,7 @@ class DeveloperApprovalView(discord.ui.View):
                 )
                 await interaction.message.edit(
                     content=text,
-                    embed=self.bot.developer_request_embed(updated),
+                    embed=self.bot.developer_request_embed(updated, candidate_avatar_url=candidate_avatar_url),
                     view=next_view,
                 )
             return
@@ -1192,6 +1280,8 @@ class DeveloperApprovalView(discord.ui.View):
             else None
         )
         if member is None or developer_role is None:
+            self.processing = False
+            self.enable_all()
             if interaction.message is not None:
                 await interaction.message.edit(
                     content="⚠️ Não foi possível aprovar: o candidato ou o cargo Dev não foi encontrado. Nenhuma alteração foi aplicada.",
@@ -1207,6 +1297,8 @@ class DeveloperApprovalView(discord.ui.View):
                 )
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Falha ao aplicar o cargo Dev ao candidato %s", member.id)
+            self.processing = False
+            self.enable_all()
             if interaction.message is not None:
                 await interaction.message.edit(
                     content="⚠️ Não foi possível aplicar o cargo Dev. Verifique a hierarquia e as permissões do bot; a candidatura continua pendente.",
@@ -1229,7 +1321,17 @@ class DeveloperApprovalView(discord.ui.View):
             role_positions=role_position_map(member_role_objects),
             role_hoist=role_hoist_map(member_role_objects),
         )
-        self.bot.database.update_developer_request(self.request_id, status="approved")
+        updated = self.bot.database.update_developer_request(
+            self.request_id,
+            status="approved",
+            expected_status="interview_scheduled",
+        )
+        if updated is None or updated["status"] != "approved":
+            self.processing = False
+            self.enable_all()
+            if interaction.message is not None:
+                await interaction.message.edit(content="Esta candidatura já foi processada por outra ação.", view=self)
+            return
         sent = await self.bot.send_developer_decision_notice(request, peace_id=peace_id)
         self.disable_all()
         if interaction.message is not None:
@@ -1246,7 +1348,17 @@ class DeveloperApprovalView(discord.ui.View):
             return
         await interaction.response.defer()
         after_interview = request["status"] == "interview_scheduled"
-        self.bot.database.update_developer_request(self.request_id, status="rejected")
+        updated = self.bot.database.update_developer_request(
+            self.request_id,
+            status="rejected",
+            expected_status=request["status"],
+        )
+        if updated is None or updated["status"] != "rejected":
+            self.processing = False
+            self.enable_all()
+            if interaction.message is not None:
+                await interaction.message.edit(content="Esta candidatura já foi processada por outra ação.", view=self)
+            return
         member = await self.bot.member(interaction.guild, int(request["discord_user_id"])) if interaction.guild else None
         sent = False
         if member is not None:
@@ -1339,6 +1451,7 @@ class SetApprovalView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.request_id = request_id
+        self.processing = False
         approve = discord.ui.Button(
             label="✓ Aprovar set",
             style=discord.ButtonStyle.secondary,
@@ -1357,6 +1470,10 @@ class SetApprovalView(discord.ui.View):
     def disable_all(self) -> None:
         for item in self.children:
             item.disabled = True
+
+    def enable_all(self) -> None:
+        for item in self.children:
+            item.disabled = False
 
     async def remove_terminal_card(self, interaction: discord.Interaction) -> None:
         """Remove a processed review card so scan-only stays actionable only."""
@@ -1412,6 +1529,17 @@ class SetApprovalView(discord.ui.View):
                 log.debug("Não consegui enviar a confirmação privada do set", exc_info=True)
 
     async def guard(self, interaction: discord.Interaction):
+        if self.processing:
+            await respond(
+                interaction,
+                embed=outcome_embed(
+                    "Ação em andamento",
+                    "Este cartão já está sendo processado. Aguarde a confirmação no canal.",
+                    color=0xF1C40F,
+                    footer="Peace · set",
+                ),
+            )
+            return None
         request = self.bot.database.set_request(self.request_id)
         if request is None or request["status"] != "pending":
             await respond(
@@ -1435,6 +1563,8 @@ class SetApprovalView(discord.ui.View):
                 ),
             )
             return None
+        self.processing = True
+        self.disable_all()
         return request
 
     async def approve(self, interaction: discord.Interaction) -> None:
@@ -1445,6 +1575,8 @@ class SetApprovalView(discord.ui.View):
         result = await self.bot.approve_set_request(request, interaction.user)
         current = self.bot.database.set_request(self.request_id)
         if current is None or current["status"] != "approved":
+            self.processing = False
+            self.enable_all()
             if interaction.message is not None:
                 await interaction.message.edit(
                     embed=outcome_embed(
@@ -1488,6 +1620,8 @@ class SetApprovalView(discord.ui.View):
         logged = await self.bot.reject_set_request(request, interaction.user)
         self.disable_all()
         if not logged:
+            self.processing = False
+            self.enable_all()
             if interaction.message is not None:
                 await interaction.message.edit(
                     embed=outcome_embed(
@@ -1496,7 +1630,7 @@ class SetApprovalView(discord.ui.View):
                         color=0xED4245,
                         footer="Peace · set",
                     ),
-                    view=None,
+                    view=self,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
             return
@@ -2797,6 +2931,7 @@ class PeaceBot(commands.Bot):
         self.add_view(SupportView(self))
         self.add_view(OperationsView(self))
         self.add_view(ClockEndView(self))
+        self.database.recover_processing_set_requests()
         for row in self.database.open_tickets():
             self.staff_view(int(row["channel_id"]))
         for row in self.database.pending_set_requests():
@@ -2916,7 +3051,8 @@ class PeaceBot(commands.Bot):
 
     def entry_verification_channel(self, guild: discord.Guild):
         channel_id = getattr(self.settings, "verification_channel_id", None)
-        channel = guild.get_channel(int(channel_id)) if channel_id is not None else None
+        get_channel = getattr(guild, "get_channel", None)
+        channel = get_channel(int(channel_id)) if channel_id is not None and callable(get_channel) else None
         if channel is not None and callable(getattr(channel, "create_invite", None)):
             return channel
         return discord.utils.find(
@@ -2924,6 +3060,45 @@ class PeaceBot(commands.Bot):
             and callable(getattr(item, "create_invite", None)),
             getattr(guild, "text_channels", ()),
         )
+
+    def entry_verification_payload(self, guild: discord.Guild | None) -> dict[str, object]:
+        """Expose the configured verification destination without inventing a channel."""
+        channel = self.entry_verification_channel(guild) if guild is not None else None
+        channel_id = getattr(channel, "id", None)
+        guild_id = getattr(guild, "id", None) if guild is not None else getattr(self.settings, "guild_id", None)
+        name = str(getattr(channel, "name", None) or VERIFICATION_CHANNEL_NAME).strip().lstrip("#") or VERIFICATION_CHANNEL_NAME
+        url = ""
+        if channel_id is not None and guild_id is not None:
+            url = f"https://discord.com/channels/{int(guild_id)}/{int(channel_id)}"
+        return {"name": name, "channel": name, "id": str(channel_id) if channel_id is not None else "", "url": url}
+
+    def entry_member_role_flags(
+        self,
+        guild: discord.Guild | None,
+        member: discord.Member,
+    ) -> tuple[bool, bool, bool]:
+        """Return Peace, Visitor and Not Verified from live member roles.
+
+        Role IDs are authoritative when configured, while the names keep the
+        public flow usable during role-ID migration and in local test doubles.
+        """
+        is_peace = self.public_member_has_peace_role(member)
+        is_visitor = member_has_named_role(
+            member,
+            guild,
+            getattr(self.settings, "visitor_role_id", None),
+            VISITOR_ROLE_NAME,
+            "Visitor",
+        )
+        is_not_verified = member_has_named_role(
+            member,
+            guild,
+            getattr(self.settings, "not_verified_role_id", None),
+            NOT_VERIFIED_ROLE_NAME,
+            "Não verificado",
+            "Nao verificado",
+        )
+        return is_peace, is_visitor, is_not_verified
 
     @staticmethod
     def entry_session_token(value: object) -> str | None:
@@ -3086,7 +3261,10 @@ class PeaceBot(commands.Bot):
             session.status = "expired"
             self.persist_entry_session(session)
             return
-        member = self.entry_member(session)
+        member, member_state = await self.public_discord_member_state(session.discord_user_id) if session.discord_user_id is not None else (None, "not_member")
+        if member_state == "unavailable":
+            self.persist_entry_session(session)
+            return
         if member is None:
             if session.status == "waiting_invite":
                 now = time.monotonic()
@@ -3104,36 +3282,24 @@ class PeaceBot(commands.Bot):
                         invite, inspected = await self.entry_invite_for_code(guild, session.invite_code)
                         if inspected and invite is None:
                             session.status = "invite_unavailable"
+            if session.discord_user_id is not None and session.status != "waiting_invite":
+                session.status = "member_missing"
             self.persist_entry_session(session)
             return
 
         session.discord_username = str(
-            getattr(member, "display_name", None)
+            getattr(member, "name", None)
             or getattr(member, "global_name", None)
-            or getattr(member, "name", "Discord")
+            or getattr(member, "display_name", "Discord")
         )[:80]
         guild = self.entry_guild()
         if guild is None:
             self.persist_entry_session(session)
             return
-        visitor = role_named(
-            guild,
-            getattr(self.settings, "visitor_role_id", None),
-            VISITOR_ROLE_NAME,
-            "Visitor",
-        )
-        not_verified = role_named(
-            guild,
-            getattr(self.settings, "not_verified_role_id", None),
-            NOT_VERIFIED_ROLE_NAME,
-            "Não verificado",
-            "Nao verificado",
-        )
-        if role_member(member, getattr(self.settings, "peace_role_id", None)) or (
-            visitor is not None and visitor in member.roles
-        ):
+        is_peace, is_visitor, is_not_verified = self.entry_member_role_flags(guild, member)
+        if is_peace or is_visitor:
             session.status = "verified"
-        elif not_verified is not None and not_verified in member.roles:
+        elif is_not_verified:
             session.status = "verification_pending"
         else:
             session.status = "role_missing"
@@ -3180,7 +3346,11 @@ class PeaceBot(commands.Bot):
                             claimed = self.database.claim_entry_invite_session(
                                 session_selector=session.session_selector,
                                 discord_user_id=member.id,
-                                discord_username=str(getattr(member, "display_name", None) or member.name)[:80],
+                                discord_username=str(
+                                    getattr(member, "name", None)
+                                    or getattr(member, "global_name", None)
+                                    or getattr(member, "display_name", "Discord")
+                                )[:80],
                                 join_observed_at=observed_at.isoformat(),
                             )
                         except (sqlite3.Error, OSError):
@@ -3189,7 +3359,11 @@ class PeaceBot(commands.Bot):
                         if not claimed:
                             continue
                     session.discord_user_id = member.id
-                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.discord_username = str(
+                        getattr(member, "name", None)
+                        or getattr(member, "global_name", None)
+                        or getattr(member, "display_name", "Discord")
+                    )[:80]
                     session.status = "verification_pending"
                     await self.refresh_entry_session(session)
                     delete_invite = getattr(invite, "delete", None)
@@ -3218,7 +3392,11 @@ class PeaceBot(commands.Bot):
                             claimed = self.database.claim_entry_invite_session(
                                 session_selector=session.session_selector,
                                 discord_user_id=member.id,
-                                discord_username=str(getattr(member, "display_name", None) or member.name)[:80],
+                                discord_username=str(
+                                    getattr(member, "name", None)
+                                    or getattr(member, "global_name", None)
+                                    or getattr(member, "display_name", "Discord")
+                                )[:80],
                                 join_observed_at=observed_at.isoformat(),
                             )
                         except (sqlite3.Error, OSError):
@@ -3227,58 +3405,71 @@ class PeaceBot(commands.Bot):
                         if not claimed:
                             return
                     session.discord_user_id = member.id
-                    session.discord_username = str(getattr(member, "display_name", None) or member.name)[:80]
+                    session.discord_username = str(
+                        getattr(member, "name", None)
+                        or getattr(member, "global_name", None)
+                        or getattr(member, "display_name", "Discord")
+                    )[:80]
                     session.status = "verification_pending"
                     await self.refresh_entry_session(session)
                     log.info("Entrada pública associada pelo único horário de entrada compatível")
 
     async def entry_session_payload(self, session: EntryInviteSession) -> dict[str, object]:
         await self.refresh_entry_session(session)
-        member = self.entry_member(session)
+        member, member_state = await self.public_discord_member_state(session.discord_user_id) if session.discord_user_id is not None else (None, "not_member")
         guild = self.entry_guild()
-        visitor = (
-            role_named(
-                guild,
-                getattr(self.settings, "visitor_role_id", None),
-                VISITOR_ROLE_NAME,
-                "Visitor",
-            )
-            if guild
-            else None
-        )
-        not_verified = (
-            role_named(
-                guild,
-                getattr(self.settings, "not_verified_role_id", None),
-                NOT_VERIFIED_ROLE_NAME,
-                "Não verificado",
-                "Nao verificado",
-            )
-            if guild
-            else None
-        )
-        has_visitor = bool(member is not None and visitor is not None and visitor in member.roles)
-        has_not_verified = bool(member is not None and not_verified is not None and not_verified in member.roles)
+        is_peace = False
+        has_visitor = False
+        has_not_verified = False
+        if member is not None:
+            is_peace, has_visitor, has_not_verified = self.entry_member_role_flags(guild, member)
+        if member_state == "unavailable":
+            verification_state = "unavailable"
+        elif member is None and session.discord_user_id is not None:
+            verification_state = "member_missing"
+        elif session.status == "verified" or is_peace or has_visitor:
+            verification_state = "verified"
+        elif session.status == "verification_pending":
+            # Role state is authoritative after every refresh. A persisted
+            # session can outlive a CAPTCHA or a manual role change; do not
+            # keep reporting a stale pending state once Not Verified is gone.
+            verification_state = "verification_pending" if has_not_verified else "role_missing"
+        elif session.status == "role_missing":
+            verification_state = "role_missing"
+        elif session.status == "waiting_invite":
+            verification_state = "waiting"
+        else:
+            verification_state = session.status
+        # Keep the public status and the live verification state coherent. A
+        # transient Discord outage can happen between refresh_entry_session()
+        # and this payload read; returning the persisted pending value in that
+        # case made the browser show a stale verification screen forever.
+        payload_status = session.status
+        if verification_state in {"verified", "verification_pending", "role_missing", "member_missing", "unavailable"}:
+            payload_status = verification_state
+        verification = self.entry_verification_payload(guild)
         return {
             "session_token": session.session_token,
             "invite_url": session.invite_url if session.status not in {"invite_unavailable", "expired"} else "",
             "expires_at": session.expires_at.isoformat(),
             "expires_in": max(0, int((session.expires_at - datetime.now(timezone.utc)).total_seconds())),
-            "status": session.status,
+            "status": payload_status,
             "discord_user": (
                 {
                     "id": str(session.discord_user_id),
                     "username": session.discord_username or "Discord",
-                    "mention": f"@{session.discord_username or 'usuário'}",
+                    "mention": f"@{session.discord_username}" if session.discord_username else "",
+                    "profile_url": f"https://discord.com/users/{session.discord_user_id}",
                 }
-                if session.discord_user_id is not None
+                if session.discord_user_id is not None and member is not None
                 else None
             ),
+            "verification_state": verification_state,
             "verification": {
-                "channel": VERIFICATION_CHANNEL_NAME,
+                **verification,
                 "has_not_verified_role": has_not_verified,
                 "has_visitor_role": has_visitor,
-                "completed": session.status == "verified",
+                "completed": verification_state == "verified",
             },
         }
 
@@ -3413,9 +3604,14 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "REPAIR_THROTTLED", "message": "Aguarde alguns segundos antes de tentar novamente."}, status=429, headers={"Retry-After": "5"})
         session.last_repair_at = time.monotonic()
 
-        member = self.entry_member(session)
+        member, member_state = await self.public_discord_member_state(session.discord_user_id)
         guild = self.entry_guild()
-        if member is None or guild is None:
+        if member_state == "unavailable" or guild is None:
+            return web.json_response(
+                {"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "O Discord não respondeu. Tente novamente em instantes."},
+                status=503,
+            )
+        if member is None:
             return web.json_response({"ok": False, "code": "MEMBER_UNAVAILABLE", "message": "Não consegui localizar sua entrada no servidor."}, status=404)
         visitor = role_named(
             guild,
@@ -3565,7 +3761,7 @@ class PeaceBot(commands.Bot):
                 {"ok": False, "code": "APPLICATION_CLOSED", "message": "As vagas de Player estão fechadas no momento."},
                 status=409,
             )
-        if guild.get_role(getattr(self.settings, "peace_role_id", None)) is None:
+        if role_named(guild, getattr(self.settings, "peace_role_id", None), PEACE_ROLE_NAME) is None:
             return web.json_response(
                 {"ok": False, "code": "ROLE_NOT_CONFIGURED", "message": "A configuração do cargo Peace está incompleta."},
                 status=503,
@@ -3892,7 +4088,7 @@ class PeaceBot(commands.Bot):
             "developer": developer,
             "scan_only": staff or management or founder,
             "logs": staff or management or founder or developer,
-            "partners_edit": management,
+            "partners_edit": staff or management,
         }
 
     @staticmethod
@@ -3922,17 +4118,20 @@ class PeaceBot(commands.Bot):
         embed = embeds[0] if embeds else None
         embed_author = getattr(embed, "author", None) if embed is not None else None
         footer = getattr(embed, "footer", None) if embed is not None else None
+        embed_title = str(getattr(embed, "title", "") or "").strip()[:160]
         footer_text = str(getattr(footer, "text", "") or "")
+        embed_author_name = str(getattr(embed_author, "name", "") or "").strip()
         display_name = str(
             footer_text.removeprefix("Publicado por ").strip()
             if footer_text.startswith("Publicado por ")
-            else getattr(author, "display_name", None)
+            else embed_author_name
+            or getattr(author, "display_name", None)
             or getattr(author, "global_name", None)
             or getattr(author, "name", "Peace")
         )[:80]
         avatar_url = cls.public_avatar_url(author)
         embed_icon = getattr(embed_author, "icon_url", None) if embed_author is not None else None
-        if footer_text.startswith("Publicado por ") and embed_icon:
+        if embed_icon:
             avatar_url = str(embed_icon)
         created_at = getattr(message, "created_at", None)
         if isinstance(created_at, datetime):
@@ -3954,6 +4153,7 @@ class PeaceBot(commands.Bot):
         return {
             "id": str(getattr(message, "id", "")),
             "kind": kind,
+            "title": embed_title or None,
             "text": cls.public_message_text(message),
             "author": display_name,
             "avatar_url": avatar_url,
@@ -4009,12 +4209,13 @@ class PeaceBot(commands.Bot):
             return None
         configured_id = getattr(self.settings, "website_partners_channel_id", None)
         if configured_id is not None:
-            configured = guild.get_channel(int(configured_id))
-            if isinstance(configured, discord.TextChannel):
+            get_channel = getattr(guild, "get_channel", None)
+            configured = get_channel(int(configured_id)) if callable(get_channel) else None
+            if configured is not None and callable(getattr(configured, "history", None)):
                 return configured
         names = {name.casefold() for name in PARTNER_CHANNEL_NAMES}
         return discord.utils.find(
-            lambda channel: isinstance(channel, discord.TextChannel)
+            lambda channel: callable(getattr(channel, "history", None))
             and (
                 channel.name.casefold() in names
                 or channel.name.casefold().endswith("・parceiros")
@@ -4339,20 +4540,17 @@ class PeaceBot(commands.Bot):
                 status=404,
             )
 
-        display_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "membro"))[:80]
-        discord_user = {"username": display_name, "mention": f"@{display_name}"}
-        peace_member = self.public_member_has_peace_role(member)
-        visitor_role_id = getattr(self.settings, "visitor_role_id", None)
-        not_verified_role_id = getattr(self.settings, "not_verified_role_id", None)
-        visitor = visitor_role_id is not None and role_member(member, visitor_role_id)
-        not_verified = not_verified_role_id is not None and role_member(member, not_verified_role_id)
+        display_name = str(getattr(member, "name", None) or getattr(member, "global_name", None) or getattr(member, "display_name", "membro"))[:80]
+        discord_user = {"id": authenticated_id, "username": display_name, "mention": f"@{display_name}", "profile_url": f"https://discord.com/users/{authenticated_id}"}
+        verification = self.entry_verification_payload(guild)
+        peace_member, visitor, not_verified = self.entry_member_role_flags(guild, member)
         if peace_member:
-            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user})
+            return web.json_response({"ok": True, "status": "peace_member", "next_stage": 4, "message": "Você já é membro da Peace. Não é necessário pedir setagem.", "discord_user": discord_user, "verification": verification})
         if visitor:
-            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitante foi confirmada. Continue a entrevista.", "discord_user": discord_user})
+            return web.json_response({"ok": True, "status": "visitor_member", "next_stage": 3, "message": "Sua entrada como Visitante foi confirmada. Continue a entrevista.", "discord_user": discord_user, "verification": verification})
         if not_verified:
-            return web.json_response({"ok": True, "status": "verification_pending", "next_stage": 2, "message": "Sua conta está no servidor. Conclua a verificação humana no canal #verify.", "discord_user": discord_user})
-        return web.json_response({"ok": True, "status": "role_missing", "next_stage": 2, "message": "Sua conta está no servidor, mas o cargo de entrada não foi localizado.", "discord_user": discord_user})
+            return web.json_response({"ok": True, "status": "verification_pending", "next_stage": 2, "message": "Sua conta está no servidor. Conclua a verificação humana no canal #verify.", "discord_user": discord_user, "verification": verification})
+        return web.json_response({"ok": True, "status": "role_missing", "next_stage": 2, "message": "Sua conta está no servidor, mas o cargo de entrada não foi localizado.", "discord_user": discord_user, "verification": verification})
 
     @staticmethod
     def public_media_url(value: object) -> str | None:
@@ -5303,6 +5501,12 @@ class PeaceBot(commands.Bot):
         guild = self.entry_guild()
         if guild is None:
             return None
+        configured_id = getattr(self.settings, "website_notices_channel_id", None)
+        if configured_id is not None:
+            get_channel = getattr(guild, "get_channel", None)
+            configured = get_channel(int(configured_id)) if callable(get_channel) else None
+            if configured is not None and callable(getattr(configured, "history", None)):
+                return configured
         names = {name.casefold() for name in ANNOUNCEMENT_CHANNEL_NAMES}
         channels = getattr(guild, "text_channels", ()) or ()
         return discord.utils.find(
@@ -5311,11 +5515,79 @@ class PeaceBot(commands.Bot):
             channels,
         )
 
+    @staticmethod
+    def public_https_url(value: object, *, limit: int = 500) -> str | None:
+        raw = str(value or "").strip()
+        if not raw or len(raw) > limit:
+            return None
+        parsed = urlsplit(raw)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        return parsed.geturl()
+
     async def public_api_notices(self, request: web.Request) -> web.Response:
-        """Expose only messages from the server's named public notices channel."""
+        """Read public notices and let Staff/Gerência publish through Discord."""
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
+        if request.method == "POST":
+            session, member, denied = await self.public_staff_context(request)
+            if denied is not None:
+                return denied
+            assert session is not None and member is not None
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError):
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do aviso inválidos."},
+                    status=400,
+                )
+            title = str(payload.get("title", "") or "").strip()
+            body = str(payload.get("body", "") or "").strip()
+            image_url = self.public_https_url(payload.get("image_url"), limit=500)
+            if not 3 <= len(title) <= 120 or not 5 <= len(body) <= 2000:
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_NOTICE", "message": "Informe um título e um texto dentro dos limites indicados."},
+                    status=400,
+                )
+            channel = self.public_announcement_channel()
+            send = getattr(channel, "send", None) if channel is not None else None
+            if not callable(send):
+                return web.json_response(
+                    {"ok": False, "code": "NOTICE_CHANNEL_UNAVAILABLE", "message": "O canal público de avisos não está disponível."},
+                    status=503,
+                )
+            author_name = str(
+                getattr(member, "display_name", None)
+                or getattr(member, "global_name", None)
+                or getattr(member, "name", None)
+                or "Peace"
+            )[:80]
+            embed = discord.Embed(title=title, description=body, color=0xB8D7D9)
+            avatar_url = self.public_avatar_url(member)
+            if avatar_url:
+                embed.set_author(name=f"Publicado por {author_name}", icon_url=avatar_url)
+            else:
+                embed.set_author(name=f"Publicado por {author_name}")
+            if image_url:
+                embed.set_image(url=image_url)
+            embed.set_footer(text="Peace · Avisos públicos")
+            try:
+                message = await send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
+                log.warning("Não consegui publicar aviso público", exc_info=True)
+                return web.json_response(
+                    {"ok": False, "code": "NOTICE_PUBLISH_FAILED", "message": "Não consegui enviar o aviso ao canal oficial."},
+                    status=502,
+                )
+            summary = self.public_message_summary(message, kind="announcement") if message is not None else {
+                "title": title,
+                "text": body,
+                "author": author_name,
+            }
+            return web.json_response({"ok": True, "notice": summary}, status=201)
         channel = self.public_announcement_channel()
         notices, available = await self.public_channel_messages(
             channel,
@@ -5338,6 +5610,533 @@ class PeaceBot(commands.Bot):
         )
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    async def public_api_partners(self, request: web.Request) -> web.Response:
+        """Expose approved partners and publish new entries for Staff/Gerência."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        if request.method == "POST":
+            session, member, denied = await self.public_staff_context(request)
+            if denied is not None:
+                return denied
+            assert session is not None and member is not None
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError):
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do parceiro inválidos."},
+                    status=400,
+                )
+            title = str(payload.get("title", "") or "").strip()
+            description = str(payload.get("description", "") or "").strip()
+            source_url = self.public_https_url(payload.get("url"), limit=500)
+            image_url = self.public_https_url(payload.get("image_url"), limit=500)
+            if not 2 <= len(title) <= 120 or not 5 <= len(description) <= 1200:
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PARTNER", "message": "Informe nome e descrição dentro dos limites indicados."},
+                    status=400,
+                )
+            if payload.get("url") and source_url is None:
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PARTNER_URL", "message": "O link do parceiro precisa ser HTTPS e válido."},
+                    status=400,
+                )
+            if payload.get("image_url") and image_url is None:
+                return web.json_response(
+                    {"ok": False, "code": "INVALID_PARTNER_IMAGE", "message": "A imagem do parceiro precisa ser HTTPS e válida."},
+                    status=400,
+                )
+            channel = self.public_partner_channel()
+            send = getattr(channel, "send", None) if channel is not None else None
+            if not callable(send):
+                return web.json_response(
+                    {"ok": False, "code": "PARTNER_CHANNEL_UNAVAILABLE", "message": "O canal público de parceiros não está disponível."},
+                    status=503,
+                )
+            author_name = str(
+                getattr(member, "display_name", None)
+                or getattr(member, "global_name", None)
+                or getattr(member, "name", None)
+                or "Peace"
+            )[:80]
+            embed = discord.Embed(title=title, description=description, color=0xB8D7D9)
+            if source_url:
+                embed.url = source_url
+            avatar_url = self.public_avatar_url(member)
+            if avatar_url:
+                embed.set_author(name=f"Publicado por {author_name}", icon_url=avatar_url)
+            else:
+                embed.set_author(name=f"Publicado por {author_name}")
+            if image_url:
+                embed.set_image(url=image_url)
+            embed.set_footer(text="Peace · Parceiros aprovados")
+            try:
+                message = await send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
+                log.warning("Não consegui publicar parceiro", exc_info=True)
+                return web.json_response(
+                    {"ok": False, "code": "PARTNER_PUBLISH_FAILED", "message": "Não consegui enviar o parceiro ao canal oficial."},
+                    status=502,
+                )
+            summary = self.public_message_summary(message, kind="partner") if message is not None else {
+                "title": title,
+                "text": description,
+                "url": source_url,
+                "author": author_name,
+            }
+            return web.json_response({"ok": True, "partner": summary}, status=201)
+
+        channel = self.public_partner_channel()
+        partners, available = await self.public_channel_messages(channel, kind="partner", limit=24)
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        response = web.json_response(
+            {
+                "ok": True,
+                "updated_at": refreshed_at if available else None,
+                "partners": partners,
+                "source": {
+                    "state": "ready" if partners else ("empty" if available else "unavailable"),
+                    "available": available,
+                    "channel": str(getattr(channel, "name", "")) or None,
+                },
+            }
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @staticmethod
+    def public_investigation_case_id(value: object) -> int | None:
+        raw = str(value or "").strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", raw):
+            return None
+        return int(raw)
+
+    @staticmethod
+    def public_investigation_case_payload(database: PeaceDatabase, row: object) -> dict[str, object]:
+        evidence = []
+        for item in database.investigation_evidence(row["id"]):
+            evidence.append(
+                {
+                    "id": int(item["id"]),
+                    "type": str(item["evidence_type"]),
+                    "classification": str(item["classification"]),
+                    "title": str(item["title"]),
+                    "source_url": item["source_url"],
+                    "discord_message_id": item["discord_message_id"],
+                    "note": str(item["note"]),
+                    "collected_by_discord_user_id": str(item["collected_by_discord_user_id"]),
+                    "created_at": str(item["created_at"]),
+                    "updated_at": str(item["updated_at"]),
+                }
+            )
+        events = []
+        for event in database.investigation_events(row["id"]):
+            try:
+                metadata = json.loads(str(event["metadata_json"] or "{}"))
+                if not isinstance(metadata, dict):
+                    metadata = {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                metadata = {}
+            events.append(
+                {
+                    "id": int(event["id"]),
+                    "actor_discord_user_id": str(event["actor_discord_user_id"]),
+                    "type": str(event["event_type"]),
+                    "metadata": metadata,
+                    "created_at": str(event["created_at"]),
+                }
+            )
+        approvals = []
+        for approval in database.investigation_approval_links(row["id"]):
+            approvals.append(
+                {
+                    "id": int(approval["id"]),
+                    "evaluator_discord_user_id": str(approval["evaluator_discord_user_id"]),
+                    "expected_outcome": str(approval["expected_outcome"]),
+                    "status": str(approval["status"]),
+                    "decision": approval["decision"],
+                    "decision_note": approval["decision_note"],
+                    "created_at": str(approval["created_at"]),
+                    "expires_at": str(approval["expires_at"]),
+                    "decided_at": approval["decided_at"],
+                }
+            )
+        return {
+            "id": int(row["id"]),
+            "title": str(row["title"]),
+            "subject_discord_user_id": row["subject_discord_user_id"],
+            "summary": str(row["summary"]),
+            "status": str(row["status"]),
+            "created_by_discord_user_id": str(row["created_by_discord_user_id"]),
+            "assigned_to_discord_user_id": row["assigned_to_discord_user_id"],
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+            "resolved_at": row["resolved_at"],
+            "evidence": evidence,
+            "approvals": approvals,
+            "events": events,
+        }
+
+    async def public_api_investigations(self, request: web.Request) -> web.Response:
+        """Site-owned investigation cases, protected by the live investigator role."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, _member, denied = await self.public_investigator_context(request)
+        if denied is not None:
+            return denied
+        assert session is not None
+        if request.method == "GET":
+            try:
+                rows = self.database.investigation_cases(limit=100)
+                cases = [self.public_investigation_case_payload(self.database, row) for row in rows]
+            except (sqlite3.Error, OSError):
+                log.warning("Não consegui carregar casos investigativos", exc_info=True)
+                return web.json_response(
+                    {"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui carregar os casos agora."},
+                    status=503,
+                )
+            return web.json_response({"ok": True, "cases": cases, "source": "site:investigations"})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response(
+                {"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do caso inválidos."},
+                status=400,
+            )
+        title = str(payload.get("title", "") or "").strip()
+        summary = str(payload.get("summary", "") or "").strip()
+        subject_id = str(payload.get("subject_discord_user_id", "") or "").strip()
+        assigned_to = str(payload.get("assigned_to_discord_user_id", "") or "").strip()
+        if not 3 <= len(title) <= 120 or not 10 <= len(summary) <= 4000:
+            return web.json_response(
+                {"ok": False, "code": "INVALID_INVESTIGATION_CASE", "message": "Informe um título e um resumo com conteúdo suficiente."},
+                status=400,
+            )
+        if subject_id and not re.fullmatch(r"[0-9]{15,25}", subject_id):
+            return web.json_response(
+                {"ok": False, "code": "INVALID_SUBJECT_ID", "message": "O Discord ID do envolvido é inválido."},
+                status=400,
+            )
+        if assigned_to and not re.fullmatch(r"[0-9]{15,25}", assigned_to):
+            return web.json_response(
+                {"ok": False, "code": "INVALID_ASSIGNEE_ID", "message": "O Discord ID do investigador responsável é inválido."},
+                status=400,
+            )
+        try:
+            row = self.database.create_investigation_case(
+                title=title,
+                subject_discord_user_id=subject_id or None,
+                summary=summary,
+                created_by_discord_user_id=session["discord_user_id"],
+                assigned_to_discord_user_id=assigned_to or None,
+            )
+            case = self.public_investigation_case_payload(self.database, row)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui criar caso investigativo", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui registrar o caso agora."},
+                status=503,
+            )
+        return web.json_response({"ok": True, "case": case}, status=201)
+
+    @staticmethod
+    def public_investigation_approval_token(value: object) -> str | None:
+        token = str(value or "").strip()
+        return token if PUBLIC_INVESTIGATION_APPROVAL_TOKEN_PATTERN.fullmatch(token) else None
+
+    @staticmethod
+    def public_investigation_approval_payload(row: object) -> dict[str, object]:
+        return {
+            "id": int(row["id"]),
+            "case_id": int(row["case_id"]),
+            "evaluator_discord_user_id": str(row["evaluator_discord_user_id"]),
+            "expected_outcome": str(row["expected_outcome"]),
+            "status": str(row["status"]),
+            "decision": row["decision"],
+            "decision_note": row["decision_note"],
+            "acknowledged_at": row["acknowledged_at"],
+            "created_at": str(row["created_at"]),
+            "expires_at": str(row["expires_at"]),
+            "decided_at": row["decided_at"],
+        }
+
+    def public_investigation_approval_case_payload(self, row: object) -> dict[str, object] | None:
+        case = self.database.investigation_case(row["case_id"])
+        if case is None:
+            return None
+        payload = self.public_investigation_case_payload(self.database, case)
+        # An evaluator can inspect the case and its evidence, but must not see
+        # the other private evaluator links or the internal actor audit trail.
+        payload.pop("approvals", None)
+        payload.pop("events", None)
+        for evidence in payload.get("evidence", []):
+            if isinstance(evidence, dict):
+                evidence.pop("collected_by_discord_user_id", None)
+        return payload
+
+    async def public_api_investigation_approval_links(self, request: web.Request) -> web.Response:
+        """Create private evaluator links after recording the investigator expectation."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, _member, denied = await self.public_investigator_context(request)
+        if denied is not None:
+            return denied
+        assert session is not None
+        case_id = self.public_investigation_case_id(request.match_info.get("case_id"))
+        if case_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_INVESTIGATION_CASE", "message": "O caso informado é inválido."}, status=400)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da aprovação inválidos."}, status=400)
+        expected_outcome = str(payload.get("expected_outcome", "") or "").strip()
+        raw_evaluators = payload.get("evaluator_discord_user_ids", [])
+        if isinstance(raw_evaluators, str):
+            evaluator_ids = [value.strip() for value in re.split(r"[\s,;]+", raw_evaluators) if value.strip()]
+        elif isinstance(raw_evaluators, list):
+            evaluator_ids = [str(value).strip() for value in raw_evaluators if str(value).strip()]
+        else:
+            evaluator_ids = []
+        evaluator_ids = list(dict.fromkeys(evaluator_ids))
+        if not 10 <= len(expected_outcome) <= 2000:
+            return web.json_response({"ok": False, "code": "INVALID_APPROVAL_EXPECTATION", "message": "Explique o que você espera que os avaliadores decidam antes de gerar os links."}, status=400)
+        if not 1 <= len(evaluator_ids) <= 20 or any(not re.fullmatch(r"[0-9]{15,25}", value) for value in evaluator_ids):
+            return web.json_response({"ok": False, "code": "INVALID_EVALUATOR_IDS", "message": "Informe de 1 a 20 Discord IDs válidos, um por linha."}, status=400)
+        expires_at = (datetime.now(timezone.utc) + INVESTIGATION_APPROVAL_MAX_AGE).isoformat()
+        try:
+            created = self.database.create_investigation_approval_links(
+                case_id=case_id,
+                expected_outcome=expected_outcome,
+                evaluator_discord_user_ids=evaluator_ids,
+                created_by_discord_user_id=session["discord_user_id"],
+                expires_at=expires_at,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui criar links de aprovação investigativa", exc_info=True)
+            return web.json_response({"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui preparar os links de aprovação agora."}, status=503)
+        if created is None:
+            return web.json_response({"ok": False, "code": "APPROVAL_ALREADY_REQUESTED", "message": "Este caso já possui uma aprovação pendente ou não está pronto para aprovação."}, status=409)
+        base_url = str(getattr(self.settings, "website_url", "") or "").rstrip("/")
+        host = str(request.host or "")
+        if host.startswith(("127.0.0.1:", "localhost:", "[::1]:")):
+            base_url = f"{request.scheme}://{host}"
+        links = [
+            {
+                "evaluator_discord_user_id": item["evaluator_discord_user_id"],
+                "expires_at": item["expires_at"],
+                "url": f"{base_url}/investigacao/aprovacao/?{urlencode({'token': item['token']})}" if base_url else f"/investigacao/aprovacao/?{urlencode({'token': item['token']})}",
+            }
+            for item in created
+        ]
+        response = web.json_response({"ok": True, "case_id": case_id, "expected_outcome": expected_outcome, "links": links}, status=201)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    async def public_api_investigation_approval(self, request: web.Request) -> web.Response:
+        """Read and decide one private investigation approval link."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        token = self.public_investigation_approval_token(request.match_info.get("token"))
+        if token is None:
+            return web.json_response({"ok": False, "code": "INVALID_APPROVAL_LINK", "message": "O link de aprovação é inválido."}, status=400)
+        row = self.database.investigation_approval_by_token(token)
+        if row is None:
+            return web.json_response({"ok": False, "code": "APPROVAL_NOT_FOUND", "message": "Este link não existe ou não está mais disponível."}, status=404)
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte a conta Discord indicada para abrir esta aprovação."}, status=401)
+        if str(session["discord_user_id"]) != str(row["evaluator_discord_user_id"]):
+            return web.json_response({"ok": False, "code": "APPROVAL_EVALUATOR_MISMATCH", "message": "Este link privado foi criado para outro Discord ID."}, status=403)
+        if str(row["status"]) == "pending" and str(row["expires_at"]) <= datetime.now(timezone.utc).isoformat():
+            try:
+                self.database.expire_investigation_approval_round(
+                    case_id=int(row["case_id"]),
+                    actor_discord_user_id=session["discord_user_id"],
+                )
+            except (sqlite3.Error, OSError):
+                log.warning("Não consegui encerrar a rodada de aprovação expirada", exc_info=True)
+                return web.json_response(
+                    {"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui atualizar a rodada expirada agora."},
+                    status=503,
+                )
+            return web.json_response({"ok": False, "code": "APPROVAL_EXPIRED", "message": "Este link de aprovação expirou. A rodada foi encerrada e pode ser reaberta pela investigação."}, status=410)
+        case_payload = self.public_investigation_approval_case_payload(row)
+        if case_payload is None:
+            return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "O caso desta aprovação não existe mais."}, status=404)
+        if request.method == "GET":
+            return web.json_response({"ok": True, "approval": self.public_investigation_approval_payload(row), "case": case_payload})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da decisão inválidos."}, status=400)
+        if payload.get("acknowledge") is not True:
+            return web.json_response({"ok": False, "code": "ACKNOWLEDGEMENT_REQUIRED", "message": "Confirme que leu e compreendeu a expectativa do Investigador."}, status=400)
+        decision = str(payload.get("decision", "") or "").strip().casefold()
+        note = str(payload.get("note", "") or "").strip()
+        if decision not in {"approved", "rejected"} or not 2 <= len(note) <= 4000:
+            return web.json_response({"ok": False, "code": "INVALID_APPROVAL_DECISION", "message": "Escolha aprovar ou reprovar e registre uma observação."}, status=400)
+        try:
+            result, updated_link, updated_case = self.database.decide_investigation_approval(
+                token=token,
+                evaluator_discord_user_id=session["discord_user_id"],
+                decision=decision,
+                decision_note=note,
+                acknowledged_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui registrar decisão investigativa", exc_info=True)
+            return web.json_response({"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui salvar a decisão agora."}, status=503)
+        result_status = {
+            "not_found": (404, "APPROVAL_NOT_FOUND", "Este link não existe ou não está mais disponível."),
+            "forbidden": (403, "APPROVAL_EVALUATOR_MISMATCH", "Este link privado foi criado para outro Discord ID."),
+            "already_decided": (409, "APPROVAL_ALREADY_DECIDED", "Este link já recebeu uma decisão."),
+            "expired": (410, "APPROVAL_EXPIRED", "Este link de aprovação expirou."),
+            "case_expired": (410, "APPROVAL_EXPIRED", "A janela de aprovação expirou. Reabra o caso para gerar uma nova rodada."),
+            "case_unavailable": (409, "INVESTIGATION_NOT_PENDING", "Este caso não está mais aguardando aprovação."),
+            "acknowledgement_required": (400, "ACKNOWLEDGEMENT_REQUIRED", "Confirme que leu e compreendeu a expectativa do Investigador."),
+            "invalid_decision": (400, "INVALID_APPROVAL_DECISION", "A decisão informada é inválida."),
+            "invalid_note": (400, "INVALID_APPROVAL_DECISION", "Registre uma observação entre 2 e 4000 caracteres."),
+        }.get(result)
+        if result_status:
+            return web.json_response({"ok": False, "code": result_status[1], "message": result_status[2]}, status=result_status[0])
+        assert updated_link is not None and updated_case is not None
+        updated_case_payload = self.public_investigation_approval_case_payload(updated_link)
+        if updated_case_payload is None:
+            return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "O caso desta aprovação não existe mais."}, status=404)
+        return web.json_response({"ok": True, "approval": self.public_investigation_approval_payload(updated_link), "case": updated_case_payload})
+
+    async def public_api_investigation_case(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, _member, denied = await self.public_investigator_context(request)
+        if denied is not None:
+            return denied
+        assert session is not None
+        case_id = self.public_investigation_case_id(request.match_info.get("case_id"))
+        if case_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_INVESTIGATION_CASE", "message": "O caso informado é inválido."}, status=400)
+        if request.method == "GET":
+            row = self.database.investigation_case(case_id)
+            if row is None:
+                return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+            return web.json_response({"ok": True, "case": self.public_investigation_case_payload(self.database, row)})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do caso inválidos."}, status=400)
+        status = str(payload.get("status", "") or "").strip().casefold()
+        if status not in {"open", "under_review", "archived"}:
+            return web.json_response({"ok": False, "code": "INVALID_INVESTIGATION_STATUS", "message": "Status investigativo inválido."}, status=400)
+        existing = self.database.investigation_case(case_id)
+        if existing is None:
+            return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+        current_status = str(existing["status"])
+        if status == "archived" and current_status != "approved":
+            return web.json_response(
+                {"ok": False, "code": "APPROVAL_REQUIRED", "message": "O caso só pode ser concluído depois da aprovação de todos os avaliadores."},
+                status=409,
+            )
+        if current_status == "pending_approval" and status != current_status:
+            return web.json_response(
+                {"ok": False, "code": "INVESTIGATION_TERMINAL", "message": "Este caso não pode ser reaberto ou alterado nessa etapa."},
+                status=409,
+            )
+        if current_status in {"approved", "archived"} and status != current_status:
+            return web.json_response(
+                {"ok": False, "code": "INVESTIGATION_TERMINAL", "message": "Este caso já foi aprovado ou concluído e não pode ser reaberto."},
+                status=409,
+            )
+        row = self.database.update_investigation_case_status(
+            case_id=case_id,
+            status=status,
+            actor_discord_user_id=session["discord_user_id"],
+        )
+        if row is None:
+            return web.json_response({"ok": False, "code": "INVESTIGATION_TERMINAL", "message": "A transição de status não é permitida."}, status=409)
+        return web.json_response({"ok": True, "case": self.public_investigation_case_payload(self.database, row)})
+
+    async def public_api_investigation_evidence(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, _member, denied = await self.public_investigator_context(request)
+        if denied is not None:
+            return denied
+        assert session is not None
+        case_id = self.public_investigation_case_id(request.match_info.get("case_id"))
+        if case_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_INVESTIGATION_CASE", "message": "O caso informado é inválido."}, status=400)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da evidência inválidos."}, status=400)
+        evidence_type = str(payload.get("type", "reference") or "reference").strip().casefold()
+        classification = str(payload.get("classification", "reference") or "reference").strip().casefold()
+        title = str(payload.get("title", "") or "").strip()
+        note = str(payload.get("note", "") or "").strip()
+        source_url = self.public_https_url(payload.get("source_url"), limit=500)
+        raw_source_url = str(payload.get("source_url", "") or "").strip()
+        message_id = str(payload.get("discord_message_id", "") or "").strip()
+        if evidence_type not in {"occurrence", "clip", "discord_message", "reference", "note"}:
+            return web.json_response({"ok": False, "code": "INVALID_EVIDENCE_TYPE", "message": "Tipo de evidência inválido."}, status=400)
+        if classification not in {"confirmed", "reference"}:
+            return web.json_response({"ok": False, "code": "INVALID_EVIDENCE_CLASSIFICATION", "message": "Classificação de evidência inválida."}, status=400)
+        if not 2 <= len(title) <= 120 or not 2 <= len(note) <= 4000:
+            return web.json_response({"ok": False, "code": "INVALID_EVIDENCE", "message": "Informe título e observação da evidência."}, status=400)
+        if raw_source_url and source_url is None:
+            return web.json_response({"ok": False, "code": "INVALID_EVIDENCE_URL", "message": "A origem precisa ser um link HTTPS válido."}, status=400)
+        if message_id and not re.fullmatch(r"[0-9]{15,25}", message_id):
+            return web.json_response({"ok": False, "code": "INVALID_MESSAGE_ID", "message": "O ID da mensagem Discord é inválido."}, status=400)
+        try:
+            row = self.database.add_investigation_evidence(
+                case_id=case_id,
+                evidence_type=evidence_type,
+                classification=classification,
+                title=title,
+                source_url=source_url,
+                discord_message_id=message_id or None,
+                note=note,
+                collected_by_discord_user_id=session["discord_user_id"],
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui registrar evidência investigativa", exc_info=True)
+            return web.json_response({"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui registrar a evidência agora."}, status=503)
+        if row is None:
+            return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+        return web.json_response(
+            {
+                "ok": True,
+                "evidence": {
+                    "id": int(row["id"]),
+                    "type": str(row["evidence_type"]),
+                    "classification": str(row["classification"]),
+                    "title": str(row["title"]),
+                    "source_url": row["source_url"],
+                    "discord_message_id": row["discord_message_id"],
+                    "note": str(row["note"]),
+                    "collected_by_discord_user_id": str(row["collected_by_discord_user_id"]),
+                    "created_at": str(row["created_at"]),
+                },
+            },
+            status=201,
+        )
 
     @staticmethod
     def public_discord_oauth_token(request: web.Request) -> str | None:
@@ -5539,8 +6338,27 @@ class PeaceBot(commands.Bot):
             {
                 "candidate_discord_user_id": str(row["candidate_discord_user_id"]),
                 "manager_discord_user_id": str(row["manager_discord_user_id"]),
+                "candidate_profile_url": f"https://discord.com/users/{row['candidate_discord_user_id']}",
+                "candidate_avatar_url": None,
             }
         )
+        return payload
+
+    async def public_exam_manager_assignment_live_payload(self, row: object) -> dict[str, object]:
+        """Add current Discord presentation data without changing assignment authority."""
+        payload = self.public_exam_manager_assignment_payload(row)
+        member = await self.public_discord_member_by_id(row["candidate_discord_user_id"])
+        if member is None:
+            return payload
+        username = str(
+            getattr(member, "name", None)
+            or getattr(member, "global_name", None)
+            or getattr(member, "display_name", None)
+            or row["candidate_username_snapshot"]
+        )[:80]
+        avatar = getattr(getattr(member, "display_avatar", None), "url", None)
+        payload["candidate_username"] = username
+        payload["candidate_avatar_url"] = str(avatar) if avatar else None
         return payload
 
     async def public_discord_auth_start(self, request: web.Request) -> web.StreamResponse:
@@ -5747,6 +6565,7 @@ class PeaceBot(commands.Bot):
             )
         profile = self.database.candidate_profile(row["discord_user_id"])
         membership = await self.public_discord_membership_payload(row["discord_user_id"])
+        verification = self.entry_verification_payload(self.entry_guild())
         return web.json_response(
             {
                 "ok": True,
@@ -5763,6 +6582,7 @@ class PeaceBot(commands.Bot):
                     "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
                 },
                 "server": membership,
+                "verification": verification,
             }
         )
 
@@ -5813,25 +6633,42 @@ class PeaceBot(commands.Bot):
                 "is_peace_member": False if state == "not_member" else None,
                 "is_verified": False if state == "not_member" else None,
                 "is_manager": False if state == "not_member" else None,
+                "verification_state": "member_missing" if state == "not_member" else "unavailable",
+                "has_visitor_role": False if state == "not_member" else None,
+                "has_not_verified_role": False if state == "not_member" else None,
             }
+        guild = self.entry_guild()
         try:
-            is_peace_member = self.public_member_has_peace_role(member)
+            is_peace_member, has_visitor, has_not_verified = self.entry_member_role_flags(guild, member)
         except (AttributeError, TypeError):
             is_peace_member = False
+            has_visitor = False
+            has_not_verified = False
         try:
             is_manager = management_role_member(member, self.settings)
         except (AttributeError, TypeError):
             is_manager = False
-        try:
-            is_verified = role_member(member, getattr(self.settings, "visitor_role_id", None))
-        except (AttributeError, TypeError):
-            is_verified = False
+        capabilities = self.public_member_capabilities(member)
+        verification_state = "verified" if is_peace_member or has_visitor else "verification_pending" if has_not_verified else "role_missing"
+        scan_only_url = None
+        scan_channel_id = getattr(self.settings, "scan_channel_id", None)
+        guild_id = getattr(guild, "id", None) if guild is not None else None
+        if capabilities["scan_only"] and guild_id is not None and scan_channel_id is not None:
+            scan_only_url = f"https://discord.com/channels/{int(guild_id)}/{int(scan_channel_id)}"
         return {
             "state": "peace" if is_peace_member else "member",
             "is_member": True,
             "is_peace_member": bool(is_peace_member),
-            "is_verified": bool(is_verified),
+            "is_verified": bool(is_peace_member or has_visitor),
             "is_manager": bool(is_manager),
+            "is_staff": bool(capabilities["staff"]),
+            "is_investigator": bool(capabilities["investigator"]),
+            "is_scan_only": bool(capabilities["scan_only"]),
+            "scan_only_url": scan_only_url,
+            "can_edit_partners": bool(capabilities["partners_edit"]),
+            "verification_state": verification_state,
+            "has_visitor_role": bool(has_visitor),
+            "has_not_verified_role": bool(has_not_verified),
         }
 
     async def public_manager_member(self, discord_user_id: int | str) -> discord.Member | None:
@@ -5843,6 +6680,75 @@ class PeaceBot(commands.Bot):
         except (AttributeError, TypeError):
             role_id = getattr(self.settings, "manager_role_id", None)
             return member if role_id is not None and role_member(member, role_id) else None
+
+    async def public_capability_context(
+        self,
+        request: web.Request,
+        capability: str,
+        *,
+        denied_code: str,
+        denied_message: str,
+    ) -> tuple[dict[str, object] | None, discord.Member | None, web.Response | None]:
+        """Revalidate the Discord session and one role capability per request."""
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return None, None, web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        member, state = await self.public_discord_member_state(session["discord_user_id"])
+        if state == "unavailable":
+            return None, None, web.json_response(
+                {"ok": False, "code": "DISCORD_MEMBER_UNAVAILABLE", "message": "Não foi possível confirmar seu cargo agora."},
+                status=503,
+            )
+        if member is None:
+            return None, None, web.json_response(
+                {"ok": False, "code": denied_code, "message": denied_message},
+                status=403,
+            )
+        capabilities = self.public_member_capabilities(member)
+        if not capabilities.get(capability, False):
+            return None, None, web.json_response(
+                {"ok": False, "code": denied_code, "message": denied_message},
+                status=403,
+            )
+        return session, member, None
+
+    async def public_investigator_context(
+        self,
+        request: web.Request,
+    ) -> tuple[dict[str, object] | None, discord.Member | None, web.Response | None]:
+        return await self.public_capability_context(
+            request,
+            "investigator",
+            denied_code="INVESTIGATOR_REQUIRED",
+            denied_message="Somente Investigador pode acessar a área investigativa.",
+        )
+
+    async def public_staff_context(
+        self,
+        request: web.Request,
+    ) -> tuple[dict[str, object] | None, discord.Member | None, web.Response | None]:
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return None, None, web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        member, state = await self.public_discord_member_state(session["discord_user_id"])
+        if state == "unavailable":
+            return None, None, web.json_response(
+                {"ok": False, "code": "DISCORD_MEMBER_UNAVAILABLE", "message": "Não foi possível confirmar seu cargo agora."},
+                status=503,
+            )
+        capabilities = self.public_member_capabilities(member) if member is not None else {}
+        if member is None or not (capabilities.get("staff") or capabilities.get("management")):
+            return None, None, web.json_response(
+                {"ok": False, "code": "STAFF_REQUIRED", "message": "Somente Staff ou Gerência pode publicar neste espaço."},
+                status=403,
+            )
+        return session, member, None
 
     async def public_exam_process(self, request: web.Request, *, require_peace: bool = False) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
@@ -6115,10 +7021,57 @@ class PeaceBot(commands.Bot):
                     "total_questions": len(question_order),
                     "passed": bool(saved_assignment["passed"]),
                     "submitted_at": str(saved_assignment["submitted_at"]),
+                    "review": public_exam_review_payload(question_order, option_order, answers, answer_key),
                 },
                 "manager_delivery": "sent" if delivery_status == "sent" else "pending_or_failed",
             }
         )
+
+    async def public_exam_review(self, request: web.Request) -> web.Response:
+        """Return the authenticated candidate's gabarito after submission only."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para consultar a revisão."},
+                status=401,
+            )
+        answer_key = self.public_exam_answer_key()
+        if answer_key is None:
+            return web.json_response(
+                {"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "A prova ainda não está configurada pela equipe."},
+                status=503,
+            )
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da revisão inválidos."}, status=400)
+        assignment_id = self.public_exam_assignment_id(payload.get("assignment_id"))
+        if assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_ASSIGNMENT", "message": "A atribuição informada é inválida."}, status=400)
+        assignment = self.database.exam_assignment(assignment_id)
+        attempt = self.database.exam_attempt_for_candidate(assignment_id, session["discord_user_id"])
+        if assignment is None or attempt is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "Não encontrei uma tentativa vinculada à sua conta."}, status=404)
+        if assignment["status"] != "submitted" or attempt["status"] != "submitted":
+            return web.json_response({"ok": False, "code": "EXAM_REVIEW_NOT_READY", "message": "O gabarito só aparece depois do envio definitivo."}, status=409)
+        try:
+            question_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            option_order = {
+                str(key): [int(index) for index in value]
+                for key, value in json.loads(str(attempt["option_order_json"])).items()
+            }
+            answers = json.loads(str(attempt["answers_json"] or "{}"))
+            if not isinstance(answers, dict):
+                raise ValueError("stored answers are not an object")
+            review = public_exam_review_payload(question_order, option_order, answers, answer_key)
+        except (TypeError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "EXAM_REVIEW_UNAVAILABLE", "message": "Não consegui carregar o gabarito desta tentativa."}, status=503)
+        return web.json_response({"ok": True, "assignment_id": assignment_id, "review": review})
 
     async def public_exam_assignments(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
@@ -6137,7 +7090,8 @@ class PeaceBot(commands.Bot):
             )
         if request.method == "GET":
             assignments = self.database.exam_assignments_for_manager(session["discord_user_id"])
-            return web.json_response({"ok": True, "assignments": [self.public_exam_manager_assignment_payload(row) for row in assignments]})
+            payloads = [await self.public_exam_manager_assignment_live_payload(row) for row in assignments]
+            return web.json_response({"ok": True, "assignments": payloads})
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
@@ -6204,7 +7158,59 @@ class PeaceBot(commands.Bot):
         if host.startswith(("127.0.0.1:", "localhost:", "[::1]:")):
             base_url = f"{request.scheme}://{host}"
         access_url = f"{base_url}/prova/?access={urlencode({'': raw_token})[1:]}" if base_url else f"/prova/?access={raw_token}"
-        return web.json_response({"ok": True, "assignment": self.public_exam_manager_assignment_payload(assignment), "access_url": access_url})
+        return web.json_response({"ok": True, "assignment": await self.public_exam_manager_assignment_live_payload(assignment), "access_url": access_url})
+
+    async def public_exam_manager_review(self, request: web.Request) -> web.Response:
+        """Return submitted answers only to the manager who owns the assignment."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response({"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para acessar a revisão."}, status=401)
+        manager = await self.public_manager_member(session["discord_user_id"])
+        if manager is None:
+            return web.json_response({"ok": False, "code": "MANAGER_REQUIRED", "message": "Somente Gerência pode consultar revisões."}, status=403)
+        assignment_id = self.public_exam_assignment_id(request.match_info.get("assignment_id"))
+        if assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_ASSIGNMENT", "message": "A atribuição informada é inválida."}, status=400)
+        assignment = self.database.exam_assignment(assignment_id)
+        if assignment is None or str(assignment["manager_discord_user_id"]) != str(session["discord_user_id"]):
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "A atribuição não pertence à sua gerência."}, status=404)
+        attempt = self.database.exam_attempt_for_candidate(assignment_id, assignment["candidate_discord_user_id"])
+        if attempt is None or assignment["status"] != "submitted" or attempt["status"] != "submitted":
+            return web.json_response({"ok": False, "code": "EXAM_REVIEW_NOT_READY", "message": "A revisão só aparece depois do envio definitivo."}, status=409)
+        answer_key = self.public_exam_answer_key()
+        if answer_key is None:
+            return web.json_response({"ok": False, "code": "EXAM_NOT_CONFIGURED", "message": "O gabarito protegido ainda não está configurado."}, status=503)
+        try:
+            question_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
+            option_order = {str(key): [int(index) for index in value] for key, value in json.loads(str(attempt["option_order_json"])).items()}
+            answers = json.loads(str(attempt["answers_json"] or "{}"))
+            if not isinstance(answers, dict):
+                raise ValueError("stored answers are not an object")
+            review = public_exam_review_payload(question_order, option_order, answers, answer_key)
+        except (TypeError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "EXAM_REVIEW_UNAVAILABLE", "message": "Não consegui carregar a revisão desta tentativa."}, status=503)
+        candidate = await self.public_discord_member_by_id(assignment["candidate_discord_user_id"])
+        candidate_name = str(
+            getattr(candidate, "name", None)
+            or getattr(candidate, "global_name", None)
+            or getattr(candidate, "display_name", None)
+            or assignment["candidate_username_snapshot"]
+        )[:80]
+        avatar = getattr(getattr(candidate, "display_avatar", None), "url", None) if candidate is not None else None
+        return web.json_response({
+            "ok": True,
+            "assignment": self.public_exam_manager_assignment_payload(assignment),
+            "candidate": {
+                "discord_id": str(assignment["candidate_discord_user_id"]),
+                "username": candidate_name,
+                "profile_url": f"https://discord.com/users/{assignment['candidate_discord_user_id']}",
+                "avatar_url": str(avatar) if avatar else None,
+            },
+            "review": review,
+        })
 
     @staticmethod
     @web.middleware
@@ -6225,16 +7231,26 @@ class PeaceBot(commands.Bot):
                 status=403,
                 headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
             )
-        cookie_mutation = route in {
-            "/api/member/auth/verify",
-            "/api/member/auth/revoke",
-            "/api/auth/discord/logout",
-            "/api/exams/access",
-            "/api/exams/start",
-            "/api/exams/submit",
-            "/api/exams/assignments",
-        "/api/clips",
-        }
+        cookie_mutation = (
+            request.method in {"POST", "PATCH", "DELETE"}
+            and (
+                route in {
+                    "/api/member/auth/verify",
+                    "/api/member/auth/revoke",
+                    "/api/auth/discord/logout",
+                    "/api/exams/access",
+                    "/api/exams/start",
+                    "/api/exams/submit",
+                    "/api/exams/assignments",
+                    "/api/clips",
+                    "/api/notices",
+                    "/api/partners",
+                    "/api/investigations",
+                }
+                or route.startswith("/api/investigations/")
+                or route.startswith("/api/investigation-approvals/")
+            )
+        )
         if (
             request.method == "POST"
             and cookie_mutation
@@ -6258,7 +7274,11 @@ class PeaceBot(commands.Bot):
                 headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
             )
         response = await handler(request)
-        if route in PUBLIC_API_NO_STORE_ROUTES:
+        dynamic_private_route = (
+            route.startswith("/api/investigations/")
+            or route.startswith("/api/investigation-approvals/")
+        )
+        if route in PUBLIC_API_NO_STORE_ROUTES or dynamic_private_route:
             response.headers["Cache-Control"] = "no-store, private"
             response.headers["Pragma"] = "no-cache"
             vary = {
@@ -6271,7 +7291,7 @@ class PeaceBot(commands.Bot):
                 response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
         if origin in PUBLIC_API_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
             vary = {
                 value.strip()
@@ -6312,6 +7332,10 @@ class PeaceBot(commands.Bot):
         """
         route = str(getattr(request, "path", "") or "").split("?", 1)[0]
         policy = PUBLIC_API_RATE_LIMITS.get(route)
+        if policy is None and route.startswith("/api/investigations/"):
+            policy = PUBLIC_API_RATE_LIMITS.get("/api/investigations")
+        if policy is None and route.startswith("/api/investigation-approvals/"):
+            policy = PUBLIC_API_RATE_LIMITS.get("/api/investigation-approvals")
         if policy is None:
             return None
         limit, window_seconds = policy
@@ -6366,6 +7390,17 @@ class PeaceBot(commands.Bot):
         app.router.add_get("/api/clips", self.public_api_clips)
         app.router.add_post("/api/clips", self.public_api_clips)
         app.router.add_get("/api/notices", self.public_api_notices)
+        app.router.add_post("/api/notices", self.public_api_notices)
+        app.router.add_get("/api/partners", self.public_api_partners)
+        app.router.add_post("/api/partners", self.public_api_partners)
+        app.router.add_get("/api/investigations", self.public_api_investigations)
+        app.router.add_post("/api/investigations", self.public_api_investigations)
+        app.router.add_get("/api/investigations/{case_id}", self.public_api_investigation_case)
+        app.router.add_patch("/api/investigations/{case_id}", self.public_api_investigation_case)
+        app.router.add_post("/api/investigations/{case_id}/evidence", self.public_api_investigation_evidence)
+        app.router.add_post("/api/investigations/{case_id}/approval-links", self.public_api_investigation_approval_links)
+        app.router.add_get("/api/investigation-approvals/{token}", self.public_api_investigation_approval)
+        app.router.add_post("/api/investigation-approvals/{token}", self.public_api_investigation_approval)
         app.router.add_post("/api/entry/start", self.public_api_entry_start)
         app.router.add_get("/api/entry/status", self.public_api_entry_status)
         app.router.add_post("/api/entry/status", self.public_api_entry_status)
@@ -6386,13 +7421,21 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/exams/access", self.public_exam_access)
         app.router.add_post("/api/exams/start", self.public_exam_start)
         app.router.add_post("/api/exams/submit", self.public_exam_submit)
+        app.router.add_post("/api/exams/review", self.public_exam_review)
         app.router.add_get("/api/exams/assignments", self.public_exam_assignments)
         app.router.add_post("/api/exams/assignments", self.public_exam_assignments)
+        app.router.add_get("/api/exams/assignments/{assignment_id}/review", self.public_exam_manager_review)
         for route in (
             "/api/status",
             "/api/media",
             "/api/clips",
             "/api/notices",
+            "/api/partners",
+            "/api/investigations",
+            "/api/investigations/{case_id}",
+            "/api/investigations/{case_id}/evidence",
+            "/api/investigations/{case_id}/approval-links",
+            "/api/investigation-approvals/{token}",
             "/api/entry/start",
             "/api/entry/status",
             "/api/entry/repair",
@@ -6412,7 +7455,9 @@ class PeaceBot(commands.Bot):
             "/api/exams/access",
             "/api/exams/start",
             "/api/exams/submit",
+            "/api/exams/review",
             "/api/exams/assignments",
+            "/api/exams/assignments/{assignment_id}/review",
         ):
             app.router.add_route("OPTIONS", route, self.public_api_options)
         return app
@@ -6559,7 +7604,8 @@ class PeaceBot(commands.Bot):
 
     def public_member_has_peace_role(self, member: discord.Member) -> bool:
         role_id = getattr(self.settings, "peace_role_id", None)
-        return role_id is not None and role_member(member, role_id)
+        guild = getattr(member, "guild", None) or self.guild
+        return member_has_named_role(member, guild, role_id, PEACE_ROLE_NAME)
 
     async def public_auth_member(self, peace_id: int) -> discord.Member | None:
         """Resolve one active Peace member without exposing lookup details."""
@@ -8338,8 +9384,8 @@ class PeaceBot(commands.Bot):
     async def publish_return_request(self, request) -> None:
         if self.guild is None or self.settings.scan_channel_id is None:
             return
-        channel = self.guild.get_channel(self.settings.scan_channel_id)
-        if not isinstance(channel, discord.TextChannel):
+        channel = await self.resolve_text_channel(self.settings.scan_channel_id)
+        if channel is None:
             return
         try:
             async with self.return_mutation_lock(int(request["id"])):
@@ -8365,8 +9411,8 @@ class PeaceBot(commands.Bot):
     async def sync_pending_return_panels(self) -> None:
         if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
             return
-        channel = self.guild.get_channel(self.settings.scan_channel_id)
-        if not isinstance(channel, discord.TextChannel):
+        channel = await self.resolve_text_channel(self.settings.scan_channel_id)
+        if channel is None:
             return
         for request in self.database.pending_return_requests():
             try:
@@ -8519,7 +9565,7 @@ class PeaceBot(commands.Bot):
         for member in self.guild.members:
             await self.reconcile_visitor_role(member)
 
-    def set_approval_embed(self, request) -> discord.Embed:
+    def set_approval_embed(self, request, candidate_avatar_url: str | None = None) -> discord.Embed:
         selected = mention(request["recruiter_user_id"]) if request["recruiter_user_id"] else "qualquer Staff ou Management"
         is_site_application = str(request["source"] or "").casefold().startswith("site:")
         embed = discord.Embed(
@@ -8541,6 +9587,8 @@ class PeaceBot(commands.Bot):
         else:
             embed.add_field(name="Telefone in-game", value=f"`{redact(str(request['telefone_in_game']), limit=100)}`", inline=True)
             embed.add_field(name="RG in-game", value=f"`{redact(str(request['rg_in_game']), limit=100)}`", inline=True)
+        if candidate_avatar_url:
+            embed.set_thumbnail(url=str(candidate_avatar_url))
         embed.set_footer(text=f"set_request:{request['id']}")
         return embed
 
@@ -8575,21 +9623,24 @@ class PeaceBot(commands.Bot):
         scan_channel_id = getattr(self.settings, "scan_channel_id", None)
         if self.guild is None or self.user is None or scan_channel_id is None:
             return False
-        channel = self.guild.get_channel(scan_channel_id)
-        if not isinstance(channel, discord.TextChannel):
+        channel = await self.resolve_text_channel(scan_channel_id)
+        if channel is None:
+            log.warning("O canal scan-only configurado não está disponível: %s", scan_channel_id)
             return False
+        candidate = await self.public_discord_member_by_id(request["discord_user_id"])
+        candidate_avatar_url = getattr(getattr(candidate, "display_avatar", None), "url", None) if candidate is not None else None
         marker = f"peace_set_approve_{request['id']}"
         try:
             async for message in channel.history(limit=100):
                 if message.author.id != self.user.id or marker not in self.message_custom_ids(message):
                     continue
                 await message.edit(
-                    embed=self.set_approval_embed(request),
+                    embed=self.set_approval_embed(request, candidate_avatar_url),
                     view=self.set_approval_view(int(request["id"])),
                 )
                 return True
             await channel.send(
-                embed=self.set_approval_embed(request),
+                embed=self.set_approval_embed(request, candidate_avatar_url),
                 view=self.set_approval_view(int(request["id"])),
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
@@ -8607,10 +9658,11 @@ class PeaceBot(commands.Bot):
         if view is None:
             view = DeveloperApprovalView(self, request_id)
             self.developer_approval_views[request_id] = view
+            self.add_view(view)
         return view
 
     @staticmethod
-    def developer_request_embed(request) -> discord.Embed:
+    def developer_request_embed(request, candidate_avatar_url: str | None = None) -> discord.Embed:
         if request["status"] == "pending":
             decision_instruction = (
                 "Esta é a primeira etapa. Confira o currículo e use "
@@ -8642,6 +9694,8 @@ class PeaceBot(commands.Bot):
             ),
             color=0x5865F2,
         )
+        if candidate_avatar_url:
+            embed.set_thumbnail(url=str(candidate_avatar_url))
         embed.set_footer(text=f"developer_request:{request['id']}")
         return embed
 
@@ -8703,13 +9757,19 @@ class PeaceBot(commands.Bot):
         return True
 
     async def sync_pending_developer_panels(self) -> None:
-        if self.guild is None or self.user is None or self.settings.scan_channel_id is None:
+        review_channel_id = (
+            getattr(self.settings, "interview_channel_id", None)
+            or getattr(self.settings, "scan_channel_id", None)
+        )
+        if self.guild is None or self.user is None or review_channel_id is None:
             return
-        channel = self.guild.get_channel(self.settings.scan_channel_id)
-        if not isinstance(channel, discord.TextChannel):
+        channel = await self.resolve_text_channel(review_channel_id)
+        if channel is None:
             return
         try:
             for request in self.database.pending_developer_requests():
+                candidate = await self.member(self.guild, int(request["discord_user_id"]))
+                candidate_avatar_url = getattr(getattr(candidate, "display_avatar", None), "url", None) if candidate is not None else None
                 marker = f"peace_dev_approve_{request['id']}"
                 found = None
                 async for message in channel.history(limit=100):
@@ -8718,13 +9778,13 @@ class PeaceBot(commands.Bot):
                         break
                 if found is None:
                     await channel.send(
-                        embed=self.developer_request_embed(request),
+                        embed=self.developer_request_embed(request, candidate_avatar_url=candidate_avatar_url),
                         view=self.developer_approval_view(int(request["id"])),
                         allowed_mentions=discord.AllowedMentions(users=True),
                     )
                 else:
                     await found.edit(
-                        embed=self.developer_request_embed(request),
+                        embed=self.developer_request_embed(request, candidate_avatar_url=candidate_avatar_url),
                         view=self.developer_approval_view(int(request["id"])),
                     )
         except (discord.Forbidden, discord.HTTPException):
@@ -8785,19 +9845,20 @@ class PeaceBot(commands.Bot):
     ) -> bool:
         if self.guild is None or channel_id is None:
             return False
-        channel = self.guild.get_channel(channel_id)
-        if isinstance(channel, discord.TextChannel):
-            try:
-                await channel.send(
-                    content=content,
-                    embed=embed,
-                    view=view,
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-                return True
-            except (discord.Forbidden, discord.HTTPException):
-                log.exception("Falha ao escrever no canal %s", channel_id)
-        return False
+        channel = await self.resolve_text_channel(channel_id)
+        if channel is None:
+            return False
+        try:
+            await channel.send(
+                content=content,
+                embed=embed,
+                view=view,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            log.exception("Falha ao escrever no canal %s", channel_id)
+            return False
 
     async def close_ticket_channel(self, channel: discord.TextChannel, ticket, actor: discord.Member) -> None:
         if ticket["status"] != "open":
@@ -8831,6 +9892,27 @@ class PeaceBot(commands.Bot):
         base = clean_name(owner.name if owner is not None else "ticket")
         return f"sup-{base}-t{ticket_id:04d}"[:90]
 
+    async def resolve_text_channel(self, channel_id: int | str | None) -> discord.TextChannel | None:
+        """Resolve configured text channels through cache first, then REST."""
+        if self.guild is None or channel_id is None:
+            return None
+        try:
+            normalized_id = int(channel_id)
+        except (TypeError, ValueError):
+            return None
+        get_channel = getattr(self.guild, "get_channel", None)
+        channel = get_channel(normalized_id) if callable(get_channel) else None
+        if isinstance(channel, discord.TextChannel):
+            return channel
+        fetch_channel = getattr(self.guild, "fetch_channel", None)
+        if not callable(fetch_channel):
+            return None
+        try:
+            fetched = await fetch_channel(normalized_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
+            return None
+        return fetched if isinstance(fetched, discord.TextChannel) else None
+
     async def member(self, guild: discord.Guild, user_id: int) -> discord.Member | None:
         member = guild.get_member(user_id)
         if member is not None:
@@ -8838,6 +9920,9 @@ class PeaceBot(commands.Bot):
         try:
             return await guild.fetch_member(user_id)
         except discord.NotFound:
+            return None
+        except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
+            log.info("Não consegui consultar o membro %s no servidor", user_id, exc_info=True)
             return None
 
     def mutation_lock(self, user_id: int) -> asyncio.Lock:
@@ -9903,7 +10988,7 @@ class PeaceBot(commands.Bot):
         if not application_path_open("player", self.settings):
             await respond(interaction, "Eu mantive as vagas de Player fechadas no momento.")
             return
-        peace_role = guild.get_role(self.settings.peace_role_id)
+        peace_role = role_named(guild, self.settings.peace_role_id, PEACE_ROLE_NAME)
         if peace_role is None:
             await respond(interaction, "A configuração de cargos Peace está incompleta; procure a staff.")
             return
@@ -9941,9 +11026,13 @@ class PeaceBot(commands.Bot):
         return reviewer_member(member, self.settings)
 
     async def approve_set_request(self, request, recruiter: discord.Member) -> str:
+        async with self.mutation_lock(int(request["discord_user_id"])):
+            return await self._approve_set_request_locked(request, recruiter)
+
+    async def _approve_set_request_locked(self, request, recruiter: discord.Member) -> str:
         guild = recruiter.guild
         member = await self.member(guild, int(request["discord_user_id"]))
-        peace_role = guild.get_role(self.settings.peace_role_id)
+        peace_role = role_named(guild, self.settings.peace_role_id, PEACE_ROLE_NAME)
         intern_role = role_named(
             guild,
             getattr(self.settings, "intern_role_id", None),
@@ -9992,6 +11081,16 @@ class PeaceBot(commands.Bot):
             role_hoist=role_hoist_map(requested_role_objects),
         ) or "N"
         nickname = f"{prefix} ⎰ {request['in_game_username']} {peace_id}"
+        stored_request = self.database.set_request(request["id"])
+        claimed_request = None
+        if stored_request is not None:
+            claimed_request = self.database.update_set_request_status(
+                request["id"],
+                "processing",
+                expected_status="pending",
+            )
+            if claimed_request is None or claimed_request["status"] != "processing":
+                return "Este pedido já foi processado por outra ação."
         try:
             await member.add_roles(
                 peace_role,
@@ -10016,7 +11115,15 @@ class PeaceBot(commands.Bot):
                 role_positions=role_position_map(requested_role_objects),
                 role_hoist=role_hoist_map(requested_role_objects),
             )
-            self.database.update_set_request_status(request["id"], "approved")
+            if claimed_request is not None:
+                updated = self.database.update_set_request_status(
+                    request["id"],
+                    "approved",
+                    expected_status="processing",
+                )
+                if updated is None or updated["status"] != "approved":
+                    log.error("Set %s aplicado, mas a transição final não foi persistida", request["id"])
+                    return "Apliquei o set, mas não consegui finalizar o status do pedido. A equipe deve conferir o cartão."
             dm_sent = True
             try:
                 await member.send(
@@ -10028,6 +11135,12 @@ class PeaceBot(commands.Bot):
                 log.info("DM fechado para o membro aprovado %s", member.id)
         except (discord.Forbidden, discord.HTTPException, RuntimeError):
             log.exception("Falha ao aplicar set pendente em %s", member.id)
+            if claimed_request is not None:
+                self.database.update_set_request_status(
+                    request["id"],
+                    "pending",
+                    expected_status="processing",
+                )
             return "Não consegui aplicar o set. Verifique permissões, hierarquia e tente novamente."
         logged = await self.send_log(
             "Set aprovado",
@@ -10048,14 +11161,27 @@ class PeaceBot(commands.Bot):
         return result
 
     async def reject_set_request(self, request, recruiter: discord.Member) -> bool:
-        self.database.update_set_request_status(request["id"], "rejected")
+        async with self.mutation_lock(int(request["discord_user_id"])):
+            return await self._reject_set_request_locked(request, recruiter)
+
+    async def _reject_set_request_locked(self, request, recruiter: discord.Member) -> bool:
         member = await self.member(recruiter.guild, int(request["discord_user_id"]))
+        stored_request = self.database.set_request(request["id"])
+        claimed_request = None
+        if stored_request is not None:
+            claimed_request = self.database.update_set_request_status(
+                request["id"],
+                "processing",
+                expected_status="pending",
+            )
+            if claimed_request is None or claimed_request["status"] != "processing":
+                return False
         if member is not None:
             try:
                 await member.send("Seu pedido de set foi recusado por Staff ou Management. Se precisar, abra um ticket para revisar os dados.")
             except (discord.Forbidden, discord.HTTPException):
                 log.info("DM fechado para o pedido de set %s", request["id"])
-        return await self.send_log(
+        logged = await self.send_log(
             "Set recusado",
             actor=recruiter,
             subject=member,
@@ -10065,6 +11191,18 @@ class PeaceBot(commands.Bot):
                 ("Horário", f"<t:{now_unix()}:F>"),
             ),
         )
+        if not logged:
+            if claimed_request is not None:
+                self.database.update_set_request_status(
+                    request["id"],
+                    "pending",
+                    expected_status="processing",
+                )
+            return False
+        updated = self.database.update_set_request_status(request["id"], "rejected", expected_status="processing") if claimed_request is not None else None
+        if claimed_request is None:
+            return False
+        return bool(updated is not None and updated["status"] == "rejected")
 
     async def issue_central_login_code(self, member: discord.Member, peace_id: int, client_id: str) -> bool | None:
         code = f"{secrets.randbelow(1_000_000):06d}"

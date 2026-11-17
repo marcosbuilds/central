@@ -45,7 +45,6 @@
   text-align: center;
   text-wrap: balance;
 }
-.public-context-page .flow-header,
 .public-context-page .site-header { display: none !important; }
 .public-context-page { scroll-padding-top: 4.25rem; }
 .public-context-page .flow-main,

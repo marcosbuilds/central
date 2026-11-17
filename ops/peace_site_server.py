@@ -39,6 +39,9 @@ ACL_API_ROUTES = {
     "/api/auth/discord/session",
     "/api/auth/discord/logout",
     "/api/notices",
+    "/api/partners",
+    "/api/investigations",
+    "/api/investigation-approvals",
     "/api/exams/process",
     "/api/peace/process",
     "/api/exams/access",
@@ -46,6 +49,11 @@ ACL_API_ROUTES = {
     "/api/exams/submit",
     "/api/exams/assignments",
 }
+EXAM_MANAGER_REVIEW_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/review$")
+INVESTIGATION_CASE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}$")
+INVESTIGATION_EVIDENCE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/evidence$")
+INVESTIGATION_APPROVAL_LINKS_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/approval-links$")
+INVESTIGATION_APPROVAL_ROUTE = re.compile(r"^/api/investigation-approvals/[A-Za-z0-9_-]{32,128}$")
 DISCORD_INVITE = "https://discord.gg/qUkQH8XmcN"
 MEMBER_SESSION_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_session=([^;]*)")
 MEMBER_CHALLENGE_COOKIE_PATTERN = re.compile(r"(?:^|;\s*)peace_member_challenge=([^;]*)")
@@ -160,7 +168,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             self._redirect("/estudos/peace/leitor/", 301)
             return
 
-        if route in ACL_API_ROUTES:
+        if route in ACL_API_ROUTES or EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) or INVESTIGATION_CASE_ROUTE.fullmatch(route) or INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self._proxy_api("GET")
             return
 
@@ -171,12 +179,13 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
-        if self.path.split("?", 1)[0] not in ACL_API_ROUTES:
+        route = self.path.split("?", 1)[0]
+        if route not in ACL_API_ROUTES and not EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) and not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
 
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Accept, Content-Type")
         self.end_headers()
 
@@ -195,14 +204,23 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/auth/discord/logout",
             "/api/clips",
             "/api/notices",
+            "/api/partners",
+            "/api/investigations",
             "/api/exams/access",
             "/api/exams/start",
             "/api/exams/submit",
             "/api/exams/assignments",
-        }:
+        } and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
         self._proxy_api("POST")
+
+    def do_PATCH(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+        route = self.path.split("?", 1)[0]
+        if not INVESTIGATION_CASE_ROUTE.fullmatch(route):
+            self.send_error(404)
+            return
+        self._proxy_api("PATCH")
 
     def _redirect(self, location: str, status: int) -> None:
         self.send_response(status)
@@ -230,14 +248,14 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             )
             if frontend_origin:
                 headers["Origin"] = frontend_origin
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners"}:
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),
                     frontend_origin,
                 )
             )
-        if method == "POST":
+        if method in {"POST", "PATCH"}:
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length)
             headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
@@ -282,7 +300,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 for value in set_cookies
                 if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
             ]
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners"}:
             set_cookies = [
                 value
                 for value in set_cookies

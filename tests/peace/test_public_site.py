@@ -28,6 +28,7 @@ def make_bot(tmp_path):
         visitor_role_id=200,
         not_verified_role_id=300,
         verification_channel_id=500,
+        scan_channel_id=1495121743604617458,
         staff_role_id=501,
         manager_role_id=502,
         central_access_role_id=503,
@@ -613,7 +614,7 @@ def test_public_api_supports_only_status_preflight(tmp_path):
     assert status == 204
     assert body == ""
     assert headers["Access-Control-Allow-Origin"] == "https://www.peacegg.com.br"
-    assert headers["Access-Control-Allow-Methods"] == "GET, POST, OPTIONS"
+    assert headers["Access-Control-Allow-Methods"] == "GET, POST, PATCH, OPTIONS"
 
 
 def test_authentication_responses_are_private_and_uncacheable(tmp_path):
@@ -685,6 +686,48 @@ def test_public_entry_invite_is_effectively_single_use_and_reused_until_expiry(t
         unique=True,
         reason="Convite único do fluxo público de entrada Peace",
     )
+
+
+def test_public_entry_payload_uses_live_role_state_for_status(tmp_path):
+    from bot.main import EntryInviteSession
+
+    member = SimpleNamespace(
+        id=12345678901234567,
+        name="candidate",
+        display_name="Candidate",
+        roles=[],
+    )
+    guild = SimpleNamespace(
+        text_channels=[],
+        roles=[],
+        get_member=lambda user_id: member if user_id == member.id else None,
+        get_channel=lambda channel_id: None,
+        get_role=lambda role_id: None,
+    )
+    bot = make_bot(tmp_path)
+    bot.guild = guild
+    token = "P" * 43
+    bot.entry_sessions[token] = EntryInviteSession(
+        session_token=token,
+        invite_code="entry-code",
+        invite_url="https://discord.gg/entry-code",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        discord_user_id=member.id,
+        discord_username=member.name,
+        status="verification_pending",
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/status",
+        method="POST",
+        payload={"session_token": token},
+    )
+
+    assert status == 200
+    assert payload["status"] == "role_missing"
+    assert payload["verification_state"] == "role_missing"
+    assert payload["verification"]["has_not_verified_role"] is False
 
 
 def test_public_entry_session_survives_bot_restart(tmp_path):
@@ -949,7 +992,7 @@ def test_public_entry_identifies_existing_visitor_without_granting_access(tmp_pa
     assert status == 200
     assert payload["status"] == "visitor_member"
     assert payload["next_stage"] == 3
-    assert payload["discord_user"]["mention"] == "@Peaceiro"
+    assert payload["discord_user"]["mention"] == "@peaceiro"
 
 
 def test_public_entry_identify_does_not_enumerate_roles_without_oauth(tmp_path):
@@ -1292,6 +1335,145 @@ def test_investigation_overview_is_site_owned(tmp_path):
     assert isinstance(payload["overview"]["stale"], bool)
 
 
+def test_investigation_approval_requires_ack_and_reaches_unanimous_approval(tmp_path):
+    bot = make_bot(tmp_path)
+    case = bot.database.create_investigation_case(
+        title="Caso investigativo",
+        subject_discord_user_id="12345678901234567",
+        summary="Resumo suficiente para validar o fluxo investigativo.",
+        created_by_discord_user_id="22345678901234567",
+        assigned_to_discord_user_id=None,
+    )
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    links = bot.database.create_investigation_approval_links(
+        case_id=int(case["id"]),
+        expected_outcome="Espero uma decisão sobre conclusão, limpeza ou intervenção.",
+        evaluator_discord_user_ids=["32345678901234567", "42345678901234567"],
+        created_by_discord_user_id="22345678901234567",
+        expires_at=expires_at,
+    )
+    assert links and len(links) == 2
+
+    result, _, _ = bot.database.decide_investigation_approval(
+        token=links[0]["token"],
+        evaluator_discord_user_id="32345678901234567",
+        decision="approved",
+        decision_note="A primeira revisão está de acordo.",
+        acknowledged_at="",
+    )
+    assert result == "acknowledgement_required"
+    assert bot.database.investigation_case(case["id"])["status"] == "pending_approval"
+
+    result, _, _ = bot.database.decide_investigation_approval(
+        token=links[0]["token"],
+        evaluator_discord_user_id="32345678901234567",
+        decision="approved",
+        decision_note="A primeira revisão está de acordo.",
+        acknowledged_at=datetime.now(timezone.utc).isoformat(),
+    )
+    assert result == "ok"
+    assert bot.database.investigation_case(case["id"])["status"] == "pending_approval"
+
+    result, _, updated_case = bot.database.decide_investigation_approval(
+        token=links[1]["token"],
+        evaluator_discord_user_id="42345678901234567",
+        decision="approved",
+        decision_note="A segunda revisão confirma a conclusão.",
+        acknowledged_at=datetime.now(timezone.utc).isoformat(),
+    )
+    assert result == "ok"
+    assert updated_case["status"] == "approved"
+
+
+def test_investigation_expiration_rejects_round_and_completion_requires_approval(tmp_path):
+    bot = make_bot(tmp_path)
+    case = bot.database.create_investigation_case(
+        title="Caso expirado",
+        subject_discord_user_id=None,
+        summary="Resumo suficiente para validar a expiração da rodada.",
+        created_by_discord_user_id="22345678901234567",
+        assigned_to_discord_user_id=None,
+    )
+    assert bot.database.update_investigation_case_status(
+        case_id=case["id"],
+        status="archived",
+        actor_discord_user_id="22345678901234567",
+    ) is None
+    assert bot.database.investigation_case(case["id"])["status"] == "open"
+
+    links = bot.database.create_investigation_approval_links(
+        case_id=int(case["id"]),
+        expected_outcome="Espero que os avaliadores confirmem a conclusão do caso.",
+        evaluator_discord_user_ids=["32345678901234567"],
+        created_by_discord_user_id="22345678901234567",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+    )
+    assert links
+    updated_case = bot.database.expire_investigation_approval_round(
+        case_id=case["id"],
+        actor_discord_user_id="32345678901234567",
+    )
+    assert updated_case["status"] == "rejected"
+    assert bot.database.investigation_approval_links(case["id"])[0]["status"] == "expired"
+    assert any(event["event_type"] == "approval_expired" for event in bot.database.investigation_events(case["id"]))
+
+
+def test_investigation_evaluator_payload_does_not_expose_private_reviewers_or_audit(tmp_path):
+    bot = make_bot(tmp_path)
+    case = bot.database.create_investigation_case(
+        title="Caso privado",
+        subject_discord_user_id="12345678901234567",
+        summary="Resumo suficiente para validar o isolamento do avaliador.",
+        created_by_discord_user_id="22345678901234567",
+        assigned_to_discord_user_id=None,
+    )
+    bot.database.add_investigation_evidence(
+        case_id=case["id"],
+        evidence_type="note",
+        classification="reference",
+        title="Observação",
+        source_url=None,
+        discord_message_id=None,
+        note="Referência que deve aparecer sem o coletor interno.",
+        collected_by_discord_user_id="22345678901234567",
+    )
+    links = bot.database.create_investigation_approval_links(
+        case_id=int(case["id"]),
+        expected_outcome="Espero que os avaliadores confirmem a conclusão.",
+        evaluator_discord_user_ids=["32345678901234567", "42345678901234567"],
+        created_by_discord_user_id="22345678901234567",
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    payload = bot.public_investigation_approval_case_payload(
+        bot.database.investigation_approval_by_token(links[0]["token"])
+    )
+    assert payload is not None
+    assert "approvals" not in payload
+    assert "events" not in payload
+    assert "collected_by_discord_user_id" not in payload["evidence"][0]
+
+
+def test_investigation_dynamic_routes_are_not_cacheable_and_require_origin_for_cookie_mutations(tmp_path):
+    status, headers, _ = run_public_api(
+        tmp_path,
+        "/api/investigation-approvals/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        headers={"Origin": "https://peacegg.com.br"},
+    )
+    assert status == 404
+    assert headers["Cache-Control"] == "no-store, private"
+    assert "Cookie" in headers["Vary"]
+
+    status, payload = run_configured_api(
+        make_bot(tmp_path / "csrf"),
+        "/api/investigation-approvals/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        method="POST",
+        payload={"acknowledge": True, "decision": "approved", "note": "Não deveria executar."},
+        cookies={"peace_discord_session": "A" * 32},
+    )
+    assert status == 403
+    assert payload["code"] == "ORIGIN_REQUIRED"
+
+
 def test_member_overview_marks_sqlite_presence_as_unavailable(tmp_path):
     member = SimpleNamespace(
         id=12345678901234567,
@@ -1520,8 +1702,14 @@ def test_public_discord_session_accepts_default_avatar_and_reports_live_verifica
         expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
     )
     visitor = SimpleNamespace(id=200, name="Visitante")
+    verify_channel = SimpleNamespace(id=500, name="verify", create_invite=AsyncMock())
     member = SimpleNamespace(id=discord_user_id, roles=[visitor])
-    bot.guild = SimpleNamespace(get_member=lambda user_id: member if user_id == discord_user_id else None)
+    bot.guild = SimpleNamespace(
+        id=1,
+        get_member=lambda user_id: member if user_id == discord_user_id else None,
+        get_channel=lambda channel_id: verify_channel if channel_id == 500 else None,
+        text_channels=[verify_channel],
+    )
 
     status, payload = run_configured_api(
         bot,
@@ -1533,6 +1721,8 @@ def test_public_discord_session_accepts_default_avatar_and_reports_live_verifica
     assert payload["identity"]["avatar_url"].startswith("https://cdn.discordapp.com/")
     assert payload["server"]["is_member"] is True
     assert payload["server"]["is_verified"] is True
+    assert payload["verification"]["name"] == "verify"
+    assert payload["verification"]["url"].endswith("/1/500")
 
     member.roles = []
     status, refreshed = run_configured_api(
@@ -1544,6 +1734,8 @@ def test_public_discord_session_accepts_default_avatar_and_reports_live_verifica
     assert status == 200
     assert refreshed["server"]["is_member"] is True
     assert refreshed["server"]["is_verified"] is False
+    assert refreshed["server"]["verification_state"] == "role_missing"
+    assert refreshed["server"]["has_not_verified_role"] is False
 
 
 def test_public_candidature_persists_pending_request_and_repairs_scan_card_idempotently(tmp_path):
@@ -1606,6 +1798,42 @@ def test_public_candidature_persists_pending_request_and_repairs_scan_card_idemp
     assert second["idempotent"] is True
     assert len(bot.database.pending_set_requests()) == 1
     assert bot.publish_pending_set_card.await_count == 2
+
+
+def test_public_candidature_scan_card_targets_configured_channel_and_candidate_avatar(tmp_path):
+    bot = make_bot(tmp_path)
+    bot.settings.scan_channel_id = 1495121743604617458
+    request_id, _ = bot.database.save_pending_set_request(
+        discord_user_id=12345678901234567,
+        in_game_username="candidate",
+        rg_in_game="application motivation",
+        telefone_in_game="application discovery",
+        source="site:candidature",
+        recruiter_user_id=None,
+    )
+    request = bot.database.set_request(request_id)
+    channel = SimpleNamespace(send=AsyncMock())
+
+    async def history(limit):
+        if False:
+            yield None
+
+    channel.history = history
+    bot.guild = SimpleNamespace()
+    bot._connection.user = SimpleNamespace(id=987654321)
+    bot.resolve_text_channel = AsyncMock(return_value=channel)
+    bot.public_discord_member_by_id = AsyncMock(
+        return_value=SimpleNamespace(display_avatar=SimpleNamespace(url="https://cdn.example.test/candidate.png"))
+    )
+
+    published = asyncio.run(bot.publish_pending_set_card(request))
+
+    assert published is True
+    bot.resolve_text_channel.assert_awaited_once_with(1495121743604617458)
+    kwargs = channel.send.await_args.kwargs
+    assert kwargs["embed"].thumbnail.url == "https://cdn.example.test/candidate.png"
+    custom_ids = {item.custom_id for item in kwargs["view"].children}
+    assert custom_ids == {f"peace_set_approve_{request_id}", f"peace_set_reject_{request_id}"}
 
 
 def test_public_candidature_requires_verified_visitor_and_discord_session(tmp_path):
@@ -1718,6 +1946,32 @@ def test_public_entry_repair_only_restores_linked_not_verified_role(tmp_path):
     assert not_verified in member.roles
 
 
+def test_public_entry_repair_distinguishes_discord_outage_from_missing_member(tmp_path):
+    from bot.main import EntryInviteSession
+
+    bot = make_bot(tmp_path)
+    token = "U" * 43
+    bot.entry_sessions[token] = EntryInviteSession(
+        session_token=token,
+        invite_code="entry-code",
+        invite_url="https://discord.gg/entry-code",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        discord_user_id=12345678901234567,
+        discord_username="candidate",
+        status="verification_pending",
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/entry/repair",
+        method="POST",
+        payload={"session_token": token},
+    )
+
+    assert status == 503
+    assert payload["code"] == "MEMBER_UNAVAILABLE"
+
+
 def test_public_site_files_are_complete():
     from pathlib import Path
 
@@ -1731,6 +1985,18 @@ def test_public_site_files_are_complete():
     assert (site_root / "assets" / "discord.svg").is_file()
     assert (site_root / "assets" / "id-card.svg").is_file()
     assert (site_root / "assets" / "shield-check.svg").is_file()
+    assert (site_root / "assets" / "fonts" / "PeaceFonte-Regular.woff2").is_file()
+    assert (site_root / "assets" / "fonts" / "PeaceFonte-LICENSE.txt").is_file()
+    for asset in (
+        "assets/peace-candidature-bg.png",
+        "assets/peace-process-bg.png",
+        "assets/peace-exam-bg.png",
+        "assets/peace-members-bg.png",
+        "assets/discord-verify-channel.png",
+        "assets/discord-verification-card-clean.png",
+        "assets/discord-verification-action-clean.png",
+    ):
+        assert (site_root / asset).is_file()
     headers = (site_root / "_headers").read_text(encoding="utf-8")
     assert headers.startswith("/*\n  Content-Security-Policy:")
     assert "*/" not in headers
@@ -1782,6 +2048,7 @@ def test_public_site_files_are_complete():
                     site_root / "css" / "responsive.css",
                     site_root / "css" / "studies.css",
                         site_root / "css" / "identity.css",
+                    site_root / "css" / "peace-polish.css",
                 )
             ],
         ]
@@ -1803,6 +2070,10 @@ def test_public_site_files_are_complete():
     assert 'menu-toggle-lines' not in homepage
     hero_cta = homepage.split('class="button button--light button--large"', 1)[1].split("</a>", 1)[0]
     assert "peace-icon" in hero_cta and "discord-icon" not in hero_cta
+    homepage_header = homepage.split('<header class="site-header"', 1)[1].split("</header>", 1)[0]
+    assert 'class="brand"' in homepage_header
+    assert 'class="public-context-back"' not in homepage_header
+    assert '<span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span>' in homepage_header
     homepage_nav = homepage.split('<nav class="site-nav"', 1)[1].split("</nav>", 1)[0]
     assert "Como entrar" not in homepage_nav
     assert "Entrar para Peace" not in homepage_nav
@@ -1826,17 +2097,19 @@ def test_public_site_files_are_complete():
         assert "<header" not in page_html
         assert 'data-page=' in page_html
 
-    for relative_path in (
-        "prova/index.html",
-        "gerencia/provas/index.html",
-    ):
-        page_html = (site_root / relative_path).read_text(encoding="utf-8")
-        assert "<header" not in page_html
-        assert "Como entrar" not in page_html
-        assert "href=\"/acessar/\"" not in page_html
-        assert "Entrar para Peace" not in page_html
+    page_html = (site_root / "prova" / "index.html").read_text(encoding="utf-8")
+    assert "<header" not in page_html
+    assert "Como entrar" not in page_html
+    assert "href=\"/acessar/\"" not in page_html
+    assert "Entrar para Peace" not in page_html
+
+    manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
+    assert '<header class="flow-header' in manager_html
+    assert "Como entrar" not in manager_html
+    assert "href=\"/acessar/\"" not in manager_html
+    assert "Entrar para Peace" not in manager_html
     assert '"exam"' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
-    assert "manager-topbar" in (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
+    assert 'href="/area/?view=manager"' in (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
 
     entry_html = (site_root / "entrar" / "index.html").read_text(encoding="utf-8")
     candidature_html = (site_root / "candidatura" / "index.html").read_text(encoding="utf-8")
@@ -1883,15 +2156,21 @@ def test_public_site_files_are_complete():
     assert "status unavailable" not in script
     assert "fetch unavailable" not in script
     assert "request timeout" not in script
+    clips_script = (site_root / "js" / "clips.js").read_text(encoding="utf-8")
+    assert "fallbackFromMedia" in clips_script
+    assert 'Number(error.status) === 404' in clips_script
     assert 'data-button-label' in login_html and 'button-spinner' in login_html
     assert 'data-button-label' in candidature_html and 'button-spinner' in candidature_html
     assert 'data-candidature-toast' in candidature_html
     assert 'name="terms-peace"' in candidature_html
+    assert candidature_html.count('type="checkbox"') == 1
     assert 'href="/termos/"' in candidature_html
     assert "terms_city" not in candidature_html and "terms_discord" not in candidature_html and "terms_conduct" not in candidature_html
     assert 'data-wizard-track' in candidature_html and 'role="progressbar"' in candidature_html
     assert 'data-page="terms"' in terms_html
     assert "Termos de Uso" in terms_html and "Privacidade" in terms_html and "Coleta de Dados" in terms_html
+    assert '<header class="flow-header flow-header--minimal"' in terms_html
+    assert ".public-context-page .flow-header" not in (site_root / "css" / "clips.css").read_text(encoding="utf-8")
     assert 'Candidatura pronta para revisão.' not in script
     assert 'showCandidatureToast' in script
     assert 'firstLink.focus()' in script
@@ -1912,6 +2191,11 @@ def test_public_site_files_are_complete():
     assert '<a class="entry-invite-url" data-entry-invite-link' in candidature_html
     assert 'data-entry-invite-link target="_blank"' not in candidature_html
     assert 'data-entry-invite-waiting' in candidature_html
+    assert 'discord-verification-card-clean.png' in candidature_html
+    assert 'discord-verification-action-clean.png' in candidature_html
+    assert 'discord-verification-card.png' not in candidature_html
+    assert 'discord-verification-action.png' not in candidature_html
+    assert 'discord-verification-guide.png' not in candidature_html
     assert 'invite_unavailable' in script
     assert 'recoverEntrySession' in script
     assert 'data-entry-existing' in candidature_html
@@ -1925,8 +2209,8 @@ def test_public_site_files_are_complete():
     opening_html = (site_root / "candidatura" / "abrindo-discord.html").read_text(encoding="utf-8")
     assert 'data-page="entry-loading"' in opening_html
     assert 'width="1254" height="1254"' in opening_html
-    assert 'href="/styles.css?v=20261115-07"' in opening_html
-    assert 'src="/script.js?v=20261115-07"' in opening_html
+    assert 'href="/styles.css?v=20261116-06"' in opening_html
+    assert 'src="/script.js?v=20261116-06"' in opening_html
     assert '<style>' not in opening_html
     assert 'src="/candidatura/abrindo-discord.js?v=20261113-01"' in opening_html
     assert 'entry-loading-card' in stylesheet
@@ -1970,8 +2254,8 @@ def test_public_site_files_are_complete():
     manager_html = (site_root / "gerencia" / "provas" / "index.html").read_text(encoding="utf-8")
     manager_script = (site_root / "js" / "manager-exams.js").read_text(encoding="utf-8")
     for html in (studies_html, civil_html, peace_html, process_html):
-        assert 'href="/styles.css?v=20261115-07"' in html
-        assert 'src="/script.js?v=20261115-07"' in html
+        assert 'href="/styles.css?v=20261116-06"' in html
+        assert 'src="/script.js?v=20261116-06"' in html
         assert '<header' not in html
     clips_html = (site_root / "clipes" / "index.html").read_text(encoding="utf-8")
     assert 'data-page="clips"' in clips_html
@@ -2015,18 +2299,14 @@ def test_public_site_files_are_complete():
     assert "Conecte o Discord para abrir seu processo." in process_html
     assert "data-process-retry" in process_html
     assert "showUnavailable" in process_script
-    assert 'data-manager-loading' in manager_html
-    assert 'data-manager-gate hidden' in manager_html
+    assert 'http-equiv="refresh"' in manager_html
+    assert 'href="/area/?view=manager"' in manager_html
+    assert 'window.location.replace("/area/?view=manager")' in manager_html
+    assert 'data-manager-loading' not in manager_html
+    assert 'data-manager-form' not in manager_html
     assert 'data-manager-loading' in manager_script
     assert 'hideLoading' in manager_script
     assert 'payload.ok !== true' in manager_script
-    assert "data-manager-retry" in manager_html
-    assert "showUnavailable" in manager_script
-    assert 'name="exam_type"' in manager_html
-    assert 'value="tier_i"' in manager_html
-    assert 'value="tier_i_extra" disabled' in manager_html
-    assert "<details" not in manager_html
-    assert "exam_type: examType" in manager_script
     assert '<header' not in civil_html and '<header' not in peace_html
     assert '<nav class="study-outline"' in civil_html and '<nav class="study-outline"' in peace_html
     assert 'class="study-reader" id="capitulos" tabindex="-1"' in civil_html
@@ -2047,10 +2327,11 @@ def test_public_site_files_are_complete():
     assert ".status-tag {" in stylesheet and ".study-rule-grid" in stylesheet
     assert ".process-identity-list" in stylesheet
     assert ".flow-header-nav a[aria-current=\"page\"]::after" in stylesheet
-    assert "flows.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "studies.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "responsive.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "clips.css?v=20261115-07" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "flows.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "studies.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "responsive.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "peace-polish.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
     assert 'data-notices-bell' in notices_html
     assert 'data-notices-badge' in notices_html
@@ -2101,16 +2382,17 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
     studies_stylesheet = (site_root / "css" / "studies.css").read_text(encoding="utf-8")
     member_stylesheet = (site_root / "css" / "member.css").read_text(encoding="utf-8")
+    system_stylesheet = (site_root / "css" / "peace-system.css").read_text(encoding="utf-8")
 
     assert 'data-page="member"' in member_html
     assert "data-member-gate" in member_html
     assert 'class="member-sidebar"' in member_html
     assert 'href="/area/"' in member_html
-    assert 'href="/estudos/"' in member_html
+    assert 'href="/area/?view=library"' in member_html
     assert 'href="/avisos/"' in member_html
-    assert 'href="/parceiros/"' in member_html
-    assert 'href="/clipes/"' in member_html
-    assert 'href="/meu-processo/"' in member_html
+    assert 'href="/area/?view=partners"' in member_html
+    assert 'href="/area/?view=clips"' in member_html
+    assert 'href="/area/?view=process"' in member_html
     assert 'href="#member-' not in member_html
     assert 'data-member-retry' in member_html
     assert 'data-member-workspace-skeleton' in member_html
@@ -2123,10 +2405,13 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "member-header" not in member_html
     assert "member-sidebar-profile" in member_html
     assert "data-member-sidebar-username" in member_html
-    assert "Membro Peace confirmado" in member_html
+    assert "Membro Peace confirmado" not in member_html
+    assert 'data-member-sidebar-state' not in member_html
+    assert 'data-member-nav-count="clips"' in member_html
+    assert 'data-member-nav-count="proofs"' in member_html
     assert "member-logout-icon" in member_html
-    assert "member-nav-icon" not in member_html
-    assert ".member-nav-icon" not in member_stylesheet
+    assert "member-nav-icon" in member_html
+    assert ".member-nav-icon" in system_stylesheet
     assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html
     assert "site-header site-header--area" not in member_html
@@ -2140,7 +2425,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
-    assert member_html.count("<h1") == 5  # gate, overview, library, partners and clips accessible headings
+    assert member_html.count("<h1") == 10  # gate, overview, library, partners, clips, process, management, scan, investigation and notices
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
@@ -2192,8 +2477,17 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
+    assert "/api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!" in redirect_lines
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros", "/termos"):
         assert f"{route} {route}/ 301!" not in redirects
+
+
+def test_local_proxy_accepts_only_numeric_manager_review_ids():
+    from ops.peace_site_server import EXAM_MANAGER_REVIEW_ROUTE
+
+    assert EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/42/review")
+    assert not EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/not-an-id/review")
+    assert not EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/42/review/extra")
 
 
 def test_local_proxy_forwards_only_the_member_session_and_bearer():

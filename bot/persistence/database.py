@@ -311,6 +311,76 @@ CREATE TABLE IF NOT EXISTS exam_events (
 CREATE INDEX IF NOT EXISTS idx_exam_events_assignment
     ON exam_events(assignment_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS investigation_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    subject_discord_user_id TEXT,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_by_discord_user_id TEXT NOT NULL,
+    assigned_to_discord_user_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_cases_status
+    ON investigation_cases(status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_cases_subject
+    ON investigation_cases(subject_discord_user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS investigation_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES investigation_cases(id) ON DELETE CASCADE,
+    evidence_type TEXT NOT NULL,
+    classification TEXT NOT NULL DEFAULT 'reference',
+    title TEXT NOT NULL,
+    source_url TEXT,
+    discord_message_id TEXT,
+    note TEXT NOT NULL,
+    collected_by_discord_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_evidence_case
+    ON investigation_evidence(case_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS investigation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES investigation_cases(id) ON DELETE CASCADE,
+    actor_discord_user_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_events_case
+    ON investigation_events(case_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS investigation_approval_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL REFERENCES investigation_cases(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    evaluator_discord_user_id TEXT NOT NULL,
+    expected_outcome TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    decision TEXT,
+    decision_note TEXT,
+    acknowledged_at TEXT,
+    created_by_discord_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_approval_case
+    ON investigation_approval_links(case_id, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_investigation_approval_evaluator
+    ON investigation_approval_links(evaluator_discord_user_id, status, expires_at);
+
 CREATE TABLE IF NOT EXISTS discord_oauth_states (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     state_hash TEXT NOT NULL UNIQUE,
@@ -1180,6 +1250,618 @@ class PeaceDatabase:
                     (str(discord_user_id),),
                 ).fetchall()
             )
+
+    def create_investigation_case(
+        self,
+        *,
+        title: str,
+        subject_discord_user_id: int | str | None,
+        summary: str,
+        created_by_discord_user_id: int | str,
+        assigned_to_discord_user_id: int | str | None = None,
+        status: str = "open",
+    ) -> sqlite3.Row:
+        """Create a site-owned investigation case and its first audit event."""
+        self.initialize()
+        timestamp = now_iso()
+        normalized_status = str(status or "open").strip().casefold()
+        if normalized_status not in {"open", "under_review", "pending_approval", "approved", "rejected", "archived"}:
+            normalized_status = "open"
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                INSERT INTO investigation_cases (
+                    title, subject_discord_user_id, summary, status,
+                    created_by_discord_user_id, assigned_to_discord_user_id,
+                    created_at, updated_at, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(title)[:120],
+                    str(subject_discord_user_id) if subject_discord_user_id else None,
+                    str(summary)[:4000],
+                    normalized_status,
+                    str(created_by_discord_user_id),
+                    str(assigned_to_discord_user_id) if assigned_to_discord_user_id else None,
+                    timestamp,
+                    timestamp,
+                    timestamp if normalized_status in {"approved", "rejected"} else None,
+                ),
+            )
+            case_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'case_created', ?, ?)
+                """,
+                (case_id, str(created_by_discord_user_id), json.dumps({"status": normalized_status}), timestamp),
+            )
+            row = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (case_id,),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        return row
+
+    def investigation_cases(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM investigation_cases
+                    ORDER BY CASE status
+                        WHEN 'open' THEN 0
+                        WHEN 'under_review' THEN 1
+                        WHEN 'resolved' THEN 2
+                        ELSE 3
+                    END, updated_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (max(1, min(200, int(limit))),),
+                ).fetchall()
+            )
+
+    def investigation_case(self, case_id: int | str) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+
+    def investigation_evidence(self, case_id: int | str, *, limit: int = 200) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM investigation_evidence
+                    WHERE case_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (int(case_id), max(1, min(300, int(limit)))),
+                ).fetchall()
+            )
+
+    def investigation_events(self, case_id: int | str, *, limit: int = 100) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM investigation_events
+                    WHERE case_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (int(case_id), max(1, min(200, int(limit)))),
+                ).fetchall()
+            )
+
+    @staticmethod
+    def investigation_approval_token_hash(token: str) -> str:
+        return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+    def investigation_approval_links(self, case_id: int | str, *, limit: int = 50) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM investigation_approval_links
+                    WHERE case_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (int(case_id), max(1, min(100, int(limit)))),
+                ).fetchall()
+            )
+
+    def create_investigation_approval_links(
+        self,
+        *,
+        case_id: int,
+        expected_outcome: str,
+        evaluator_discord_user_ids: list[str],
+        created_by_discord_user_id: int | str,
+        expires_at: str,
+    ) -> list[dict[str, str]] | None:
+        """Create one private, single-decision approval link per evaluator."""
+        self.initialize()
+        evaluator_ids = list(dict.fromkeys(str(value).strip() for value in evaluator_discord_user_ids if str(value).strip()))
+        timestamp = now_iso()
+        created: list[dict[str, str]] = []
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            case = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            if case is None or str(case["status"]) not in {"open", "under_review"}:
+                connection.rollback()
+                return None
+            if not evaluator_ids:
+                connection.rollback()
+                return None
+            pending = connection.execute(
+                "SELECT 1 FROM investigation_approval_links WHERE case_id = ? AND status = 'pending' LIMIT 1",
+                (int(case_id),),
+            ).fetchone()
+            if pending is not None:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE investigation_cases
+                SET status = 'pending_approval', updated_at = ?, resolved_at = NULL
+                WHERE id = ?
+                """,
+                (timestamp, int(case_id)),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'approval_requested', ?, ?)
+                """,
+                (
+                    int(case_id),
+                    str(created_by_discord_user_id),
+                    json.dumps(
+                        {"evaluator_count": len(evaluator_ids), "expected_outcome": str(expected_outcome)[:2000]},
+                        separators=(",", ":"),
+                    ),
+                    timestamp,
+                ),
+            )
+            for evaluator_id in evaluator_ids:
+                token = secrets.token_urlsafe(32)
+                connection.execute(
+                    """
+                    INSERT INTO investigation_approval_links (
+                        case_id, token_hash, evaluator_discord_user_id, expected_outcome,
+                        status, created_by_discord_user_id, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+                    """,
+                    (
+                        int(case_id),
+                        self.investigation_approval_token_hash(token),
+                        evaluator_id,
+                        str(expected_outcome)[:2000],
+                        str(created_by_discord_user_id),
+                        timestamp,
+                        str(expires_at),
+                    ),
+                )
+                created.append({"evaluator_discord_user_id": evaluator_id, "token": token, "expires_at": str(expires_at)})
+            connection.commit()
+        return created
+
+    def investigation_approval_by_token(self, token: str) -> sqlite3.Row | None:
+        self.initialize()
+        token_hash = self.investigation_approval_token_hash(token)
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT
+                    approval.*, case_record.title AS case_title,
+                    case_record.subject_discord_user_id AS case_subject_discord_user_id,
+                    case_record.summary AS case_summary,
+                    case_record.status AS case_status,
+                    case_record.created_at AS case_created_at,
+                    case_record.updated_at AS case_updated_at
+                FROM investigation_approval_links AS approval
+                JOIN investigation_cases AS case_record ON case_record.id = approval.case_id
+                WHERE approval.token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+
+    def expire_investigation_approval_round(
+        self,
+        *,
+        case_id: int,
+        actor_discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        """Close an expired approval round without leaving a case pending forever."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            case = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            if case is None:
+                connection.rollback()
+                return None
+            pending_expired = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM investigation_approval_links
+                WHERE case_id = ? AND status = 'pending' AND expires_at <= ?
+                """,
+                (int(case_id), timestamp),
+            ).fetchone()["total"]
+            if int(pending_expired or 0) == 0:
+                connection.rollback()
+                return case
+            connection.execute(
+                """
+                UPDATE investigation_approval_links
+                SET status = 'expired', decided_at = COALESCE(decided_at, ?)
+                WHERE case_id = ? AND status = 'pending' AND expires_at <= ?
+                """,
+                (timestamp, int(case_id), timestamp),
+            )
+            if str(case["status"]) == "pending_approval":
+                connection.execute(
+                    """
+                    UPDATE investigation_cases
+                    SET status = 'rejected', updated_at = ?, resolved_at = ?
+                    WHERE id = ? AND status = 'pending_approval'
+                    """,
+                    (timestamp, timestamp, int(case_id)),
+                )
+                connection.execute(
+                    """
+                    UPDATE investigation_approval_links
+                    SET status = 'expired', decided_at = COALESCE(decided_at, ?)
+                    WHERE case_id = ? AND status = 'pending'
+                    """,
+                    (timestamp, int(case_id)),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_events (
+                        case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                    ) VALUES (?, ?, 'approval_expired', ?, ?)
+                    """,
+                    (
+                        int(case_id),
+                        str(actor_discord_user_id),
+                        json.dumps({"expired_links": int(pending_expired)}, separators=(",", ":")),
+                        timestamp,
+                    ),
+                )
+            updated_case = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            connection.commit()
+        return updated_case
+
+    def decide_investigation_approval(
+        self,
+        *,
+        token: str,
+        evaluator_discord_user_id: int | str,
+        decision: str,
+        decision_note: str,
+        acknowledged_at: str,
+    ) -> tuple[str, sqlite3.Row | None, sqlite3.Row | None]:
+        """Record one approval decision and atomically derive the case result."""
+        self.initialize()
+        normalized_decision = str(decision or "").strip().casefold()
+        if normalized_decision not in {"approved", "rejected"}:
+            return "invalid_decision", None, None
+        if not str(acknowledged_at or "").strip():
+            return "acknowledgement_required", None, None
+        if not 2 <= len(str(decision_note or "").strip()) <= 4000:
+            return "invalid_note", None, None
+        timestamp = now_iso()
+        token_hash = self.investigation_approval_token_hash(token)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            link = connection.execute(
+                "SELECT * FROM investigation_approval_links WHERE token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+            if link is None:
+                connection.rollback()
+                return "not_found", None, None
+            if str(link["evaluator_discord_user_id"]) != str(evaluator_discord_user_id):
+                connection.rollback()
+                return "forbidden", None, None
+            if str(link["status"]) != "pending":
+                connection.rollback()
+                return "already_decided", link, None
+            case = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(link["case_id"]),),
+            ).fetchone()
+            if case is None or str(case["status"]) != "pending_approval":
+                connection.rollback()
+                return "case_unavailable", link, case
+            expired_pending = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM investigation_approval_links
+                WHERE case_id = ? AND status = 'pending' AND expires_at <= ?
+                """,
+                (int(link["case_id"]), timestamp),
+            ).fetchone()["total"]
+            if int(expired_pending or 0) > 0:
+                connection.execute(
+                    """
+                    UPDATE investigation_approval_links
+                    SET status = 'expired', decided_at = ?
+                    WHERE case_id = ? AND status = 'pending' AND expires_at <= ?
+                    """,
+                    (timestamp, int(link["case_id"]), timestamp),
+                )
+                connection.execute(
+                    """
+                    UPDATE investigation_cases
+                    SET status = 'rejected', updated_at = ?, resolved_at = ?
+                    WHERE id = ? AND status = 'pending_approval'
+                    """,
+                    (timestamp, timestamp, int(link["case_id"])),
+                )
+                connection.execute(
+                    """
+                    UPDATE investigation_approval_links
+                    SET status = 'expired', decided_at = COALESCE(decided_at, ?)
+                    WHERE case_id = ? AND status = 'pending'
+                    """,
+                    (timestamp, int(link["case_id"])),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO investigation_events (
+                        case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                    ) VALUES (?, ?, 'approval_expired', ?, ?)
+                    """,
+                    (
+                        int(link["case_id"]),
+                        str(evaluator_discord_user_id),
+                        json.dumps({"expired_links": int(expired_pending)}, separators=(",", ":")),
+                        timestamp,
+                    ),
+                )
+                updated_case = connection.execute(
+                    "SELECT * FROM investigation_cases WHERE id = ?",
+                    (int(link["case_id"]),),
+                ).fetchone()
+                connection.commit()
+                return "case_expired", link, updated_case
+            connection.execute(
+                """
+                UPDATE investigation_approval_links
+                SET status = ?, decision = ?, decision_note = ?, acknowledged_at = ?, decided_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (
+                    normalized_decision,
+                    normalized_decision,
+                    str(decision_note)[:4000],
+                    str(acknowledged_at),
+                    timestamp,
+                    int(link["id"]),
+                ),
+            )
+            pending_count = connection.execute(
+                "SELECT COUNT(*) AS total FROM investigation_approval_links WHERE case_id = ? AND status = 'pending'",
+                (int(link["case_id"]),),
+            ).fetchone()["total"]
+            rejected_count = connection.execute(
+                "SELECT COUNT(*) AS total FROM investigation_approval_links WHERE case_id = ? AND status = 'rejected'",
+                (int(link["case_id"]),),
+            ).fetchone()["total"]
+            expired_count = connection.execute(
+                "SELECT COUNT(*) AS total FROM investigation_approval_links WHERE case_id = ? AND status = 'expired'",
+                (int(link["case_id"]),),
+            ).fetchone()["total"]
+            next_case_status = "rejected" if rejected_count or expired_count else "approved" if pending_count == 0 else "pending_approval"
+            if next_case_status == "rejected":
+                connection.execute(
+                    """
+                    UPDATE investigation_approval_links
+                    SET status = 'expired', decided_at = COALESCE(decided_at, ?)
+                    WHERE case_id = ? AND status = 'pending'
+                    """,
+                    (timestamp, int(link["case_id"])),
+                )
+            connection.execute(
+                "UPDATE investigation_cases SET status = ?, updated_at = ?, resolved_at = ? WHERE id = ?",
+                (
+                    next_case_status,
+                    timestamp,
+                    timestamp if next_case_status in {"approved", "rejected"} else None,
+                    int(link["case_id"]),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'approval_decided', ?, ?)
+                """,
+                (
+                    int(link["case_id"]),
+                    str(evaluator_discord_user_id),
+                    json.dumps(
+                        {
+                            "approval_link_id": int(link["id"]),
+                            "decision": normalized_decision,
+                            "decision_note": str(decision_note)[:4000],
+                            "case_status": next_case_status,
+                        },
+                        separators=(",", ":"),
+                    ),
+                    timestamp,
+                ),
+            )
+            updated_link = connection.execute(
+                "SELECT * FROM investigation_approval_links WHERE id = ?",
+                (int(link["id"]),),
+            ).fetchone()
+            updated_case = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(link["case_id"]),),
+            ).fetchone()
+            connection.commit()
+        return "ok", updated_link, updated_case
+
+    def add_investigation_evidence(
+        self,
+        *,
+        case_id: int,
+        evidence_type: str,
+        classification: str,
+        title: str,
+        source_url: str | None,
+        discord_message_id: str | None,
+        note: str,
+        collected_by_discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        """Attach a bounded external reference to a case under one transaction."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            case = connection.execute(
+                "SELECT id, status FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            if case is None or str(case["status"]) not in {"open", "under_review"}:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """
+                INSERT INTO investigation_evidence (
+                    case_id, evidence_type, classification, title, source_url,
+                    discord_message_id, note, collected_by_discord_user_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(case_id),
+                    str(evidence_type)[:40],
+                    str(classification)[:40],
+                    str(title)[:120],
+                    str(source_url)[:500] if source_url else None,
+                    str(discord_message_id)[:25] if discord_message_id else None,
+                    str(note)[:4000],
+                    str(collected_by_discord_user_id),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            evidence_id = int(cursor.lastrowid)
+            connection.execute(
+                "UPDATE investigation_cases SET updated_at = ? WHERE id = ?",
+                (timestamp, int(case_id)),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'evidence_added', ?, ?)
+                """,
+                (
+                    int(case_id),
+                    str(collected_by_discord_user_id),
+                    json.dumps({"evidence_id": evidence_id, "classification": str(classification)}, separators=(",", ":")),
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM investigation_evidence WHERE id = ?",
+                (evidence_id,),
+            ).fetchone()
+            connection.commit()
+        return row
+
+    def update_investigation_case_status(
+        self,
+        *,
+        case_id: int,
+        status: str,
+        actor_discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        """Move a case through the explicit lifecycle and record the transition."""
+        self.initialize()
+        normalized_status = str(status or "").strip().casefold()
+        if normalized_status not in {"open", "under_review", "archived"}:
+            return None
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            if existing is None:
+                connection.rollback()
+                return None
+            current_status = str(existing["status"])
+            if normalized_status == current_status:
+                connection.rollback()
+                return existing
+            allowed_transition = (
+                current_status in {"open", "under_review"}
+                and normalized_status in {"open", "under_review"}
+            ) or (current_status == "rejected" and normalized_status == "under_review") \
+                or (current_status == "approved" and normalized_status == "archived")
+            if not allowed_transition:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE investigation_cases
+                SET status = ?, updated_at = ?, resolved_at = ?
+                WHERE id = ?
+                """,
+                (
+                    normalized_status,
+                    timestamp,
+                    timestamp if normalized_status == "archived" else None,
+                    int(case_id),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'status_changed', ?, ?)
+                """,
+                (
+                    int(case_id),
+                    str(actor_discord_user_id),
+                    json.dumps({"from": str(existing["status"]), "to": normalized_status}, separators=(",", ":")),
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            connection.commit()
+        return row
 
     def start_exam_attempt(
         self,
@@ -2816,13 +3498,36 @@ class PeaceDatabase:
                 "SELECT * FROM set_requests WHERE status = 'pending' ORDER BY id"
             ).fetchall())
 
-    def update_set_request_status(self, request_id: int | str, status: str) -> sqlite3.Row | None:
+    def recover_processing_set_requests(self) -> int:
+        """Return requests interrupted during an approval/rejection mutation."""
         self.initialize()
         with self.connect() as connection:
-            connection.execute(
-                "UPDATE set_requests SET status = ?, updated_at = ? WHERE id = ?",
-                (status, now_iso(), str(request_id)),
+            cursor = connection.execute(
+                "UPDATE set_requests SET status = 'pending', updated_at = ? WHERE status = 'processing'",
+                (now_iso(),),
             )
+            connection.commit()
+            return int(cursor.rowcount or 0)
+
+    def update_set_request_status(
+        self,
+        request_id: int | str,
+        status: str,
+        *,
+        expected_status: str | None = None,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            if expected_status is None:
+                connection.execute(
+                    "UPDATE set_requests SET status = ?, updated_at = ? WHERE id = ?",
+                    (status, now_iso(), str(request_id)),
+                )
+            else:
+                connection.execute(
+                    "UPDATE set_requests SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+                    (status, now_iso(), str(request_id), expected_status),
+                )
             connection.commit()
         return self.set_request(request_id)
 
@@ -2892,6 +3597,7 @@ class PeaceDatabase:
         *,
         status: str | None = None,
         meeting_at: str | None = None,
+        expected_status: str | None = None,
     ) -> sqlite3.Row | None:
         self.initialize()
         changes: list[str] = []
@@ -2906,10 +3612,15 @@ class PeaceDatabase:
             return self.developer_request(request_id)
         changes.append("updated_at = ?")
         values.append(now_iso())
-        values.append(str(request_id))
+        where = "id = ?"
+        where_values: list[str] = [str(request_id)]
+        if expected_status is not None:
+            where += " AND status = ?"
+            where_values.append(str(expected_status))
+        values.extend(where_values)
         with self.connect() as connection:
             connection.execute(
-                f"UPDATE developer_requests SET {', '.join(changes)} WHERE id = ?",
+                f"UPDATE developer_requests SET {', '.join(changes)} WHERE {where}",
                 values,
             )
             connection.commit()

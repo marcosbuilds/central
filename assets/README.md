@@ -51,6 +51,34 @@ theSVG Discord default icon used only to identify links that redirect to the
 Peace Discord invite. The source, declared license metadata, retrieval date,
 hash, and brand-use constraint are recorded in [`docs/bot/site.md`](../docs/bot/site.md).
 
+The public Peace flow also consumes the following site-only visuals under
+`bot/site/assets/`. The four 1672x941 RGB background PNGs are atmospheric,
+text-free illustrations generated through the ChatGPT browser on 2026-11-15
+for the candidature, process, exam, and authenticated member surfaces. They
+keep the main copy area quiet and place the visual focal point away from the
+reading column. The three Discord verification crops are sanitized UI crops
+from the authorized Discord reference used for the candidature guide: they
+contain no account identifiers, credentials, or private conversation content.
+
+| Asset | Dimensions | Purpose |
+|---|---:|---|
+| `bot/site/assets/peace-candidature-bg.png` | 1672x941 | candidature background |
+| `bot/site/assets/peace-process-bg.png` | 1672x941 | process and set-up background |
+| `bot/site/assets/peace-exam-bg.png` | 1672x941 | candidate exam and management background |
+| `bot/site/assets/peace-members-bg.png` | 1672x941 | authenticated member-area background |
+| `bot/site/assets/discord-verify-channel.png` | 1060x68 | cropped `#verify` channel cue |
+| `bot/site/assets/discord-verification-card-clean.png` | 1905x826 | cropped verification panel |
+| `bot/site/assets/discord-verification-action-clean.png` | 1050x210 | cropped “Iniciar verificação” action |
+
+The crops are rendered responsively as individual guide steps rather than as
+one panoramic screenshot. Older unsanitized guide composites are intentionally
+not retained in the site asset set.
+
+`bot/site/assets/fonts/PeaceFonte-Regular.woff2` is the supplied PeaceFonte
+display font used for the Peace wordmark and shared contextual titles. It is
+distributed under the SIL Open Font License 1.1; the public copy of the terms
+is kept beside the font in `bot/site/assets/fonts/PeaceFonte-LICENSE.txt`.
+
 ## Change rules
 
 - Give every asset one documented purpose and a stable filename.

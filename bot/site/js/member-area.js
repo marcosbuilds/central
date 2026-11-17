@@ -16,7 +16,7 @@
     var workspaceMain = workspace && workspace.querySelector(".member-workspace-main");
     var sidebarToggle = workspace && workspace.querySelector("[data-member-sidebar-toggle]");
     var sidebarToggleIcon = workspace && workspace.querySelector("[data-member-sidebar-toggle-icon]");
-    var sidebarClose = workspace && workspace.querySelector("[data-member-sidebar-close]");
+    var sidebarCollapse = workspace && workspace.querySelector("[data-member-sidebar-collapse]");
     var sidebarScrim = workspace && workspace.querySelector("[data-member-sidebar-scrim]");
     var loadingStatus = workspace && workspace.querySelector("[data-member-loading-status]");
     var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
@@ -24,7 +24,6 @@
     var memberContextTitle = workspace && workspace.querySelector("[data-member-context-title]");
     var sidebarName = workspace && workspace.querySelector("[data-member-sidebar-name]");
     var sidebarUsername = workspace && workspace.querySelector("[data-member-sidebar-username]");
-    var sidebarState = workspace && workspace.querySelector("[data-member-sidebar-state]");
     var sidebarAvatar = workspace && workspace.querySelector("[data-member-sidebar-avatar]");
     var sidebarAvatarFallback = workspace && workspace.querySelector("[data-member-sidebar-avatar-fallback]");
     var memberName = workspace && workspace.querySelector("[data-member-name]");
@@ -40,27 +39,98 @@
     var notificationClose = workspace && workspace.querySelector("[data-member-notifications-close]");
     var notificationList = workspace && workspace.querySelector("[data-member-notification-list]");
     var notificationBadge = workspace && workspace.querySelector("[data-member-notification-badge]");
+    var noticesViewList = workspace && workspace.querySelector("[data-member-notices-view-list]");
     var partnerList = workspace && workspace.querySelector("[data-member-partners-list]");
     var navCounts = {
       clips: workspace && workspace.querySelector('[data-member-nav-count="clips"]'),
-      proofs: workspace && workspace.querySelector('[data-member-nav-count="proofs"]')
+      proofs: workspace && workspace.querySelector('[data-member-nav-count="proofs"]'),
+      notices: workspace && workspace.querySelector('[data-member-nav-count="notices"]')
     };
     var managementGroup = workspace && workspace.querySelector("[data-member-management-group]");
     var logout = workspace && workspace.querySelector("[data-member-logout]");
+    var processSummary = workspace && workspace.querySelector("[data-member-process-summary]");
+    var processStatus = workspace && workspace.querySelector("[data-member-process-status]");
+    var processCount = workspace && workspace.querySelector("[data-member-process-count]");
+    var processAssignments = workspace && workspace.querySelector("[data-member-process-assignments]");
+    var managerList = workspace && workspace.querySelector("[data-member-manager-list]");
+    var managerCount = workspace && workspace.querySelector("[data-member-manager-count]");
+    var managerModal = document.querySelector("[data-member-manager-modal]");
+    var managerForm = managerModal && managerModal.querySelector("[data-member-manager-form]");
+    var managerFormStatus = managerModal && managerModal.querySelector("[data-member-manager-form-status]");
+    var managerSubmit = managerModal && managerModal.querySelector("[data-member-manager-submit]");
+    var managerGenerated = managerModal && managerModal.querySelector("[data-member-manager-generated]");
+    var managerGeneratedLink = managerModal && managerModal.querySelector("[data-member-manager-generated-link]");
+    var managerOpen = workspace && workspace.querySelector("[data-member-manager-open]");
+    var managerClose = managerModal && managerModal.querySelector("[data-member-manager-close]");
+    var managerCancel = managerModal && managerModal.querySelector("[data-member-manager-cancel]");
+    var scanGroup = workspace && workspace.querySelector("[data-member-scan-group]");
+    var investigationGroup = workspace && workspace.querySelector("[data-member-investigation-group]");
+    var scanLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-scan-link]")) : [];
+    var investigationList = workspace && workspace.querySelector("[data-member-investigation-list]");
+    var investigationCount = workspace && workspace.querySelector("[data-member-investigation-count]");
+    var investigationOpen = workspace && workspace.querySelector("[data-member-investigation-open]");
+    var investigationModal = document.querySelector("[data-member-investigation-modal]");
+    var investigationForm = investigationModal && investigationModal.querySelector("[data-member-investigation-form]");
+    var investigationFormStatus = investigationModal && investigationModal.querySelector("[data-member-investigation-form-status]");
+    var investigationSubmit = investigationModal && investigationModal.querySelector("[data-member-investigation-submit]");
+    var investigationClose = investigationModal && investigationModal.querySelector("[data-member-investigation-close]");
+    var investigationCancel = investigationModal && investigationModal.querySelector("[data-member-investigation-cancel]");
+    var evidenceModal = document.querySelector("[data-member-evidence-modal]");
+    var evidenceForm = evidenceModal && evidenceModal.querySelector("[data-member-evidence-form]");
+    var evidenceFormStatus = evidenceModal && evidenceModal.querySelector("[data-member-evidence-form-status]");
+    var evidenceSubmit = evidenceModal && evidenceModal.querySelector("[data-member-evidence-submit]");
+    var evidenceClose = evidenceModal && evidenceModal.querySelector("[data-member-evidence-close]");
+    var evidenceCancel = evidenceModal && evidenceModal.querySelector("[data-member-evidence-cancel]");
+    var approvalModal = document.querySelector("[data-member-approval-modal]");
+    var approvalForm = approvalModal && approvalModal.querySelector("[data-member-approval-form]");
+    var approvalFormStatus = approvalModal && approvalModal.querySelector("[data-member-approval-form-status]");
+    var approvalSubmit = approvalModal && approvalModal.querySelector("[data-member-approval-submit]");
+    var approvalGenerated = approvalModal && approvalModal.querySelector("[data-member-approval-generated]");
+    var approvalClose = approvalModal && approvalModal.querySelector("[data-member-approval-close]");
+    var approvalCancel = approvalModal && approvalModal.querySelector("[data-member-approval-cancel]");
+    var noticeOpen = workspace && workspace.querySelector("[data-member-notice-open]");
+    var noticeModal = document.querySelector("[data-member-notice-modal]");
+    var noticeForm = noticeModal && noticeModal.querySelector("[data-member-notice-form]");
+    var noticeFormStatus = noticeModal && noticeModal.querySelector("[data-member-notice-form-status]");
+    var noticeSubmit = noticeModal && noticeModal.querySelector("[data-member-notice-submit]");
+    var noticeClose = noticeModal && noticeModal.querySelector("[data-member-notice-close]");
+    var noticeCancel = noticeModal && noticeModal.querySelector("[data-member-notice-cancel]");
+    var partnerOpen = workspace && workspace.querySelector("[data-member-partner-open]");
+    var partnerModal = document.querySelector("[data-member-partner-modal]");
+    var partnerForm = partnerModal && partnerModal.querySelector("[data-member-partner-form]");
+    var partnerFormStatus = partnerModal && partnerModal.querySelector("[data-member-partner-form-status]");
+    var partnerSubmit = partnerModal && partnerModal.querySelector("[data-member-partner-submit]");
+    var partnerClose = partnerModal && partnerModal.querySelector("[data-member-partner-close]");
+    var partnerCancel = partnerModal && partnerModal.querySelector("[data-member-partner-cancel]");
+    var logoutStatus = workspace && workspace.querySelector("[data-member-logout-status]");
     var retry = gate && gate.querySelector("[data-member-retry]");
     var gateAction = gate && gate.querySelector("[data-member-discord-connect]");
     var loading = false;
     var notificationsLoading = false;
     var notificationsLoaded = false;
+    var clipsCountLoading = false;
+    var managerAssignmentsLoading = false;
+    var managerPreviousFocus = null;
+    var activeModal = null;
+    var activeModalPreviousFocus = null;
+    var investigationLoading = false;
+    var investigationCases = [];
+    var selectedInvestigationCaseId = null;
     var currentProcess = null;
     var currentView = "overview";
     var shellReadyStorageKey = "peace.member.shell-ready.v1";
+    var sidebarCollapsedStorageKey = "peace.member.sidebar-collapsed.v1";
     var seenNoticeStorageKey = "peace.member.notices.seen.v1";
     var viewTitles = {
       overview: "Visão geral",
       library: "Área de estudo / Biblioteca",
       partners: "Parceiros",
-      clips: "Clipes"
+      clips: "Clipes",
+      process: "Processo e provas",
+      manager: "Gerenciar provas",
+      scan: "Scan-only",
+      investigation: "Casos e ocorrências",
+      notices: "Avisos"
     };
 
     function request(url, options) {
@@ -79,12 +149,40 @@
       if (!value) return "—";
       try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value; }
     }
+    function disclosureArrow() {
+      var arrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      arrow.classList.add("disclosure-arrow");
+      arrow.setAttribute("viewBox", "0 0 24 24");
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.setAttribute("focusable", "false");
+      arrow.innerHTML = '<path d="m6 9 6 6 6-6"></path>';
+      return arrow;
+    }
     function setNavCount(name, count) {
       var node = navCounts[name];
       if (!node) return;
       var value = Math.max(0, Number(count) || 0);
       node.textContent = value > 99 ? "99+" : String(value);
       node.hidden = value === 0;
+    }
+    function loadClipCount() {
+      if (!navCounts.clips || clipsCountLoading) return;
+      clipsCountLoading = true;
+      request("/api/clips?limit=1")
+        .then(function (payload) {
+          if (!payload || payload.ok !== true) return;
+          var total = payload.total != null ? payload.total : (Array.isArray(payload.clips) ? payload.clips.length : 0);
+          setNavCount("clips", total);
+        })
+        .catch(function (error) {
+          if (!error || Number(error.status) !== 404) return;
+          return request("/api/media").then(function (payload) {
+            var clips = payload && Array.isArray(payload.clips) ? payload.clips : [];
+            setNavCount("clips", clips.length);
+          });
+        })
+        .catch(function () { /* the menu keeps the count hidden when the source is unavailable */ })
+        .finally(function () { clipsCountLoading = false; });
     }
     function noticeKey(item) {
       return String((item && (item.id || item.url)) || "") + "|" + String(item && item.published_at || "") + "|" + String(item && item.text || "");
@@ -183,7 +281,6 @@
       var profile = identity || {};
       if (sidebarName) sidebarName.textContent = profile.global_name || profile.display_name || profile.username || "membro";
       if (sidebarUsername) sidebarUsername.textContent = profile.username ? "@" + profile.username : "@discord";
-      if (sidebarState) sidebarState.textContent = "Membro Peace confirmado";
       renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, profile);
     }
 
@@ -192,6 +289,8 @@
       var labels = [];
       if (server && server.is_peace_member === true) labels.push("Membro Peace");
       if (server && server.is_manager === true) labels.push("Gerência");
+      if (server && server.is_staff === true && server.is_manager !== true) labels.push("Staff");
+      if (server && server.is_investigator === true) labels.push("Investigador");
       memberRoles.textContent = "";
       labels.forEach(function (label) {
         var chip = document.createElement("span");
@@ -202,14 +301,44 @@
       memberRoles.hidden = labels.length === 0;
     }
 
+    function currentCapabilities() {
+      var server = currentProcess && currentProcess.server ? currentProcess.server : {};
+      return {
+        manager: server.is_manager === true,
+        staff: server.is_staff === true,
+        investigator: server.is_investigator === true,
+        scanOnly: server.is_scan_only === true,
+        partnersEdit: server.can_edit_partners === true
+      };
+    }
+
+    function applyCapabilityVisibility() {
+      var capabilities = currentCapabilities();
+      if (managementGroup) managementGroup.hidden = !capabilities.manager;
+      if (scanGroup) scanGroup.hidden = !capabilities.scanOnly;
+      if (investigationGroup) investigationGroup.hidden = !capabilities.investigator;
+      if (managerOpen) managerOpen.hidden = !capabilities.manager;
+      if (investigationOpen) investigationOpen.hidden = !capabilities.investigator;
+      if (noticeOpen) noticeOpen.hidden = !(capabilities.staff || capabilities.manager);
+      if (partnerOpen) partnerOpen.hidden = !capabilities.partnersEdit;
+      var scanUrl = currentProcess && currentProcess.server && currentProcess.server.scan_only_url;
+      scanLinks.forEach(function (link) {
+        link.href = /^https:\/\//i.test(String(scanUrl || "")) ? scanUrl : "/discord/";
+      });
+    }
+
     function renderNotifications(payload) {
       if (!notificationList) return;
       var items = payload && Array.isArray(payload.notices) ? payload.notices : [];
       var sourceState = payload && payload.source ? payload.source.state : "unavailable";
       notificationList.textContent = "";
+      // Keep the full Avisos view in sync even when the source is empty or
+      // temporarily unavailable; otherwise it is left on its skeleton text.
+      renderNoticesView(payload);
 
       var seenKeys = readSeenNoticeKeys();
       var unreadCount = items.filter(function (item) { return seenKeys.indexOf(noticeKey(item)) < 0; }).length;
+      setNavCount("notices", items.length);
       if (notificationBadge) {
         notificationBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
         notificationBadge.hidden = unreadCount === 0;
@@ -264,11 +393,48 @@
         }
         notificationList.appendChild(article);
       });
+      if (currentView === "notices") markNoticesSeen(items);
       if (notificationPanel && !notificationPanel.hidden) {
         markNoticesSeen(items);
         if (notificationBadge) notificationBadge.hidden = true;
         if (notificationTrigger) notificationTrigger.setAttribute("aria-label", "Abrir avisos");
       }
+    }
+
+    function renderNoticesView(payload) {
+      if (!noticesViewList) return;
+      var items = payload && Array.isArray(payload.notices) ? payload.notices : [];
+      noticesViewList.textContent = "";
+      if (!items.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = payload && payload.source && payload.source.state === "unavailable"
+          ? "A fonte pública está indisponível. Tente novamente em instantes."
+          : "Nenhum comunicado público foi publicado ainda.";
+        noticesViewList.appendChild(empty);
+        return;
+      }
+      items.forEach(function (item) {
+        var article = document.createElement("article");
+        article.className = "member-notice-item";
+        var meta = document.createElement("p");
+        meta.className = "eyebrow";
+        meta.textContent = date(item.published_at) + " · " + (item.author || "Peace");
+        var copy = document.createElement("p");
+        copy.textContent = item.text || "Comunicado sem texto.";
+        article.appendChild(meta);
+        article.appendChild(copy);
+        if (/^https?:\/\//i.test(String(item.url || ""))) {
+          var link = document.createElement("a");
+          link.className = "text-link";
+          link.href = String(item.url);
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = "Abrir origem ↗";
+          article.appendChild(link);
+        }
+        noticesViewList.appendChild(article);
+      });
     }
 
     function loadNotifications() {
@@ -331,6 +497,14 @@
       setNavCount("proofs", 0);
       setNavCount("clips", 0);
       if (managementGroup) managementGroup.hidden = true;
+      if (scanGroup) scanGroup.hidden = true;
+      if (investigationGroup) investigationGroup.hidden = true;
+      if (managerOpen) managerOpen.hidden = true;
+      if (investigationOpen) investigationOpen.hidden = true;
+      if (noticeOpen) noticeOpen.hidden = true;
+      if (partnerOpen) partnerOpen.hidden = true;
+      if (investigationList) investigationList.textContent = "";
+      if (investigationCount) investigationCount.textContent = "0 casos";
       if (partnerList) {
         partnerList.textContent = "";
         var partnerLoading = document.createElement("p");
@@ -340,7 +514,6 @@
       }
       if (sidebarName) sidebarName.textContent = "membro";
       if (sidebarUsername) sidebarUsername.textContent = "@discord";
-      if (sidebarState) sidebarState.textContent = "Validando conta…";
       if (sidebarAvatar) sidebarAvatar.hidden = true;
       if (sidebarAvatarFallback) sidebarAvatarFallback.hidden = true;
       var managerLink = workspace && workspace.querySelector("[data-member-manager]");
@@ -354,8 +527,12 @@
       var nextOpen = compact ? Boolean(open) : true;
       shell.dataset.sidebarOpen = String(nextOpen);
       sidebarToggle && sidebarToggle.setAttribute("aria-expanded", String(nextOpen));
-      if (sidebarToggle) sidebarToggle.setAttribute("aria-label", "Abrir menu");
-      if (sidebarToggleIcon) sidebarToggleIcon.textContent = "☰";
+      if (sidebarToggle) sidebarToggle.setAttribute("aria-label", nextOpen ? "Fechar menu" : "Abrir menu");
+      if (sidebarToggleIcon) {
+        sidebarToggleIcon.innerHTML = nextOpen
+          ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H6.5A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H10"></path><path d="m13 8 4 4-4 4M17 12H8"></path></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 4h3.5A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"></path><path d="m11 8-4 4 4 4M7 12h9"></path></svg>';
+      }
       if (compact && nextOpen && notificationPanel && !notificationPanel.hidden) setNotificationsOpen(false, false);
       document.documentElement.classList.toggle("member-menu-open", compact && nextOpen);
       document.body.classList.toggle("member-menu-open", compact && nextOpen);
@@ -366,13 +543,44 @@
       if (nextOpen) {
         sidebar.removeAttribute("inert");
         if (moveFocus && compact) {
-          var first = sidebar.querySelector("[data-member-sidebar-close], .member-nav a");
+          var first = sidebar.querySelector(".member-nav a");
           if (first) first.focus();
         }
       } else {
         sidebar.setAttribute("inert", "");
         if (moveFocus && sidebarToggle) sidebarToggle.focus();
       }
+    }
+
+    function syncSidebarLinkNames(collapsed) {
+      sidebarLinks.forEach(function (link) {
+        var labelNode = link.querySelector(".member-nav-icon + span");
+        var label = labelNode && labelNode.textContent ? labelNode.textContent.trim() : "Seção da área";
+        if (collapsed) {
+          link.setAttribute("aria-label", label);
+          link.title = label;
+        } else {
+          link.removeAttribute("aria-label");
+          link.removeAttribute("title");
+        }
+      });
+    }
+
+    function setSidebarCollapsed(collapsed) {
+      if (!shell || !sidebarCollapse || (window.matchMedia && window.matchMedia("(max-width: 900px)").matches)) return;
+      var next = Boolean(collapsed);
+      shell.dataset.sidebarCollapsed = String(next);
+      sidebarCollapse.setAttribute("aria-expanded", String(!next));
+      sidebarCollapse.setAttribute("aria-label", next ? "Expandir menu" : "Minimizar menu");
+      sidebarCollapse.innerHTML = next
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 4h3.5A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"></path><path d="m11 8-4 4 4 4M7 12h9"></path></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H6.5A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20H10"></path><path d="m13 8 4 4-4 4M17 12H8"></path></svg>';
+      syncSidebarLinkNames(next);
+      try { window.localStorage.setItem(sidebarCollapsedStorageKey, next ? "1" : "0"); } catch (error) { /* optional */ }
+    }
+
+    function readSidebarCollapsed() {
+      try { return window.localStorage.getItem(sidebarCollapsedStorageKey) === "1"; } catch (error) { return false; }
     }
 
     function requestedView() {
@@ -394,6 +602,11 @@
 
     function setMemberView(view, replace, moveFocus) {
       var nextView = Object.prototype.hasOwnProperty.call(viewTitles, view) ? view : "overview";
+      if (nextView === "manager" && (!currentProcess || !currentProcess.server || currentProcess.server.is_manager !== true)) {
+        nextView = "overview";
+      }
+      if (nextView === "scan" && !currentCapabilities().scanOnly) nextView = "overview";
+      if (nextView === "investigation" && !currentCapabilities().investigator) nextView = "overview";
       var url = new URL(window.location.href);
       if (url.pathname.replace(/\/+$/, "/") !== "/area/") url.pathname = "/area/";
       if (nextView === "overview") url.searchParams.delete("view");
@@ -415,6 +628,11 @@
       if (nextView === "library" && activeView && typeof site.initStudies === "function") site.initStudies(activeView);
       if (nextView === "partners" && activeView) renderPartners(currentProcess || {});
       if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(activeView);
+      if (nextView === "process") renderProcessView(currentProcess || {});
+      if (nextView === "manager") loadManagerAssignments();
+      if (nextView === "scan") applyCapabilityVisibility();
+      if (nextView === "investigation") loadInvestigations();
+      if (nextView === "notices") loadNotifications();
       if (moveFocus && activeView) {
         var target = activeView.querySelector("[data-member-view-focus], input, a, button");
         if (!target) {
@@ -423,6 +641,298 @@
         }
         if (target) target.focus({ preventScroll: false });
       }
+    }
+
+    function investigationStatusLabel(status) {
+      return {
+        open: "Aberto",
+        under_review: "Em análise",
+        pending_approval: "Aguardando aprovação",
+        approved: "Aprovado",
+        rejected: "Reprovado",
+        archived: "Arquivado"
+      }[status] || "Status desconhecido";
+    }
+
+    function investigationStatusTone(status) {
+      if (status === "approved") return "ready";
+      if (status === "rejected") return "error";
+      if (status === "pending_approval") return "pending";
+      return "planned";
+    }
+
+    function appendCopyId(parent, value, label) {
+      var id = String(value || "").trim();
+      var row = document.createElement("div");
+      row.className = "member-investigation-id-row";
+      var copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "member-copy-id";
+      copy.disabled = !id;
+      copy.title = id ? "Copiar " + (label || "Discord ID") : "ID indisponível";
+      copy.setAttribute("aria-label", id ? "Copiar " + (label || "Discord ID") : (label || "Discord ID") + " indisponível");
+      var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = '<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-8A1.5 1.5 0 0 0 5 6.5v8A1.5 1.5 0 0 0 6.5 16H8"></path>';
+      var text = document.createElement("span");
+      text.textContent = id || "—";
+      copy.appendChild(icon);
+      copy.appendChild(text);
+      var status = document.createElement("span");
+      status.className = "sr-only";
+      status.setAttribute("role", "status");
+      if (id) copy.addEventListener("click", function () { copyValue(id, status); });
+      row.appendChild(copy);
+      row.appendChild(status);
+      parent.appendChild(row);
+    }
+
+    function createInvestigationEvidence(item) {
+      var article = document.createElement("article");
+      article.className = "member-investigation-evidence";
+      var heading = document.createElement("div");
+      heading.className = "member-investigation-item-heading";
+      var title = document.createElement("strong");
+      title.textContent = item.title || "Evidência sem título";
+      var tag = document.createElement("span");
+      tag.className = "status-tag status-tag--" + (item.classification === "confirmed" ? "ready" : "planned");
+      tag.textContent = item.classification === "confirmed" ? "Comprovado" : "Referência";
+      heading.appendChild(title);
+      heading.appendChild(tag);
+      article.appendChild(heading);
+      var meta = document.createElement("small");
+      meta.textContent = (item.type || "referência") + " · " + date(item.created_at);
+      article.appendChild(meta);
+      var note = document.createElement("p");
+      note.textContent = item.note || "Sem observação.";
+      article.appendChild(note);
+      if (/^https:\/\//i.test(String(item.source_url || ""))) {
+        var source = document.createElement("a");
+        source.className = "text-link";
+        source.href = item.source_url;
+        source.target = "_blank";
+        source.rel = "noopener noreferrer";
+        source.textContent = "Abrir origem ↗";
+        article.appendChild(source);
+      }
+      if (item.discord_message_id) appendCopyId(article, item.discord_message_id, "Copiar ID da mensagem Discord");
+      return article;
+    }
+
+    function createInvestigationCase(caseRecord) {
+      var details = document.createElement("details");
+      details.className = "member-investigation-case";
+      var summary = document.createElement("summary");
+      var copy = document.createElement("span");
+      var title = document.createElement("strong");
+      title.textContent = (caseRecord.title || "Caso investigativo") + " · #" + String(caseRecord.id || "—");
+      var subtitle = document.createElement("small");
+      subtitle.textContent = investigationStatusLabel(caseRecord.status) + " · atualizado " + date(caseRecord.updated_at);
+      copy.appendChild(title);
+      copy.appendChild(subtitle);
+      summary.appendChild(copy);
+      summary.appendChild(disclosureArrow());
+      var content = document.createElement("div");
+      content.className = "member-investigation-case-content";
+      var status = document.createElement("span");
+      status.className = "status-tag status-tag--" + investigationStatusTone(caseRecord.status);
+      status.textContent = investigationStatusLabel(caseRecord.status);
+      content.appendChild(status);
+      var summaryText = document.createElement("p");
+      summaryText.className = "member-investigation-summary";
+      summaryText.textContent = caseRecord.summary || "Sem resumo informado.";
+      content.appendChild(summaryText);
+      var identity = document.createElement("div");
+      identity.className = "member-investigation-identities";
+      var subject = document.createElement("div");
+      var subjectLabel = document.createElement("small");
+      subjectLabel.textContent = "Discord ID envolvido";
+      subject.appendChild(subjectLabel);
+      appendCopyId(subject, caseRecord.subject_discord_user_id, "Copiar Discord ID envolvido");
+      identity.appendChild(subject);
+      var owner = document.createElement("div");
+      var ownerLabel = document.createElement("small");
+      ownerLabel.textContent = "Investigador responsável";
+      owner.appendChild(ownerLabel);
+      appendCopyId(owner, caseRecord.assigned_to_discord_user_id, "Copiar ID do investigador");
+      identity.appendChild(owner);
+      content.appendChild(identity);
+
+      var actions = document.createElement("div");
+      actions.className = "member-investigation-actions";
+      if (currentCapabilities().investigator && !["approved", "archived"].includes(caseRecord.status)) {
+        var evidenceButton = document.createElement("button");
+        evidenceButton.type = "button";
+        evidenceButton.className = "button button--outline";
+        evidenceButton.dataset.memberCaseEvidence = "";
+        evidenceButton.dataset.caseId = String(caseRecord.id);
+        evidenceButton.textContent = "Adicionar evidência";
+        actions.appendChild(evidenceButton);
+      }
+      if (currentCapabilities().investigator && ["open", "under_review"].includes(caseRecord.status)) {
+        var approvalButton = document.createElement("button");
+        approvalButton.type = "button";
+        approvalButton.className = "button button--light";
+        approvalButton.dataset.memberCaseApproval = "";
+        approvalButton.dataset.caseId = String(caseRecord.id);
+        approvalButton.textContent = "Solicitar aprovação";
+        actions.appendChild(approvalButton);
+      }
+      if (currentCapabilities().investigator && caseRecord.status === "approved") {
+        var archiveButton = document.createElement("button");
+        archiveButton.type = "button";
+        archiveButton.className = "button button--light";
+        archiveButton.dataset.memberCaseArchive = "";
+        archiveButton.dataset.caseId = String(caseRecord.id);
+        archiveButton.textContent = "Concluir caso";
+        actions.appendChild(archiveButton);
+        var approvedNote = document.createElement("p");
+        approvedNote.className = "member-investigation-summary member-investigation-summary--success";
+        approvedNote.textContent = "Todos os avaliadores aprovaram. Conclua o caso para arquivar a investigação.";
+        content.appendChild(approvedNote);
+      }
+      if (currentCapabilities().investigator && caseRecord.status === "rejected") {
+        var reopenButton = document.createElement("button");
+        reopenButton.type = "button";
+        reopenButton.className = "button button--outline";
+        reopenButton.dataset.memberCaseReopen = "";
+        reopenButton.dataset.caseId = String(caseRecord.id);
+        reopenButton.textContent = "Reabrir análise";
+        actions.appendChild(reopenButton);
+      }
+      if (actions.childNodes.length) content.appendChild(actions);
+
+      var evidenceSection = document.createElement("section");
+      evidenceSection.className = "member-investigation-subsection";
+      var evidenceHeading = document.createElement("h3");
+      evidenceHeading.textContent = "Evidências e referências";
+      evidenceSection.appendChild(evidenceHeading);
+      var evidenceItems = Array.isArray(caseRecord.evidence) ? caseRecord.evidence : [];
+      if (!evidenceItems.length) {
+        var noEvidence = document.createElement("p");
+        noEvidence.className = "member-block-state";
+        noEvidence.textContent = "Nenhuma evidência foi registrada ainda.";
+        evidenceSection.appendChild(noEvidence);
+      } else {
+        var evidenceList = document.createElement("div");
+        evidenceList.className = "member-investigation-evidence-list";
+        evidenceItems.forEach(function (item) { evidenceList.appendChild(createInvestigationEvidence(item)); });
+        evidenceSection.appendChild(evidenceList);
+      }
+      content.appendChild(evidenceSection);
+
+      var approvalItems = Array.isArray(caseRecord.approvals) ? caseRecord.approvals : [];
+      if (approvalItems.length) {
+        var approvalSection = document.createElement("section");
+        approvalSection.className = "member-investigation-subsection";
+        var approvalHeading = document.createElement("h3");
+        approvalHeading.textContent = "Aprovação privada";
+        approvalSection.appendChild(approvalHeading);
+        approvalItems.forEach(function (approval) {
+          var approvalRow = document.createElement("article");
+          approvalRow.className = "member-investigation-approval";
+          var approvalMeta = document.createElement("div");
+          approvalMeta.className = "member-investigation-item-heading";
+          var evaluator = document.createElement("strong");
+          evaluator.textContent = "Avaliador " + String(approval.evaluator_discord_user_id || "—");
+          var approvalStatus = document.createElement("span");
+          approvalStatus.className = "status-tag status-tag--" + (approval.status === "approved" ? "ready" : approval.status === "rejected" ? "error" : "pending");
+          approvalStatus.textContent = approval.status === "approved" ? "Aprovou" : approval.status === "rejected" ? "Reprovou" : approval.status === "expired" ? "Expirado" : "Pendente";
+          approvalMeta.appendChild(evaluator);
+          approvalMeta.appendChild(approvalStatus);
+          approvalRow.appendChild(approvalMeta);
+          var expectation = document.createElement("p");
+          expectation.textContent = "Expectativa: " + (approval.expected_outcome || "não informada");
+          approvalRow.appendChild(expectation);
+          if (approval.decision_note) {
+            var decisionNote = document.createElement("small");
+            decisionNote.textContent = "Observação: " + approval.decision_note;
+            approvalRow.appendChild(decisionNote);
+          }
+          approvalSection.appendChild(approvalRow);
+        });
+        content.appendChild(approvalSection);
+      }
+
+      var eventItems = Array.isArray(caseRecord.events) ? caseRecord.events : [];
+      if (eventItems.length) {
+        var auditSection = document.createElement("section");
+        auditSection.className = "member-investigation-subsection member-investigation-audit";
+        var auditHeading = document.createElement("h3");
+        auditHeading.textContent = "Auditoria";
+        auditSection.appendChild(auditHeading);
+        eventItems.slice(0, 8).forEach(function (event) {
+          var line = document.createElement("p");
+          line.textContent = date(event.created_at) + " · " + event.type + " · Discord " + event.actor_discord_user_id;
+          auditSection.appendChild(line);
+        });
+        content.appendChild(auditSection);
+      }
+      details.appendChild(summary);
+      details.appendChild(content);
+      return details;
+    }
+
+    function renderInvestigations(cases) {
+      if (!investigationList) return;
+      investigationCases = Array.isArray(cases) ? cases : [];
+      investigationList.textContent = "";
+      if (investigationCount) investigationCount.textContent = investigationCases.length + (investigationCases.length === 1 ? " caso" : " casos");
+      if (!investigationCases.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = "Nenhum caso investigativo foi registrado ainda.";
+        investigationList.appendChild(empty);
+        return;
+      }
+      investigationCases.forEach(function (caseRecord) { investigationList.appendChild(createInvestigationCase(caseRecord)); });
+    }
+
+    function loadInvestigations() {
+      if (!investigationList || investigationLoading || !currentCapabilities().investigator) return;
+      investigationLoading = true;
+      investigationList.textContent = "";
+      var loadingState = document.createElement("p");
+      loadingState.className = "member-block-state";
+      loadingState.textContent = "Consultando casos investigativos…";
+      investigationList.appendChild(loadingState);
+      request("/api/investigations")
+        .then(function (payload) {
+          if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar os casos.");
+          renderInvestigations(payload.cases);
+        })
+        .catch(function (error) {
+          investigationList.textContent = "";
+          var message = document.createElement("p");
+          message.className = "member-block-state";
+          message.textContent = error.message || "Não consegui carregar os casos agora.";
+          investigationList.appendChild(message);
+        })
+        .finally(function () { investigationLoading = false; });
+    }
+
+    function openMemberModal(modal, form, statusNode) {
+      if (!modal) return;
+      activeModal = modal;
+      activeModalPreviousFocus = document.activeElement;
+      modal.hidden = false;
+      document.body.classList.add("member-modal-open");
+      if (workspace) workspace.setAttribute("inert", "");
+      if (form) form.reset();
+      if (statusNode) statusNode.textContent = "";
+      var first = form && form.querySelector("input:not([type=hidden]), textarea, select");
+      if (first) first.focus();
+    }
+
+    function closeMemberModal(modal, restoreFocus) {
+      if (!modal || modal.hidden) return;
+      modal.hidden = true;
+      if (!document.querySelector(".member-modal:not([hidden])")) document.body.classList.remove("member-modal-open");
+      if (workspace) workspace.removeAttribute("inert");
+      if (restoreFocus && activeModalPreviousFocus && typeof activeModalPreviousFocus.focus === "function") activeModalPreviousFocus.focus();
+      activeModal = null;
+      activeModalPreviousFocus = null;
     }
 
     function identityIsReady(identity) {
@@ -473,15 +983,7 @@
         var list = document.createElement("div");
         list.className = "member-assignment-list";
         assignments.forEach(function (assignment) {
-          var row = document.createElement("article");
-          row.className = "member-assignment-row";
-          var title = document.createElement("strong");
-          title.textContent = "Apostila Civil · atribuição #" + assignment.id;
-          var detail = document.createElement("p");
-          detail.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at) + " · " + (assignment.score == null ? "nota pendente" : "nota " + assignment.score + "/100");
-          row.appendChild(title);
-          row.appendChild(detail);
-          list.appendChild(row);
+          list.appendChild(createCandidateAssignmentDisclosure(assignment));
         });
         assignmentsBlock.appendChild(list);
       }
@@ -491,6 +993,9 @@
       var managerLink = document.querySelector("[data-member-manager]");
       if (managerLink) managerLink.hidden = !(data.server && data.server.is_manager === true);
       if (managementGroup) managementGroup.hidden = !(data.server && data.server.is_manager === true);
+      if (currentView === "manager" && (!data.server || data.server.is_manager !== true)) {
+        setMemberView("overview", true, false);
+      }
       if (memberName) memberName.textContent = identity.global_name || identity.display_name || identity.username || "membro";
       if (memberUsername) memberUsername.textContent = identity.username ? "@" + identity.username : "@discord";
       renderRoles(data.server);
@@ -498,6 +1003,338 @@
       renderSidebarProfile(identity);
       syncSidebarLocation();
       setConnection("", "ready");
+    }
+
+    function setProcessStatus(label, tone) {
+      if (!processStatus) return;
+      processStatus.textContent = label;
+      processStatus.className = "status-tag status-tag--" + (tone || "planned");
+    }
+
+    function renderReviewItems(container, review) {
+      if (!container) return;
+      container.setAttribute("aria-busy", "false");
+      container.textContent = "";
+      if (!Array.isArray(review) || !review.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = "Nenhuma resposta detalhada está disponível.";
+        container.appendChild(empty);
+        return;
+      }
+      review.forEach(function (item) {
+        var article = document.createElement("article");
+        article.className = "member-review-item " + (item.is_correct ? "is-correct" : "is-wrong");
+        var heading = document.createElement("strong");
+        heading.textContent = "Questão " + String(item.number || "—") + " · " + (item.is_correct ? "correta" : "revisar");
+        var prompt = document.createElement("p");
+        prompt.textContent = item.prompt || "Questão sem enunciado.";
+        var selected = document.createElement("p");
+        selected.textContent = "Sua resposta: " + (item.selected_option || "não respondida");
+        var correct = document.createElement("p");
+        correct.textContent = "Resposta correta: " + (item.correct_option || "não disponível");
+        article.appendChild(heading);
+        article.appendChild(prompt);
+        article.appendChild(selected);
+        article.appendChild(correct);
+        container.appendChild(article);
+      });
+    }
+
+    function loadCandidateReview(assignment, container) {
+      if (!assignment || assignment.status !== "submitted" || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
+      container.dataset.loading = "true";
+      container.setAttribute("aria-busy", "true");
+      container.setAttribute("aria-live", "polite");
+      var loading = document.createElement("p");
+      loading.className = "member-block-state";
+      loading.textContent = "Consultando respostas…";
+      container.appendChild(loading);
+      request("/api/exams/review", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ assignment_id: assignment.id })
+      }).then(function (payload) {
+        if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "A revisão ainda não está disponível.");
+        renderReviewItems(container, payload.review);
+        container.dataset.loaded = "true";
+      }).catch(function (error) {
+        container.setAttribute("aria-busy", "false");
+        container.textContent = "";
+        var message = document.createElement("p");
+        message.className = "member-block-state";
+        message.textContent = error.message || "Não consegui carregar as respostas agora.";
+        container.appendChild(message);
+      }).finally(function () {
+        delete container.dataset.loading;
+      });
+    }
+
+    function createCandidateAssignmentDisclosure(assignment) {
+      var details = document.createElement("details");
+      details.className = "member-assignment-disclosure";
+      var summary = document.createElement("summary");
+      var copy = document.createElement("span");
+      var title = document.createElement("strong");
+      title.textContent = (assignment.exam_type_label || "Prova") + " · atribuição #" + assignment.id;
+      var subtitle = document.createElement("small");
+      subtitle.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at);
+      copy.appendChild(title);
+      copy.appendChild(subtitle);
+      summary.appendChild(copy);
+      summary.appendChild(disclosureArrow());
+
+      var content = document.createElement("div");
+      content.className = "member-assignment-disclosure-content";
+      var meta = document.createElement("div");
+      meta.className = "member-assignment-meta";
+      var scoreScale = assignment.score_scale || 100;
+      var totalQuestions = assignment.total_questions ? "/" + assignment.total_questions : "";
+      [["Status", statusLabel(assignment)], ["Nota", assignment.score == null ? "Pendente" : assignment.score + "/" + scoreScale], ["Acertos", assignment.correct_count == null ? "—" : String(assignment.correct_count) + totalQuestions]].forEach(function (pair) {
+        var cell = document.createElement("div");
+        var label = document.createElement("small");
+        label.textContent = pair[0];
+        var value = document.createElement("strong");
+        value.textContent = pair[1];
+        cell.appendChild(label);
+        cell.appendChild(value);
+        meta.appendChild(cell);
+      });
+      content.appendChild(meta);
+      if (assignment.status === "submitted") {
+        var review = document.createElement("div");
+        review.className = "member-review-list";
+        content.appendChild(review);
+        details.addEventListener("toggle", function () {
+          if (details.open) loadCandidateReview(assignment, review);
+        });
+      }
+      details.appendChild(summary);
+      details.appendChild(content);
+      return details;
+    }
+
+    function renderProcessView(data) {
+      if (!processAssignments || !processSummary) return;
+      var assignments = data && Array.isArray(data.assignments) ? data.assignments : [];
+      processAssignments.textContent = "";
+      if (processCount) processCount.textContent = assignments.length + (assignments.length === 1 ? " prova" : " provas");
+      if (!assignments.length) {
+        setProcessStatus("Aguardando atribuição", "planned");
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = "A Gerência ainda não criou uma atribuição para esta conta.";
+        processAssignments.appendChild(empty);
+      } else {
+        var hasResult = assignments.some(function (item) { return item.status === "submitted"; });
+        setProcessStatus(hasResult ? "Resultado disponível" : "Em andamento", hasResult ? "ready" : "planned");
+        assignments.forEach(function (assignment) {
+          processAssignments.appendChild(createCandidateAssignmentDisclosure(assignment));
+        });
+      }
+      processSummary.textContent = "";
+      var next = document.createElement("p");
+      next.className = "member-block-state";
+      next.textContent = assignments.length ? (assignments.some(function (item) { return item.status === "submitted"; }) ? "Confira o resultado e as respostas abrindo uma atribuição." : "Abra a prova pelo link enviado pela Gerência quando estiver pronta.") : "Continue estudando enquanto aguarda uma atribuição.";
+      processSummary.appendChild(next);
+    }
+
+    function copyValue(value, statusNode) {
+      var copyPromise = typeof site.copyText === "function"
+        ? site.copyText(String(value))
+        : navigator.clipboard && navigator.clipboard.writeText
+          ? navigator.clipboard.writeText(String(value)).then(function () { return true; })
+          : Promise.reject(new Error("clipboard unavailable"));
+      copyPromise.then(function () { if (statusNode) statusNode.textContent = "ID copiado"; }).catch(function () { if (statusNode) statusNode.textContent = "Não foi possível copiar"; });
+    }
+
+    function renderManagerReview(container, payload) {
+      if (!container) return;
+      renderReviewItems(container, payload && payload.review);
+    }
+
+    function loadManagerReview(assignment, container) {
+      if (!assignment || assignment.status !== "submitted" || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
+      container.dataset.loading = "true";
+      container.setAttribute("aria-busy", "true");
+      container.setAttribute("aria-live", "polite");
+      var loading = document.createElement("p");
+      loading.className = "member-block-state";
+      loading.textContent = "Consultando respostas do candidato…";
+      container.appendChild(loading);
+      request("/api/exams/assignments/" + encodeURIComponent(assignment.id) + "/review")
+        .then(function (payload) {
+          if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "A revisão ainda não está disponível.");
+          renderManagerReview(container, payload);
+          container.dataset.loaded = "true";
+        })
+        .catch(function (error) {
+          container.setAttribute("aria-busy", "false");
+          container.textContent = "";
+          var message = document.createElement("p");
+          message.className = "member-block-state";
+          message.textContent = error.message || "Não consegui carregar as respostas agora.";
+          container.appendChild(message);
+        })
+        .finally(function () {
+          delete container.dataset.loading;
+        });
+    }
+
+    function renderManagerAssignments(assignments) {
+      if (!managerList) return;
+      managerList.textContent = "";
+      if (managerCount) managerCount.textContent = assignments.length + (assignments.length === 1 ? " registro" : " registros");
+      if (!assignments.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = "Nenhuma atribuição criada por esta conta ainda.";
+        managerList.appendChild(empty);
+        return;
+      }
+      assignments.forEach(function (assignment) {
+        var details = document.createElement("details");
+        details.className = "member-assignment-disclosure manager-assignment-disclosure";
+        var summary = document.createElement("summary");
+        var candidate = document.createElement("span");
+        var title = document.createElement("strong");
+        title.textContent = (assignment.exam_type_label || "Prova") + " · #" + assignment.id;
+        var subtitle = document.createElement("small");
+        subtitle.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at);
+        candidate.appendChild(title);
+        candidate.appendChild(subtitle);
+        var arrow = disclosureArrow();
+        summary.appendChild(candidate);
+        summary.appendChild(arrow);
+        var content = document.createElement("div");
+        content.className = "member-assignment-disclosure-content";
+        var identity = document.createElement("div");
+        identity.className = "manager-candidate";
+        var avatar = document.createElement("img");
+        avatar.className = "manager-candidate-avatar";
+        avatar.width = 48;
+        avatar.height = 48;
+        avatar.loading = "lazy";
+        avatar.decoding = "async";
+        avatar.alt = "Avatar de @" + (assignment.candidate_username || "candidato");
+        avatar.src = assignment.candidate_avatar_url || "/assets/peace-bird.png";
+        avatar.addEventListener("error", function () {
+          avatar.onerror = null;
+          avatar.src = "/assets/peace-bird.png";
+        });
+        var identityCopy = document.createElement("div");
+        var candidateId = String(assignment.candidate_discord_user_id || "").trim();
+        var profileLink = candidateId ? document.createElement("a") : document.createElement("span");
+        if (candidateId) {
+          profileLink.href = assignment.candidate_profile_url || ("https://discord.com/users/" + encodeURIComponent(candidateId));
+          profileLink.target = "_blank";
+          profileLink.rel = "noopener noreferrer";
+          profileLink.setAttribute("aria-label", "Abrir perfil Discord de @" + (assignment.candidate_username || "candidato"));
+          profileLink.title = "Abrir perfil Discord em nova guia";
+        }
+        profileLink.textContent = "@" + (assignment.candidate_username || "candidato");
+        var idRow = document.createElement("div");
+        var copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "member-copy-id";
+        copyButton.setAttribute("aria-label", "Copiar Discord ID do candidato");
+        copyButton.title = "Copiar Discord ID";
+        copyButton.disabled = !candidateId;
+        if (!candidateId) copyButton.title = "Discord ID indisponível";
+        var copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        copyIcon.setAttribute("viewBox", "0 0 24 24");
+        copyIcon.setAttribute("aria-hidden", "true");
+        copyIcon.innerHTML = '<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-8A1.5 1.5 0 0 0 5 6.5v8A1.5 1.5 0 0 0 6.5 16H8"></path>';
+        var copyId = document.createElement("span");
+        copyId.textContent = candidateId || "—";
+        copyButton.appendChild(copyIcon);
+        copyButton.appendChild(copyId);
+        var copyStatus = document.createElement("span");
+        copyStatus.className = "sr-only";
+        copyStatus.setAttribute("role", "status");
+        if (candidateId) copyButton.addEventListener("click", function () { copyValue(candidateId, copyStatus); });
+        idRow.appendChild(copyButton);
+        idRow.appendChild(copyStatus);
+        identityCopy.appendChild(profileLink);
+        identityCopy.appendChild(idRow);
+        identity.appendChild(avatar);
+        identity.appendChild(identityCopy);
+        content.appendChild(identity);
+        var meta = document.createElement("div");
+        meta.className = "manager-candidate-meta";
+        var scoreScale = assignment.score_scale || 100;
+        [["Status", statusLabel(assignment)], ["Nota", assignment.score == null ? "Pendente" : assignment.score + "/" + scoreScale], ["Criada", date(assignment.created_at)]].forEach(function (pair) {
+          var cell = document.createElement("div");
+          var label = document.createElement("small");
+          label.textContent = pair[0];
+          var value = document.createElement("strong");
+          value.textContent = pair[1];
+          cell.appendChild(label);
+          cell.appendChild(value);
+          meta.appendChild(cell);
+        });
+        content.appendChild(meta);
+        if (assignment.status === "submitted") {
+          var review = document.createElement("div");
+          review.className = "member-review-list";
+          content.appendChild(review);
+          details.addEventListener("toggle", function () { if (details.open) loadManagerReview(assignment, review); });
+        }
+        details.appendChild(summary);
+        details.appendChild(content);
+        managerList.appendChild(details);
+      });
+    }
+
+    function loadManagerAssignments() {
+      if (!managerList || managerAssignmentsLoading) return;
+      managerAssignmentsLoading = true;
+      managerList.textContent = "";
+      var loading = document.createElement("p");
+      loading.className = "member-block-state";
+      loading.textContent = "Consultando atribuições da Gerência…";
+      managerList.appendChild(loading);
+      request("/api/exams/assignments")
+        .then(function (payload) {
+          if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar as atribuições.");
+          renderManagerAssignments(Array.isArray(payload.assignments) ? payload.assignments : []);
+        })
+        .catch(function (error) {
+          managerList.textContent = "";
+          var message = document.createElement("p");
+          message.className = "member-block-state";
+          message.textContent = error.message || "Não consegui consultar as atribuições agora.";
+          managerList.appendChild(message);
+        })
+        .finally(function () { managerAssignmentsLoading = false; });
+    }
+
+    function closeManagerModal(restoreFocus) {
+      if (!managerModal || managerModal.hidden) return;
+      managerModal.hidden = true;
+      document.body.classList.remove("member-modal-open");
+      if (workspace) workspace.removeAttribute("inert");
+      if (restoreFocus && managerPreviousFocus && typeof managerPreviousFocus.focus === "function") managerPreviousFocus.focus();
+      managerPreviousFocus = null;
+    }
+
+    function openManagerModal() {
+      if (!managerModal) return;
+      managerPreviousFocus = document.activeElement;
+      managerModal.hidden = false;
+      document.body.classList.add("member-modal-open");
+      if (workspace) workspace.setAttribute("inert", "");
+      if (managerFormStatus) managerFormStatus.textContent = "";
+      if (managerGenerated) managerGenerated.hidden = true;
+      if (managerForm) managerForm.reset();
+      var deadline = managerForm && managerForm.elements.deadline_at;
+      if (deadline) {
+        var initial = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        initial.setSeconds(0, 0);
+        deadline.value = new Date(initial.getTime() - initial.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      }
+      var first = managerForm && managerForm.querySelector("input");
+      if (first) first.focus();
     }
 
     function configureGate(mode, message) {
@@ -534,16 +1371,11 @@
       if (gate) gate.hidden = true;
       if (workspace) { workspace.hidden = false; workspace.setAttribute("aria-busy", "true"); }
       setLoadingStatus("Validando sessão, cargo Peace e processo…");
-      if (hasReusableShell()) {
-        resetReusableSurface();
-        if (skeleton) skeleton.hidden = true;
-        if (content) content.hidden = false;
-        setSidebarOpen(false, false);
-        setMemberView(requestedView(), true, false);
-      } else {
-        if (skeleton) skeleton.hidden = false;
-        if (content) content.hidden = true;
-      }
+      // Never reveal a cached authenticated shell before the live process
+      // endpoint confirms both the member role and manager capability.
+      resetReusableSurface();
+      if (skeleton) skeleton.hidden = false;
+      if (content) content.hidden = true;
       setConnection("Validando sessão, cargo Peace e processo…", "pending");
     }
     function showWorkspace() {
@@ -553,6 +1385,7 @@
       if (content) content.hidden = false;
       setLoadingStatus("");
       markShellReady();
+      setSidebarCollapsed(readSidebarCollapsed());
       setSidebarOpen(false, false);
       setMemberView(requestedView(), true, false);
     }
@@ -574,6 +1407,7 @@
           }
           renderOverview(null, process);
           showWorkspace();
+          loadClipCount();
         })
         .catch(function (error) {
           if (error && error.status === 401) showDisconnected("Sua sessão Discord expirou. Conecte novamente para continuar.");
@@ -584,11 +1418,14 @@
     }
 
     if (retry) retry.addEventListener("click", load);
+    if (sidebarCollapse) sidebarCollapse.addEventListener("click", function () {
+      var collapsed = shell && shell.dataset.sidebarCollapsed === "true";
+      setSidebarCollapsed(!collapsed);
+    });
     if (sidebarToggle) sidebarToggle.addEventListener("click", function () {
       var open = shell && shell.dataset.sidebarOpen === "true";
       setSidebarOpen(!open, true);
     });
-    if (sidebarClose) sidebarClose.addEventListener("click", function () { setSidebarOpen(false, true); });
     if (sidebarScrim) sidebarScrim.addEventListener("click", function () { setSidebarOpen(false, true); });
     if (notificationTrigger) notificationTrigger.addEventListener("click", function () {
       var open = notificationTrigger.getAttribute("aria-expanded") === "true";
@@ -605,6 +1442,30 @@
     }, true);
     window.addEventListener("popstate", function () { setMemberView(requestedView(), true, true); });
     document.addEventListener("keydown", function (event) {
+      var openModal = managerModal && !managerModal.hidden ? managerModal : activeModal && !activeModal.hidden ? activeModal : null;
+      if (event.key === "Escape" && openModal) {
+        event.preventDefault();
+        if (openModal === managerModal) closeManagerModal(true);
+        else closeMemberModal(openModal, true);
+        return;
+      }
+      if (event.key === "Tab" && openModal) {
+        var modalFocusable = Array.prototype.filter.call(openModal.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])") , function (node) {
+          return !node.hidden && node.getClientRects().length > 0;
+        });
+        if (modalFocusable.length) {
+          var modalFirst = modalFocusable[0];
+          var modalLast = modalFocusable[modalFocusable.length - 1];
+          if (event.shiftKey && document.activeElement === modalFirst) {
+            event.preventDefault();
+            modalLast.focus();
+          } else if (!event.shiftKey && document.activeElement === modalLast) {
+            event.preventDefault();
+            modalFirst.focus();
+          }
+        }
+        return;
+      }
       if (event.key === "Tab" && shell && shell.dataset.sidebarOpen === "true" && window.matchMedia("(max-width: 900px)").matches && sidebar && sidebar.contains(document.activeElement)) {
         var focusable = Array.prototype.filter.call(sidebar.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])") , function (node) {
           return !node.hidden && node.getClientRects().length > 0;
@@ -638,6 +1499,276 @@
       if (notificationPanel.contains(event.target) || notificationTrigger.contains(event.target)) return;
       setNotificationsOpen(false, false);
     });
+    if (managerOpen) managerOpen.addEventListener("click", openManagerModal);
+    if (managerClose) managerClose.addEventListener("click", function () { closeManagerModal(true); });
+    if (managerCancel) managerCancel.addEventListener("click", function () { closeManagerModal(true); });
+    if (managerModal) managerModal.addEventListener("click", function (event) {
+      if (event.target === managerModal) closeManagerModal(true);
+    });
+    if (managerForm) managerForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!managerForm.checkValidity()) {
+        managerForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(managerForm);
+      var deadlineValue = String(formData.get("deadline_at") || "").trim();
+      var deadline = new Date(deadlineValue);
+      if (!deadlineValue || Number.isNaN(deadline.getTime())) {
+        if (managerFormStatus) managerFormStatus.textContent = "Escolha um prazo final válido.";
+        return;
+      }
+      var payload = {
+        candidate_discord_user_id: String(formData.get("candidate_discord_user_id") || "").trim(),
+        candidate_username: String(formData.get("candidate_username") || "").trim(),
+        exam_type: String(formData.get("exam_type") || "tier_i").trim(),
+        deadline_at: deadline.toISOString()
+      };
+      if (managerFormStatus) {
+        managerFormStatus.textContent = "Gerando atribuição…";
+        managerFormStatus.dataset.state = "pending";
+      }
+      if (managerGenerated) managerGenerated.hidden = true;
+      site.setButtonBusy(managerSubmit, true, "Gerando…");
+      request("/api/exams/assignments", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true || !response.access_url) throw site.friendlyError(response, 200, "Não consegui gerar a atribuição.");
+        if (managerGeneratedLink) {
+          managerGeneratedLink.href = response.access_url;
+          managerGeneratedLink.textContent = response.access_url;
+        }
+        if (managerGenerated) managerGenerated.hidden = false;
+        if (managerFormStatus) {
+          managerFormStatus.textContent = "Atribuição criada. Envie este link ao candidato.";
+          managerFormStatus.dataset.state = "success";
+        }
+        managerAssignmentsLoading = false;
+        loadManagerAssignments();
+      }).catch(function (error) {
+        if (managerFormStatus) {
+          managerFormStatus.textContent = error.message || "Não consegui gerar a atribuição agora.";
+          managerFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(managerSubmit, false); });
+    });
+    if (investigationOpen) investigationOpen.addEventListener("click", function () {
+      openMemberModal(investigationModal, investigationForm, investigationFormStatus);
+    });
+    if (investigationClose) investigationClose.addEventListener("click", function () { closeMemberModal(investigationModal, true); });
+    if (investigationCancel) investigationCancel.addEventListener("click", function () { closeMemberModal(investigationModal, true); });
+    if (investigationModal) investigationModal.addEventListener("click", function (event) {
+      if (event.target === investigationModal) closeMemberModal(investigationModal, true);
+    });
+    if (investigationForm) investigationForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!investigationForm.checkValidity()) {
+        investigationForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(investigationForm);
+      var payload = {
+        title: String(formData.get("title") || "").trim(),
+        subject_discord_user_id: String(formData.get("subject_discord_user_id") || "").trim(),
+        summary: String(formData.get("summary") || "").trim(),
+        assigned_to_discord_user_id: String(formData.get("assigned_to_discord_user_id") || "").trim()
+      };
+      if (investigationFormStatus) {
+        investigationFormStatus.textContent = "Registrando caso…";
+        investigationFormStatus.dataset.state = "pending";
+      }
+      site.setButtonBusy(investigationSubmit, true, "Registrando…");
+      request("/api/investigations", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true) throw site.friendlyError(response, 201, "Não consegui registrar o caso.");
+        if (investigationFormStatus) {
+          investigationFormStatus.textContent = "Caso registrado.";
+          investigationFormStatus.dataset.state = "success";
+        }
+        loadInvestigations();
+        window.setTimeout(function () { closeMemberModal(investigationModal, true); }, 350);
+      }).catch(function (error) {
+        if (investigationFormStatus) {
+          investigationFormStatus.textContent = error.message || "Não consegui registrar o caso agora.";
+          investigationFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(investigationSubmit, false); });
+    });
+    if (investigationList) investigationList.addEventListener("click", function (event) {
+      var evidenceButton = event.target.closest ? event.target.closest("[data-member-case-evidence]") : null;
+      var approvalButton = event.target.closest ? event.target.closest("[data-member-case-approval]") : null;
+      var archiveButton = event.target.closest ? event.target.closest("[data-member-case-archive]") : null;
+      var reopenButton = event.target.closest ? event.target.closest("[data-member-case-reopen]") : null;
+      if (evidenceButton) {
+        selectedInvestigationCaseId = evidenceButton.dataset.caseId || null;
+        if (evidenceForm) {
+          evidenceForm.reset();
+          if (evidenceForm.elements.case_id) evidenceForm.elements.case_id.value = selectedInvestigationCaseId || "";
+        }
+        openMemberModal(evidenceModal, evidenceForm, evidenceFormStatus);
+      } else if (approvalButton) {
+        selectedInvestigationCaseId = approvalButton.dataset.caseId || null;
+        if (approvalForm) {
+          approvalForm.reset();
+          if (approvalForm.elements.case_id) approvalForm.elements.case_id.value = selectedInvestigationCaseId || "";
+        }
+        if (approvalGenerated) approvalGenerated.hidden = true;
+        openMemberModal(approvalModal, approvalForm, approvalFormStatus);
+      } else if (archiveButton) {
+        var archiveCaseId = archiveButton.dataset.caseId || "";
+        if (!archiveCaseId || !window.confirm("Concluir este caso? A investigação será arquivada e não poderá ser reaberta por este painel.")) return;
+        archiveButton.disabled = true;
+        archiveButton.textContent = "Concluindo…";
+        request("/api/investigations/" + encodeURIComponent(archiveCaseId), {
+          method: "PATCH",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "archived" })
+        }).then(function (response) {
+          if (!response || response.ok !== true) throw site.friendlyError(response, 200, "Não consegui concluir o caso.");
+          loadInvestigations();
+        }).catch(function (error) {
+          archiveButton.disabled = false;
+          archiveButton.textContent = "Concluir caso";
+          window.alert(error.message || "Não consegui concluir o caso agora.");
+        });
+      } else if (reopenButton) {
+        var reopenCaseId = reopenButton.dataset.caseId || "";
+        if (!reopenCaseId || !window.confirm("Reabrir este caso para nova análise e aprovação?")) return;
+        reopenButton.disabled = true;
+        reopenButton.textContent = "Reabrindo…";
+        request("/api/investigations/" + encodeURIComponent(reopenCaseId), {
+          method: "PATCH",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "under_review" })
+        }).then(function (response) {
+          if (!response || response.ok !== true) throw site.friendlyError(response, 200, "Não consegui reabrir o caso.");
+          loadInvestigations();
+        }).catch(function (error) {
+          reopenButton.disabled = false;
+          reopenButton.textContent = "Reabrir análise";
+          window.alert(error.message || "Não consegui reabrir o caso agora.");
+        });
+      }
+    });
+    if (evidenceClose) evidenceClose.addEventListener("click", function () { closeMemberModal(evidenceModal, true); });
+    if (evidenceCancel) evidenceCancel.addEventListener("click", function () { closeMemberModal(evidenceModal, true); });
+    if (evidenceModal) evidenceModal.addEventListener("click", function (event) {
+      if (event.target === evidenceModal) closeMemberModal(evidenceModal, true);
+    });
+    if (evidenceForm) evidenceForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!evidenceForm.checkValidity()) {
+        evidenceForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(evidenceForm);
+      var caseId = String(formData.get("case_id") || selectedInvestigationCaseId || "").trim();
+      var payload = {
+        type: String(formData.get("type") || "reference").trim(),
+        classification: String(formData.get("classification") || "reference").trim(),
+        title: String(formData.get("title") || "").trim(),
+        discord_message_id: String(formData.get("discord_message_id") || "").trim(),
+        source_url: String(formData.get("source_url") || "").trim(),
+        note: String(formData.get("note") || "").trim()
+      };
+      if (evidenceFormStatus) {
+        evidenceFormStatus.textContent = "Adicionando evidência…";
+        evidenceFormStatus.dataset.state = "pending";
+      }
+      site.setButtonBusy(evidenceSubmit, true, "Adicionando…");
+      request("/api/investigations/" + encodeURIComponent(caseId) + "/evidence", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true) throw site.friendlyError(response, 201, "Não consegui adicionar a evidência.");
+        if (evidenceFormStatus) {
+          evidenceFormStatus.textContent = "Evidência adicionada.";
+          evidenceFormStatus.dataset.state = "success";
+        }
+        loadInvestigations();
+        window.setTimeout(function () { closeMemberModal(evidenceModal, true); }, 350);
+      }).catch(function (error) {
+        if (evidenceFormStatus) {
+          evidenceFormStatus.textContent = error.message || "Não consegui adicionar a evidência agora.";
+          evidenceFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(evidenceSubmit, false); });
+    });
+    if (approvalClose) approvalClose.addEventListener("click", function () { closeMemberModal(approvalModal, true); });
+    if (approvalCancel) approvalCancel.addEventListener("click", function () { closeMemberModal(approvalModal, true); });
+    if (approvalModal) approvalModal.addEventListener("click", function (event) {
+      if (event.target === approvalModal) closeMemberModal(approvalModal, true);
+    });
+    if (approvalForm) approvalForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!approvalForm.checkValidity()) {
+        approvalForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(approvalForm);
+      var caseId = String(formData.get("case_id") || selectedInvestigationCaseId || "").trim();
+      var payload = {
+        expected_outcome: String(formData.get("expected_outcome") || "").trim(),
+        evaluator_discord_user_ids: String(formData.get("evaluator_discord_user_ids") || "").trim()
+      };
+      if (approvalFormStatus) {
+        approvalFormStatus.textContent = "Gerando links privados…";
+        approvalFormStatus.dataset.state = "pending";
+      }
+      if (approvalGenerated) approvalGenerated.hidden = true;
+      site.setButtonBusy(approvalSubmit, true, "Gerando…");
+      request("/api/investigations/" + encodeURIComponent(caseId) + "/approval-links", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true || !Array.isArray(response.links)) throw site.friendlyError(response, 201, "Não consegui gerar os links privados.");
+        if (approvalGenerated) {
+          approvalGenerated.textContent = "";
+          var heading = document.createElement("strong");
+          heading.textContent = "Links gerados — copie e envie individualmente";
+          approvalGenerated.appendChild(heading);
+          response.links.forEach(function (linkItem) {
+            var row = document.createElement("div");
+            row.className = "member-generated-link-row";
+            var link = document.createElement("a");
+            link.href = linkItem.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "Avaliador " + linkItem.evaluator_discord_user_id;
+            var copy = document.createElement("button");
+            copy.type = "button";
+            copy.className = "button button--outline member-generated-link-copy";
+            copy.textContent = "Copiar link";
+            var copyStatus = document.createElement("span");
+            copyStatus.className = "sr-only";
+            copyStatus.setAttribute("role", "status");
+            copy.addEventListener("click", function () { copyValue(linkItem.url, copyStatus); });
+            row.appendChild(link);
+            row.appendChild(copy);
+            row.appendChild(copyStatus);
+            approvalGenerated.appendChild(row);
+          });
+          approvalGenerated.hidden = false;
+        }
+        if (approvalFormStatus) {
+          approvalFormStatus.textContent = "Links criados. Eles expiram em 7 dias e só abrem para o Discord ID correspondente.";
+          approvalFormStatus.dataset.state = "success";
+        }
+        loadInvestigations();
+      }).catch(function (error) {
+        if (approvalFormStatus) {
+          approvalFormStatus.textContent = error.message || "Não consegui gerar os links agora.";
+          approvalFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(approvalSubmit, false); });
+    });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");
       var syncSidebarMode = function () {
@@ -645,6 +1776,7 @@
           var focusInsideSidebar = sidebar && sidebar.contains(document.activeElement);
           setSidebarOpen(false, focusInsideSidebar);
         } else {
+          setSidebarCollapsed(readSidebarCollapsed());
           setSidebarOpen(true, false);
         }
       };
@@ -659,9 +1791,13 @@
       if (!window.confirm("Sair da conta Discord e fechar a área de membros?")) return;
       clearShellReady();
       logout.disabled = true;
+      if (logoutStatus) logoutStatus.textContent = "Saindo da conta…";
       request("/api/auth/discord/logout", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
         .then(function () { window.location.replace("/acessar/?status=logged-out"); })
-        .catch(function () { logout.disabled = false; });
+        .catch(function () {
+          logout.disabled = false;
+          if (logoutStatus) logoutStatus.textContent = "Não foi possível sair agora. Tente novamente.";
+        });
     });
     load();
   }

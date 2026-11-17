@@ -742,22 +742,6 @@ body[data-page="member"] .member-workspace-skeleton {
     transition-delay: 0s;
   }
   .member-sidebar-inner { width: 100%; }
-  .member-sidebar-close {
-    display: inline-grid;
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: 0 0 auto;
-    place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 0.65rem;
-    background: rgba(185, 202, 211, 0.04);
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 1.35rem;
-    line-height: 1;
-  }
-  .member-sidebar-close:hover,
-  .member-sidebar-close:focus-visible { border-color: var(--accent); color: var(--text); outline: none; box-shadow: 0 0 0 3px rgba(185, 202, 211, 0.09); }
   .member-sidebar-scrim {
     position: fixed;
     z-index: 20;

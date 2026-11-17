@@ -81,6 +81,10 @@
   }
 
   function mediaType(item) {
+    // TikTok player links can expire or require a provider session inside an
+    // iframe. A truthful source card is more useful than a broken player and
+    // keeps the public feed free of provider-console noise.
+    if (item && String(item.provider || "").toLowerCase() === "tiktok") return "source";
     if (item && item.kind === "embed" && item.embed_url) return "embed";
     if (item && item.kind === "direct" && item.type === "video") return "video";
     if (item && item.kind === "direct" && item.type === "image") return "image";
@@ -432,6 +436,56 @@
     }
   }
 
+  function fallbackFromMedia(query) {
+    return site.attemptEndpoint("/api/media", { headers: { Accept: "application/json" } }, 15000)
+      .then(function (response) { return response.json(); })
+      .then(function (media) {
+        var items = Array.isArray(media && media.clips) ? media.clips : [];
+        var term = cleanText(query || "").toLowerCase();
+        if (term) {
+          items = items.filter(function (item) {
+            var author = item && item.author ? item.author : {};
+            var haystack = [
+              item && item.caption,
+              item && item.provider_title,
+              item && item.provider_description,
+              item && item.provider,
+              item && item.url,
+              author.display_name,
+              author.username
+            ].map(cleanText).join(" ").toLowerCase();
+            return haystack.indexOf(term) >= 0;
+          });
+        }
+        return {
+          ok: true,
+          clips: items,
+          total: items.length,
+          updated_at: media && media.updated_at,
+          source: media && media.sources && media.sources.clips
+            ? media.sources.clips
+            : { state: "ready", available: true, stale: false },
+          viewer: { state: "anonymous", can_interact: false },
+          fallback: "media"
+        };
+      });
+  }
+
+  function requestClips(query) {
+    var params = new URLSearchParams();
+    params.set("limit", "60");
+    if (query) params.set("q", query);
+    return site.attemptEndpoint("/api/clips?" + params.toString(), { headers: { Accept: "application/json" } }, 15000)
+      .then(function (response) { return response.json(); })
+      .catch(function (error) {
+        // Older/local proxies expose the bounded media contract before the
+        // dedicated clips route. Keep the page usable while that route is
+        // being rolled out, but only fall back for a confirmed 404.
+        if (error && Number(error.status) === 404) return fallbackFromMedia(query);
+        throw error;
+      });
+  }
+
   function load() {
     if (!isActiveView()) return;
     if (loading) return;
@@ -441,11 +495,7 @@
     if (status) status.textContent = "Carregando clipes…";
     if (submit) submit.disabled = true;
     var query = input ? input.value.trim() : "";
-    var params = new URLSearchParams();
-    params.set("limit", "60");
-    if (query) params.set("q", query);
-    site.attemptEndpoint("/api/clips?" + params.toString(), { headers: { Accept: "application/json" } }, 15000)
-      .then(function (response) { return response.json(); })
+    requestClips(query)
       .then(function (payload) {
         if (!payload || payload.ok !== true) throw new Error("Não consegui carregar os clipes.");
         render(payload);

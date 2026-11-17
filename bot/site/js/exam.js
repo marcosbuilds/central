@@ -11,11 +11,24 @@
   var messageNode = document.querySelector("[data-exam-message]");
   var submitMessageNode = document.querySelector("[data-exam-submit-message]");
   var questionsNode = document.querySelector("[data-exam-questions]");
+  var questionJumpNode = document.querySelector("[data-exam-question-jump]");
+  var questionProgressLabel = document.querySelector("[data-exam-progress-label]");
+  var questionProgressPercent = document.querySelector("[data-exam-progress-percent]");
+  var questionProgressTrack = document.querySelector("[data-exam-progress-track]");
+  var questionProgressFill = document.querySelector("[data-exam-progress-fill]");
+  var questionPosition = document.querySelector("[data-exam-question-position]");
+  var previousQuestionButton = document.querySelector("[data-exam-prev]");
+  var nextQuestionButton = document.querySelector("[data-exam-next]");
   var form = document.querySelector("[data-exam-form]");
   var startButton = document.querySelector("[data-exam-start]");
   var submitButton = document.querySelector("[data-exam-submit]");
+  var reviewPanel = document.querySelector("[data-exam-review]");
+  var reviewList = document.querySelector("[data-exam-review-list]");
+  var reviewSummary = document.querySelector("[data-exam-review-summary]");
   var assignmentState = null;
   var countdownTimer = null;
+  var currentQuestionIndex = 0;
+  var renderedQuestions = [];
   var accessStorageKey = "peace.exam.access.v1";
 
   function setText(node, value) { if (node) node.textContent = value; }
@@ -91,7 +104,8 @@
     setText(document.querySelector("[data-exam-deadline]"), formatDate(assignment.deadline_at));
     setText(document.querySelector("[data-exam-status]"), statusLabel(assignment));
     if (assignment.status === "submitted") {
-      showResult({ score: assignment.score, scale: 100, passing_score: assignment.passing_score, correct_count: assignment.correct_count, total_questions: 10, passed: assignment.passed, submitted_at: assignment.submitted_at });
+      showResult({ score: assignment.score, scale: 100, passing_score: assignment.passing_score, correct_count: assignment.correct_count, total_questions: assignment.total_questions, passed: assignment.passed, submitted_at: assignment.submitted_at });
+      loadExistingResult(assignment.id).catch(function () { /* the score remains visible */ });
       return;
     }
     if (startButton) {
@@ -104,10 +118,16 @@
   function renderQuestions(questions) {
     if (!questionsNode) return;
     questionsNode.textContent = "";
+    renderedQuestions = [];
+    currentQuestionIndex = 0;
+    if (questionJumpNode) questionJumpNode.textContent = "";
     questions.forEach(function (question, questionIndex) {
       var fieldset = document.createElement("fieldset");
       fieldset.className = "exam-question";
+      fieldset.dataset.examQuestionIndex = String(questionIndex);
+      fieldset.hidden = questionIndex !== currentQuestionIndex;
       var legend = document.createElement("legend");
+      legend.tabIndex = -1;
       legend.textContent = (questionIndex + 1) + ". " + question.prompt;
       fieldset.appendChild(legend);
       if (question.context) {
@@ -134,7 +154,108 @@
       });
       fieldset.appendChild(options);
       questionsNode.appendChild(fieldset);
+      renderedQuestions.push(fieldset);
+      if (questionJumpNode) {
+        var jump = document.createElement("button");
+        jump.type = "button";
+        jump.className = "exam-question-jump-item";
+        jump.textContent = String(questionIndex + 1).padStart(2, "0");
+        jump.setAttribute("aria-label", "Ir para a questão " + (questionIndex + 1));
+        jump.dataset.examJumpIndex = String(questionIndex);
+        jump.addEventListener("click", function () {
+          showQuestion(Number(jump.dataset.examJumpIndex), true);
+        });
+        questionJumpNode.appendChild(jump);
+      }
     });
+    form && form.querySelectorAll("input[type=radio]").forEach(function (input) {
+      input.addEventListener("change", updateQuestionProgress);
+    });
+    updateQuestionView(false);
+  }
+
+  function answeredCount() {
+    return renderedQuestions.filter(function (fieldset) { return Boolean(fieldset.querySelector("input:checked")); }).length;
+  }
+
+  function updateQuestionProgress() {
+    var total = renderedQuestions.length;
+    var answered = answeredCount();
+    var percent = total ? Math.round((answered / total) * 100) : 0;
+    setText(questionProgressLabel, answered + " de " + total + " respondidas");
+    setText(questionProgressPercent, percent + "%");
+    if (questionProgressFill) questionProgressFill.style.width = percent + "%";
+    if (questionProgressTrack) questionProgressTrack.setAttribute("aria-valuenow", String(percent));
+    if (questionJumpNode) {
+      questionJumpNode.querySelectorAll("[data-exam-jump-index]").forEach(function (jump) {
+        var index = Number(jump.dataset.examJumpIndex);
+        jump.classList.toggle("is-answered", Boolean(renderedQuestions[index] && renderedQuestions[index].querySelector("input:checked")));
+        jump.classList.toggle("is-current", index === currentQuestionIndex);
+        if (index === currentQuestionIndex) jump.setAttribute("aria-current", "step");
+        else jump.removeAttribute("aria-current");
+      });
+    }
+  }
+
+  function showQuestion(index, moveFocus) {
+    if (!renderedQuestions.length) return;
+    currentQuestionIndex = Math.min(renderedQuestions.length - 1, Math.max(0, Number(index) || 0));
+    updateQuestionView(moveFocus);
+  }
+
+  function updateQuestionView(moveFocus) {
+    renderedQuestions.forEach(function (fieldset, index) {
+      fieldset.hidden = index !== currentQuestionIndex;
+      fieldset.classList.toggle("is-current", index === currentQuestionIndex);
+    });
+    if (previousQuestionButton) previousQuestionButton.disabled = currentQuestionIndex === 0;
+    if (nextQuestionButton) nextQuestionButton.disabled = currentQuestionIndex >= renderedQuestions.length - 1;
+    setText(questionPosition, "Questão " + (currentQuestionIndex + 1) + " de " + renderedQuestions.length);
+    updateQuestionProgress();
+    if (moveFocus) {
+      var heading = renderedQuestions[currentQuestionIndex] && renderedQuestions[currentQuestionIndex].querySelector("legend");
+      if (heading) heading.focus({ preventScroll: true });
+    }
+  }
+
+  function renderReview(review) {
+    if (!reviewPanel || !reviewList) return;
+    reviewList.textContent = "";
+    if (!Array.isArray(review) || !review.length) {
+      reviewPanel.hidden = true;
+      return;
+    }
+    var correctCount = review.filter(function (item) { return item && item.is_correct === true; }).length;
+    setText(reviewSummary, correctCount + "/" + review.length + " corretas");
+    review.forEach(function (item) {
+      var article = document.createElement("article");
+      article.className = "exam-review-item" + (item.is_correct ? " is-correct" : " is-wrong");
+      var heading = document.createElement("div");
+      heading.className = "exam-review-item-heading";
+      var number = document.createElement("span");
+      number.className = "exam-review-number";
+      number.textContent = String(item.number || "").padStart(2, "0");
+      var state = document.createElement("strong");
+      state.textContent = item.is_correct ? "Correta" : "Revisar";
+      heading.appendChild(number);
+      heading.appendChild(state);
+      var prompt = document.createElement("h4");
+      prompt.textContent = item.prompt || "Questão";
+      var selected = document.createElement("p");
+      selected.className = "exam-review-answer";
+      selected.textContent = "Sua resposta: " + (item.selected_option || "—");
+      article.appendChild(heading);
+      article.appendChild(prompt);
+      article.appendChild(selected);
+      if (!item.is_correct) {
+        var correct = document.createElement("p");
+        correct.className = "exam-review-correct";
+        correct.textContent = "Gabarito: " + (item.correct_option || "—");
+        article.appendChild(correct);
+      }
+      reviewList.appendChild(article);
+    });
+    reviewPanel.hidden = false;
   }
 
   function startCountdown(deadline) {
@@ -177,12 +298,23 @@
     setText(document.querySelector("[data-exam-result-copy]"), result && result.passed
       ? "Você atingiu a nota mínima de " + result.passing_score + "." + deliveryCopy
       : "A nota mínima era " + (result ? result.passing_score : "a configurada pela equipe") + "." + deliveryCopy + " Esta prova não pode ser refeita.");
+    renderReview(result && result.review);
   }
 
   function loadExistingResult(assignmentId) {
     return request("/api/exams/process").then(function (process) {
       var assignment = (process.assignments || []).find(function (item) { return Number(item.id) === Number(assignmentId); });
-      if (assignment) showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed });
+      if (!assignment) return;
+      showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, correct_count: assignment.correct_count }, "pending");
+      return request("/api/exams/review", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ assignment_id: assignment.id })
+      }).then(function (reviewPayload) {
+        showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, correct_count: assignment.correct_count, review: reviewPayload.review }, "pending");
+      }).catch(function () {
+        /* The score remains visible if a legacy attempt has no review payload. */
+      });
     });
   }
 
@@ -202,6 +334,21 @@
         });
     });
   }
+
+  if (previousQuestionButton) previousQuestionButton.addEventListener("click", function () {
+    showQuestion(currentQuestionIndex - 1, true);
+  });
+  if (nextQuestionButton) nextQuestionButton.addEventListener("click", function () {
+    var current = renderedQuestions[currentQuestionIndex];
+    var unanswered = current && current.querySelector("input:not(:checked)") && !current.querySelector("input:checked");
+    if (unanswered) {
+      var firstInput = current.querySelector("input");
+      if (firstInput) firstInput.reportValidity();
+      showSubmitMessage("Escolha uma resposta para continuar ou use o índice para revisar depois.", "error");
+      return;
+    }
+    showQuestion(currentQuestionIndex + 1, true);
+  });
 
   if (form) {
     form.addEventListener("submit", function (event) {

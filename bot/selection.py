@@ -193,6 +193,54 @@ def public_exam_payload(question_order: list[str], option_order: Mapping[str, li
     ]
 
 
+def public_exam_review_payload(
+    question_order: list[str],
+    option_order: Mapping[str, list[int]],
+    answers: Mapping[str, Any],
+    answer_key: Mapping[str, int],
+) -> list[dict[str, Any]]:
+    """Return a post-submission review without exposing canonical indices.
+
+    This payload is only safe after the server has accepted an attempt. It
+    intentionally contains answer text rather than the private option/index
+    mapping used to grade a future attempt.
+    """
+    expected_ids = set(question_order)
+    if {str(key) for key in answers} != expected_ids:
+        raise ValueError("answers must match the submitted exam")
+    if set(answer_key) != expected_ids:
+        raise ValueError("answer key must match the submitted exam")
+
+    questions_by_id = {question.question_id: question for question in CIVIL_QUESTION_BANK}
+    review: list[dict[str, Any]] = []
+    for question_number, question_id in enumerate(question_order, start=1):
+        question = questions_by_id[question_id]
+        presented_options = option_order.get(question_id, [])
+        try:
+            presented_index = int(answers[question_id])
+            selected_canonical_index = presented_options[presented_index]
+            correct_canonical_index = int(answer_key[question_id])
+        except (TypeError, ValueError, KeyError, IndexError) as exc:
+            raise ValueError(f"invalid answer for {question_id}") from exc
+        if not 0 <= selected_canonical_index < len(question.options):
+            raise ValueError(f"invalid selected option for {question_id}")
+        if not 0 <= correct_canonical_index < len(question.options):
+            raise ValueError(f"invalid correct option for {question_id}")
+        review.append(
+            {
+                "number": question_number,
+                "id": question.question_id,
+                "category": question.category,
+                "prompt": question.prompt,
+                "context": question.context,
+                "selected_option": question.options[selected_canonical_index],
+                "correct_option": question.options[correct_canonical_index],
+                "is_correct": selected_canonical_index == correct_canonical_index,
+            }
+        )
+    return review
+
+
 def parse_answer_key(raw: str | Mapping[str, Any]) -> dict[str, int]:
     """Parse the private answer key supplied by the runtime environment.
 

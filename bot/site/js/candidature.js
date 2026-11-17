@@ -4,6 +4,12 @@
   var site = global.PeaceSite;
   if (!site) return;
   var body = site.body;
+  var setButtonLabel = typeof site.setButtonLabel === "function" ? site.setButtonLabel : function (button, label) {
+    if (!button) return;
+    var labelNode = button.querySelector("[data-button-label]");
+    if (labelNode) labelNode.textContent = label;
+    button.dataset.idleLabel = label;
+  };
   var setButtonBusy = site.setButtonBusy;
   var attemptEndpoint = site.attemptEndpoint;
   var friendlyError = site.friendlyError;
@@ -34,10 +40,13 @@
     var verificationState = document.querySelector("[data-entry-verification-state]");
     var verificationTitle = document.querySelector("[data-entry-status-title]");
     var verificationMessage = document.querySelector("[data-entry-status-message]");
+    var verificationLeadCopy = document.querySelector("[data-entry-status-lede-copy]");
+    var verificationLeadTail = document.querySelector("[data-entry-status-lede-tail]");
     var refreshButton = document.querySelector("[data-entry-refresh]");
     var refreshResult = document.querySelector("[data-entry-refresh-result]");
     var helpToggle = document.querySelector("[data-entry-help-toggle]");
     var helpPanel = document.querySelector("[data-entry-help]");
+    var helpClose = helpPanel && helpPanel.querySelector("[data-entry-help-close]");
     var repairForm = document.querySelector("[data-entry-repair]");
     var repairSubmit = document.querySelector("[data-entry-repair-submit]");
     var repairResult = document.querySelector("[data-entry-repair-result]");
@@ -60,15 +69,23 @@
     var restoring = true;
     var entrySession = null;
     var entryPollTimer = null;
+    var connectedPollTimer = null;
     var entryStartPromise = null;
     var entryStatusPromise = null;
     var entryRecoveryPromise = null;
+    var flowGeneration = 0;
     var inviteOpened = false;
     var manualEntryIdentity = null;
     var existingPreviousFocus = null;
+    var helpPreviousFocus = null;
     var entryInviteWindowName = "peace-discord-invite";
     var candidatureToastTimer = null;
     var applicationSubmitted = false;
+
+    function flowIsCurrent(generation) {
+      return (generation == null || generation === flowGeneration)
+        && document.body.dataset.discordConnected === "true";
+    }
 
     function showCandidatureToast(message) {
       if (!candidatureToast) return;
@@ -141,11 +158,16 @@
       try { window.localStorage.setItem(manualEntryStorageKey, JSON.stringify({ version: 1, ...identity })); } catch (error) { /* optional */ }
     }
 
+    function clearManualEntry() {
+      manualEntryIdentity = null;
+      try { window.localStorage.removeItem(manualEntryStorageKey); } catch (error) { /* optional */ }
+    }
+
     function setManualEntryFields(identity) {
-      if (!existingForm || !identity) return;
+      if (!existingForm) return;
       ["discord_username", "discord_id", "discord_profile_url"].forEach(function (name) {
         var field = existingForm.querySelector('[name="' + name + '"]');
-        if (field && typeof identity[name] === "string") field.value = identity[name];
+        if (field) field.value = identity && typeof identity[name] === "string" ? identity[name] : "";
       });
     }
 
@@ -281,13 +303,130 @@
     }
 
     function setEntryUser(user) {
-      if (entryUser) entryUser.textContent = user && user.mention ? user.mention : "@usuário";
+      var mention = user && (user.mention || (user.username ? "@" + user.username : ""));
+      if (entryUser) entryUser.textContent = mention || "sua conta Discord";
+    }
+
+    function resetConnectedFlow(message) {
+      flowGeneration += 1;
+      clearEntryToken();
+      clearInviteMeta();
+      clearManualEntry();
+      setManualEntryFields(null);
+      stopEntryPolling();
+      stopConnectedPolling();
+      entrySession = null;
+      setEntryUser(null);
+      setVerificationChannel(null);
+      setVerificationLead("unavailable");
+      closeHelpPanel(false);
+      setInviteLinks("", "", false);
+      if (connectButton) connectButton.hidden = false;
+      if (existingToggle) existingToggle.hidden = false;
+      if (helpPanel) helpPanel.hidden = true;
+      if (helpToggle) helpToggle.setAttribute("aria-expanded", "false");
+      setStage(1, false);
+      if (sessionNote) sessionNote.textContent = message || "Conecte sua conta Discord para acompanhar uma entrada existente.";
+      if (refreshResult) refreshResult.textContent = "";
+    }
+
+    function showConnectedSessionUnavailable() {
+      if (document.body.dataset.discordConnected !== "true") {
+        resetConnectedFlow("Conecte sua conta Discord para acompanhar uma entrada existente.");
+        return;
+      }
+      setVerificationLead("unavailable");
+      setVerificationState("warning", "Verificação indisponível", "O Discord não respondeu com um estado atualizado. Tente atualizar novamente em instantes.");
+      if (refreshResult) refreshResult.textContent = "Não foi possível confirmar o cargo agora; vamos tentar novamente automaticamente.";
+      setStage(currentStage >= 2 ? 2 : 1, false);
+    }
+
+    function setVerificationChannel(verification) {
+      var channel = verification || {};
+      var name = String(channel.name || channel.channel || "verify").replace(/^#/, "");
+      document.querySelectorAll("[data-entry-verify-link]").forEach(function (link) {
+        var code = link.querySelector("code");
+        if (!code) {
+          code = document.createElement("code");
+          link.insertBefore(code, link.firstChild);
+        }
+        code.textContent = "#" + name;
+        if (channel.url) {
+          link.href = channel.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.dataset.channelAvailable = "true";
+          link.hidden = false;
+        } else {
+          link.removeAttribute("href");
+          delete link.dataset.channelAvailable;
+          link.hidden = true;
+        }
+      });
+    }
+
+    function setVerificationLead(state) {
+      if (!verificationLeadCopy) return;
+      var channelAvailable = Array.prototype.some.call(
+        document.querySelectorAll("[data-entry-verify-link]"),
+        function (link) { return link.dataset.channelAvailable === "true" && !link.hidden; }
+      );
+      var copy = channelAvailable
+        ? " já foi encontrada. Falta concluir a verificação humana no canal "
+        : " já foi encontrada. Falta concluir a verificação humana no canal de verificação indicado.";
+      var tail = ".";
+      var showChannel = state === "verification_pending" && channelAvailable;
+      if (state === "role_missing") {
+        copy = " está no servidor, mas o cargo de entrada não foi localizado.";
+        tail = "";
+      } else if (state === "unavailable") {
+        copy = " foi encontrada, mas o Discord não respondeu com um estado atualizado.";
+        tail = "";
+      } else if (state === "verified") {
+        copy = " foi encontrada e a verificação foi concluída.";
+        tail = "";
+      }
+      verificationLeadCopy.textContent = copy;
+      if (verificationLeadTail) verificationLeadTail.textContent = tail;
+      document.querySelectorAll("[data-entry-verify-link]").forEach(function (link) {
+        link.hidden = !showChannel || link.dataset.channelAvailable !== "true";
+      });
+    }
+
+    function closeHelpPanel(restoreFocus) {
+      if (!helpPanel || helpPanel.hidden) return;
+      helpPanel.hidden = true;
+      document.body.classList.remove("dialog-open");
+      document.querySelectorAll(".flow-header, .flow-main, .flow-footer").forEach(function (background) { background.inert = false; });
+      if (helpToggle) helpToggle.setAttribute("aria-expanded", "false");
+      if (restoreFocus && helpPreviousFocus && typeof helpPreviousFocus.focus === "function") helpPreviousFocus.focus();
+      helpPreviousFocus = null;
+    }
+
+    function openHelpPanel(moveFocus) {
+      if (!helpPanel) return;
+      helpPreviousFocus = document.activeElement;
+      helpPanel.hidden = false;
+      document.body.classList.add("dialog-open");
+      document.querySelectorAll(".flow-header, .flow-main, .flow-footer").forEach(function (background) { background.inert = true; });
+      if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
+      if (moveFocus && helpClose) helpClose.focus();
     }
 
     function applyExistingMember(payload) {
       if (!payload) return;
       closeExistingPanel(false);
+      var connected = document.body.dataset.discordConnected === "true";
+      var existingUser = payload.discord_user || {};
+      var existingId = String(existingUser.id || existingUser.discord_id || "").trim();
+      var existingName = String(existingUser.username || existingUser.global_name || existingUser.display_name || existingUser.mention || "").trim();
+      if (!connected || !/^[0-9]{15,25}$/.test(existingId) || !existingName) {
+        resetConnectedFlow("Conecte sua conta Discord antes de acompanhar uma entrada existente.");
+        if (existingResult) existingResult.textContent = "Conecte sua conta Discord antes de confirmar essa identidade.";
+        return;
+      }
       setEntryUser(payload.discord_user);
+      setVerificationChannel(payload.verification);
       if (payload.status === "peace_member") {
         var peaceMessage = payload.message || "Você já é membro da Peace. Não é necessário pedir setagem.";
         try { window.sessionStorage.setItem("peace.member.toast.v1", peaceMessage); } catch (error) { /* optional */ }
@@ -296,13 +435,15 @@
       }
 
       if (payload.status === "visitor_member") {
-        if (memberResult) memberResult.textContent = payload.message || "Sua entrada como Visitor foi confirmada. Continue a entrevista.";
+        if (memberResult) memberResult.textContent = "Sua entrada no servidor foi confirmada. Continue a entrevista.";
         setStage(3, false);
         updateWizard(wizardStep, false);
         return;
       }
 
       if (payload.status === "verification_pending") {
+        closeHelpPanel(false);
+        setVerificationLead("verification_pending");
         setVerificationState("pending", "Verificação pendente", payload.message || "Abra o canal #verify e conclua a verificação humana.");
         if (manualEntryNote) manualEntryNote.textContent = "Conta encontrada. Assim que você concluir o #verify, atualize o acompanhamento aqui.";
         if (refreshResult) refreshResult.textContent = "Aguardando sua verificação no #verify.";
@@ -310,10 +451,10 @@
         return;
       }
 
+      setVerificationLead("role_missing");
       setVerificationState("warning", "Cargo de entrada ausente", payload.message || "Não encontrei um cargo de entrada nesta conta.");
       if (manualEntryNote) manualEntryNote.textContent = "Conta encontrada, mas o cargo de entrada não apareceu. Abra Estou com problemas para tentar corrigir.";
-      if (helpPanel) helpPanel.hidden = false;
-      if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
+      openHelpPanel(true);
       setStage(2, false);
     }
 
@@ -328,7 +469,12 @@
         };
       }
       if (!identity || !identity.discord_username) return Promise.reject(new Error("Informe seu username do Discord."));
+      if (document.body.dataset.discordConnected !== "true") {
+        clearManualEntry();
+        return Promise.reject(new Error("Conecte sua conta Discord antes de confirmar essa identidade."));
+      }
       saveManualEntry(identity);
+      var requestGeneration = flowGeneration;
       if (showBusy) setButtonBusy(existingSubmit, true, "Localizando…");
       return attemptEndpoint("/api/entry/identify", {
         method: "POST",
@@ -337,10 +483,12 @@
       }, 60000)
         .then(parseEntryResponse)
         .then(function (payload) {
+          if (!flowIsCurrent(requestGeneration)) return null;
           applyExistingMember(payload);
           return payload;
         })
         .catch(function (error) {
+          if (!flowIsCurrent(requestGeneration)) return null;
           if (existingResult) existingResult.textContent = error.message || "Não foi possível encontrar sua conta agora.";
           throw error;
         })
@@ -350,6 +498,35 @@
     function stopEntryPolling() {
       if (entryPollTimer) window.clearInterval(entryPollTimer);
       entryPollTimer = null;
+    }
+
+    function stopConnectedPolling() {
+      if (connectedPollTimer) window.clearInterval(connectedPollTimer);
+      connectedPollTimer = null;
+    }
+
+    function startConnectedPolling() {
+      if (connectedPollTimer || currentStage >= 3) return;
+      connectedPollTimer = window.setInterval(function () {
+        if (document.visibilityState && document.visibilityState !== "visible") return;
+        if (!["true", "retry"].includes(document.body.dataset.discordConnected) || typeof site.refreshDiscordSession !== "function") return;
+        site.refreshDiscordSession().then(function (session) {
+          if (session) {
+            if (!resumeConnectedFlow(session)) stopConnectedPolling();
+            return;
+          }
+          var error = site.discordSessionError;
+          if (error && error.status === 401) {
+            resetConnectedFlow("Sua sessão Discord expirou. Conecte novamente para continuar.");
+            return;
+          }
+          showConnectedSessionUnavailable();
+          startConnectedPolling();
+        }).catch(function () {
+          showConnectedSessionUnavailable();
+          startConnectedPolling();
+        });
+      }, 5000);
     }
 
     function startEntryPolling() {
@@ -371,8 +548,16 @@
       return 1;
     }
 
-    function applyEntryPayload(payload) {
-      if (!payload) return;
+    function effectiveEntryStatus(payload) {
+      var liveState = payload && payload.verification_state;
+      if (["verified", "verification_pending", "role_missing", "member_missing", "unavailable"].includes(liveState)) {
+        return liveState;
+      }
+      return payload && payload.status;
+    }
+
+    function applyEntryPayload(payload, generation) {
+      if (!payload || !flowIsCurrent(generation)) return false;
 
       if (isInviteRecoveryStatus(payload.status)) {
         entrySession = null;
@@ -383,10 +568,54 @@
         return;
       }
 
+      var status = effectiveEntryStatus(payload);
       entrySession = payload;
+      if (status) entrySession.status = status;
       saveEntryToken(payload.session_token);
       inviteOpened = readEntryMeta(payload.session_token);
+
+      if (payload.verification_state === "member_missing") {
+        entrySession = null;
+        clearEntryToken();
+        clearInviteMeta();
+        stopEntryPolling();
+        setEntryUser(null);
+        setInviteLinks("", "", false);
+        setStage(1, false);
+        if (connectResult) connectResult.textContent = "Não encontrei mais essa entrada no servidor. Gere um novo convite para continuar.";
+        if (sessionNote) sessionNote.textContent = "A entrada anterior deixou de estar disponível.";
+        return true;
+      }
+
+      if (payload.verification_state === "unavailable") {
+        closeHelpPanel(false);
+        setEntryUser(null);
+        setInviteLinks(payload.invite_url, payload.session_token);
+        setVerificationLead("unavailable");
+        setVerificationState("warning", "Verificação indisponível", "O Discord não respondeu com um estado atualizado. Tente atualizar novamente em instantes.");
+        if (refreshResult) refreshResult.textContent = "Não foi possível confirmar o cargo agora.";
+        setStage(currentStage >= 2 ? 2 : 1, false);
+        startEntryPolling();
+        return true;
+      }
+
+      if (["verification_pending", "role_missing", "verified"].includes(status)
+        && (!payload.discord_user
+          || !/^[0-9]{15,25}$/.test(String(payload.discord_user.id || ""))
+          || !String(payload.discord_user.username || payload.discord_user.global_name || payload.discord_user.display_name || payload.discord_user.mention || "").trim())) {
+        clearEntryToken();
+        clearInviteMeta();
+        entrySession = null;
+        stopEntryPolling();
+        setStage(1, false);
+        setEntryUser(null);
+        setVerificationChannel(null);
+        if (connectResult) connectResult.textContent = "Conecte uma conta Discord para continuar.";
+        return false;
+      }
+
       setEntryUser(payload.discord_user);
+      setVerificationChannel(payload.verification);
 
       setInviteLinks(payload.invite_url, payload.session_token);
 
@@ -401,7 +630,10 @@
           : "Convite gerado. Abra o Discord no bloco abaixo para continuar.";
       }
 
-      if (payload.status === "verified") {
+      if (status === "verified") {
+        closeHelpPanel(false);
+        setVerificationLead("verified");
+        stopConnectedPolling();
         stopEntryPolling();
         if (inviteWaiting) inviteWaiting.hidden = true;
         setVerificationState("success", "Verificação concluída", "Tudo certo. Continuando para a entrevista.");
@@ -409,36 +641,39 @@
         if (sessionNote) sessionNote.textContent = "Entrada confirmada. A entrevista está liberada.";
         if (refreshResult) refreshResult.textContent = "Verificação concluída. A entrevista está liberada.";
         setStage(3, false);
-        return;
+        return true;
       }
 
-      if (payload.status === "verification_pending") {
+      if (status === "verification_pending") {
+        closeHelpPanel(false);
+        setVerificationLead("verification_pending");
         setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada na Peace. Agora acompanhe a verificação nesta página.");
         setVerificationState("pending", "Verificação pendente", "Você já está na Peace. Abra o canal #verify, clique em Iniciar verificação e responda ao CAPTCHA.");
         if (connectResult) connectResult.textContent = "Entrada confirmada. O próximo passo está nesta página.";
         if (sessionNote) sessionNote.textContent = "Entrada identificada. Acompanhe a verificação nesta página.";
         setStage(2, false);
         startEntryPolling();
-        return;
+        return true;
       }
 
-      if (payload.status === "role_missing") {
+      if (status === "role_missing") {
+        setVerificationLead("role_missing");
         setInviteWaiting("success", "Entrada identificada", "O bot confirmou sua entrada. Estamos aguardando o cargo de verificação.");
         setVerificationState("warning", "Cargo de entrada ausente", "Não encontrei Not Verified nesta conta. Abra Estou com problemas para tentar corrigir.");
         if (connectResult) connectResult.textContent = "Entrada confirmada. O cargo de verificação precisa de atenção.";
-        if (helpPanel) helpPanel.hidden = false;
-        if (helpToggle) helpToggle.setAttribute("aria-expanded", "true");
+        openHelpPanel(true);
         setStage(2, false);
         startEntryPolling();
-        return;
+        return true;
       }
 
-      setStage(stageForEntryStatus(payload.status), false);
+      setStage(stageForEntryStatus(status), false);
       setInviteWaiting("pending", "Aguardando sua entrada", inviteOpened
         ? "O convite foi aberto. Assim que você aceitar, a Peace confirma sua entrada aqui."
         : "Abra o convite pelo botão acima. Assim que você aceitar, a Peace confirma sua entrada aqui.");
       if (sessionNote && payload.expires_in) sessionNote.textContent = "Convite ativo por aproximadamente " + Math.ceil(payload.expires_in / 60) + " minutos. Ele abre em uma nova guia.";
       startEntryPolling();
+      return true;
     }
 
     function parseEntryResponse(response) {
@@ -462,9 +697,14 @@
       }
       var token = replacing ? "" : readEntryToken();
       var requestBody = token ? { session_token: token } : {};
+      var requestGeneration = flowGeneration;
       var requestPromise = attemptEndpoint("/api/entry/start", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(requestBody) }, 60000)
         .then(parseEntryResponse)
-        .then(function (payload) { applyEntryPayload(payload); return payload; });
+        .then(function (payload) {
+          if (!flowIsCurrent(requestGeneration)) return null;
+          applyEntryPayload(payload, requestGeneration);
+          return payload;
+        });
       entryStartPromise = requestPromise;
       requestPromise.then(function () {
         if (entryStartPromise === requestPromise) entryStartPromise = null;
@@ -505,7 +745,11 @@
 
     function fetchEntryStatus(showBusy) {
       var token = (entrySession && entrySession.session_token) || readEntryToken();
-      if (!token) return Promise.resolve(null);
+      if (!token) {
+        if (showBusy) setButtonBusy(refreshButton, false);
+        if (refreshResult) refreshResult.textContent = "Conecte sua conta Discord ou gere um convite antes de atualizar o status.";
+        return Promise.resolve(null);
+      }
       if (showBusy) setButtonBusy(refreshButton, true, "Atualizando…");
       if (entryStatusPromise) {
         return entryStatusPromise.finally(function () {
@@ -513,14 +757,17 @@
         });
       }
 
+      var requestGeneration = flowGeneration;
       var requestPromise = attemptEndpoint("/api/entry/status", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ session_token: token }) }, 60000)
         .then(parseEntryResponse)
         .then(function (payload) {
-          applyEntryPayload(payload);
-          if (refreshResult && payload.status === "verification_pending") refreshResult.textContent = "Ainda aguardando a conclusão no #verify.";
+          if (!flowIsCurrent(requestGeneration)) return null;
+          applyEntryPayload(payload, requestGeneration);
+          if (refreshResult && effectiveEntryStatus(payload) === "verification_pending") refreshResult.textContent = "Ainda aguardando a conclusão no #verify.";
           return maybeRecoverEntrySession(payload);
         })
         .catch(function (error) {
+          if (!flowIsCurrent(requestGeneration)) return null;
           if (error.code === "ENTRY_SESSION_NOT_FOUND" || error.code === "INVALID_SESSION") {
             return recoverEntrySession();
           }
@@ -597,6 +844,15 @@
 
     if (connectButton) {
       connectButton.addEventListener("click", function () {
+        if (document.body.dataset.discordConnected !== "true") {
+          if (document.body.dataset.discordConnected === "pending") {
+            if (connectResult) connectResult.textContent = "Conectando sua conta Discord…";
+            return;
+          }
+          var returnTo = window.location.pathname + window.location.search + window.location.hash;
+          window.location.assign("/api/auth/discord/start?return_to=" + encodeURIComponent(returnTo));
+          return;
+        }
         if (connectButton.dataset.inviteUrl) {
           var existingPopup = openEntryInvite(connectButton.dataset.inviteUrl, connectButton.dataset.sessionToken || (entrySession && entrySession.session_token));
           if (connectResult) connectResult.textContent = existingPopup
@@ -607,14 +863,17 @@
           return;
         }
         var reservedPopup = reserveEntryInviteWindow();
+        var requestGeneration = flowGeneration;
         if (connectResult) connectResult.textContent = "Preparando seu convite…";
         setButtonBusy(connectButton, true, "Gerando convite…");
         startEntrySession().then(maybeRecoverEntrySession).then(function (payload) {
+          if (!payload || !flowIsCurrent(requestGeneration)) return;
           var popup = openEntryInvite(payload.invite_url, payload.session_token, reservedPopup);
           setButtonBusy(connectButton, false);
           if (connectResult) connectResult.textContent = popup ? "Convite aberto. Entre na Peace por ele e volte para acompanhar." : "Convite pronto. Abra o Discord pelo botão acima.";
           startEntryPolling();
         }).catch(function (error) {
+          if (!flowIsCurrent(requestGeneration)) return;
           if (reservedPopup && !reservedPopup.closed) {
             try { reservedPopup.close(); } catch (closeError) { /* browser-controlled */ }
           }
@@ -704,12 +963,28 @@
       refreshButton.addEventListener("click", function () {
         if (refreshResult) refreshResult.textContent = "";
         if (!entrySession && manualEntryIdentity) {
+          if (document.body.dataset.discordConnected !== "true") {
+            clearManualEntry();
+            setEntryUser(null);
+            setStage(1, false);
+            if (refreshResult) refreshResult.textContent = "Conecte sua conta Discord antes de confirmar uma entrada existente.";
+            return;
+          }
           identifyExistingMember(true).catch(function () { /* message is visible in the live region */ });
           return;
         }
         if (!entrySession && !manualEntryIdentity && document.body.dataset.discordConnected === "true" && typeof site.refreshDiscordSession === "function") {
           setButtonBusy(refreshButton, true, "Validando…");
           site.refreshDiscordSession().then(function (session) {
+            if (!session) {
+              var error = site.discordSessionError;
+              if (error && error.status === 401) {
+                resetConnectedFlow("Sua sessão Discord expirou. Conecte novamente para continuar.");
+                return;
+              }
+              showConnectedSessionUnavailable();
+              return;
+            }
             if (!resumeConnectedFlow(session) && refreshResult) refreshResult.textContent = "Ainda não consegui confirmar a entrada. Tente novamente em instantes.";
           }).catch(function () {
             if (refreshResult) refreshResult.textContent = "Não consegui atualizar a conta agora. Tente novamente em instantes.";
@@ -722,19 +997,31 @@
 
     if (helpToggle && helpPanel) {
       helpToggle.addEventListener("click", function () {
-        var open = helpPanel.hidden;
-        helpPanel.hidden = !open;
-        helpToggle.setAttribute("aria-expanded", String(open));
-        if (open) {
-          var firstField = helpPanel.querySelector("input");
-          if (firstField) firstField.focus();
-        }
+        openHelpPanel(true);
       });
-      var helpClose = helpPanel.querySelector("[data-entry-help-close]");
-      if (helpClose) helpClose.addEventListener("click", function () {
-        helpPanel.hidden = true;
-        helpToggle.setAttribute("aria-expanded", "false");
-        helpToggle.focus();
+      if (helpClose) helpClose.addEventListener("click", function () { closeHelpPanel(true); });
+      helpPanel.addEventListener("click", function (event) {
+        if (event.target === helpPanel) closeHelpPanel(true);
+      });
+      document.addEventListener("keydown", function (event) {
+        if (helpPanel.hidden) return;
+        if (event.key === "Escape") {
+          closeHelpPanel(true);
+          return;
+        }
+        if (event.key !== "Tab") return;
+        var focusable = Array.prototype.slice.call(helpPanel.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])"))
+          .filter(function (node) { return node.offsetParent !== null; });
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       });
     }
 
@@ -753,14 +1040,18 @@
         discord_profile_url: String(formData.get("discord_profile_url") || "").trim()
       };
       if (repairResult) repairResult.textContent = "";
+      var requestGeneration = flowGeneration;
       setButtonBusy(repairSubmit, true, "Verificando…");
       attemptEndpoint("/api/entry/repair", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(payload) }, 60000)
         .then(parseEntryResponse)
         .then(function (response) {
-          applyEntryPayload(response);
+          if (!flowIsCurrent(requestGeneration)) return null;
+          applyEntryPayload(response, requestGeneration);
           if (repairResult) repairResult.textContent = response.message || "Diagnóstico concluído. Acompanhe o #verify.";
+          return response;
         })
         .catch(function (error) {
+          if (!flowIsCurrent(requestGeneration)) return null;
           if (repairResult) repairResult.textContent = error.message || "Não foi possível concluir o diagnóstico agora.";
         })
         .finally(function () { setButtonBusy(repairSubmit, false); });
@@ -912,7 +1203,9 @@
     updateReview();
     updateWizard(draft && draft.wizardStep ? draft.wizardStep : 1, false);
     applicationSubmitted = Boolean(draft && draft.submitted === true);
-    setStage(applicationSubmitted && draft && draft.stage ? draft.stage : (draft && draft.stage ? Math.min(3, draft.stage) : 1), false);
+    // A local draft may outlive the HttpOnly Discord session. Never restore a
+    // verification or interview stage until the server confirms the identity.
+    setStage(1, false);
     restoring = false;
 
     manualEntryIdentity = readManualEntry();
@@ -920,28 +1213,70 @@
 
     function resumeConnectedFlow(session) {
       var server = session && session.server ? session.server : {};
-      if (!session) return false;
+      // Never render a connected-member state from a stale draft, a cached
+      // response, or a retry skeleton. The HttpOnly session and the identity
+      // rendered in the header must agree before this flow can advance.
+      if (
+        !session
+        || document.body.dataset.discordConnected !== "true"
+        || !session.identity
+        || !session.identity.discord_id
+        || !session.identity.username
+      ) return false;
       if (server.is_peace_member === true) {
+        stopConnectedPolling();
         if (sessionNote) sessionNote.textContent = "Sua conta já possui o cargo Peace. Abrindo a área de membros para acompanhar o próximo passo.";
         window.location.replace("/area/");
+        return true;
+      }
+      if (server.is_member === true && server.verification_state === "unavailable") {
+        if (refreshResult) refreshResult.textContent = "O Discord não retornou um estado atualizado. Tente novamente em instantes.";
+        setEntryUser(null);
+        setStage(currentStage >= 2 ? 2 : 1, false);
+        startConnectedPolling();
         return true;
       }
       if (server.is_member === true && server.is_verified !== true) {
         if (connectButton) connectButton.hidden = true;
         if (existingToggle) existingToggle.hidden = false;
-        setEntryUser({ mention: "@" + (session.identity && session.identity.username || "usuário") });
-        setVerificationState("pending", "Verificação pendente", "Sua conta já está na Peace. Abra o canal #verify, conclua a verificação humana e atualize este status.");
+        var pendingIdentity = session.identity || {};
+        if (!pendingIdentity.discord_id || !pendingIdentity.username) return false;
+        setEntryUser({ id: pendingIdentity.discord_id, mention: "@" + pendingIdentity.username });
+        setVerificationChannel(session.verification);
+        var hasNotVerifiedRole = server.has_not_verified_role;
+        var rolePending = hasNotVerifiedRole === true
+          || (hasNotVerifiedRole == null && server.verification_state === "verification_pending");
+        var roleMissing = hasNotVerifiedRole === false
+          || (!rolePending && server.verification_state === "role_missing");
+        if (!rolePending && !roleMissing) roleMissing = true;
+        setVerificationLead(roleMissing ? "role_missing" : "verification_pending");
+        setVerificationState(
+          roleMissing ? "warning" : "pending",
+          roleMissing ? "Cargo de entrada ausente" : "Verificação pendente",
+          roleMissing
+            ? "Sua conta está no servidor, mas o cargo de entrada não foi localizado. Abra Estou com problemas para tentar corrigir."
+            : "Sua conta já está na Peace. Abra o canal #verify, conclua a verificação humana e atualize este status."
+        );
         if (manualEntryNote) manualEntryNote.textContent = "A conta conectada já foi encontrada no servidor. Não é necessário gerar outro convite.";
-        if (sessionNote) sessionNote.textContent = "Conta encontrada no servidor. Conclua o #verify para liberar a entrevista.";
-        if (refreshResult) refreshResult.textContent = "Aguardando sua verificação no #verify.";
+        if (sessionNote) sessionNote.textContent = roleMissing
+          ? "Conta encontrada no servidor, mas o cargo de entrada precisa ser corrigido."
+          : "Conta encontrada no servidor. Conclua o #verify para liberar a entrevista.";
+        if (refreshResult) refreshResult.textContent = roleMissing ? "O cargo de entrada precisa ser corrigido." : "Aguardando sua verificação no #verify.";
+        if (roleMissing) openHelpPanel(true);
+        else closeHelpPanel(false);
         setStage(2, false);
+        startConnectedPolling();
         return true;
       }
       if (server.is_member === true) {
+        stopConnectedPolling();
+        closeHelpPanel(false);
         var identity = session.identity || {};
         if (connectButton) connectButton.hidden = true;
         if (existingToggle) existingToggle.hidden = true;
-        setEntryUser({ mention: "@" + (identity.username || "usuário") });
+        if (!identity.discord_id || !identity.username) return false;
+        setEntryUser({ id: identity.discord_id, mention: "@" + identity.username });
+        setVerificationChannel(session.verification);
         if (memberResult) memberResult.textContent = "Sua entrada no servidor foi confirmada pela conta Discord conectada. A entrevista é o próximo passo.";
         if (manualEntryNote) manualEntryNote.textContent = "Não é necessário conectar novamente nem informar username ou ID. Esta conta já foi identificada pelo Discord.";
         if (sessionNote) sessionNote.textContent = "Conta identificada no servidor. Continue pela etapa de entrevista.";
@@ -952,7 +1287,18 @@
       return false;
     }
 
+    var initialFlowGeneration = flowGeneration;
     site.getDiscordSession().then(function (session) {
+      if (initialFlowGeneration !== flowGeneration) return;
+      if (!session) {
+        var error = site.discordSessionError;
+        if (error && error.status !== 401) {
+          showConnectedSessionUnavailable();
+          return;
+        }
+        resetConnectedFlow("Conecte sua conta Discord para acompanhar uma entrada existente.");
+        return;
+      }
       if (resumeConnectedFlow(session)) return;
       if (readEntryToken()) {
         startEntrySession().then(maybeRecoverEntrySession).catch(function () {
@@ -960,6 +1306,9 @@
         });
       } else if (manualEntryIdentity && session) {
         identifyExistingMember(false, manualEntryIdentity).catch(function () { /* draft remains available for a manual retry */ });
+      } else if (!session) {
+        clearManualEntry();
+        setManualEntryFields(null);
       }
     });
 

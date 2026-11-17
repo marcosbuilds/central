@@ -6,7 +6,7 @@ import pytest
 
 from bot.persistence.database import ExamAssignmentExistsError, PeaceDatabase
 from bot.main import PeaceBot
-from bot.selection import grade_exam, materialize_exam, public_exam_payload
+from bot.selection import grade_exam, materialize_exam, public_exam_payload, public_exam_review_payload
 
 
 def _perfect_answers(question_order, option_order):
@@ -36,6 +36,22 @@ def test_materialized_exam_hides_answer_key_and_grades_server_order():
     )
     assert result["score"] == 100
     assert result["correct_count"] == 10
+
+
+def test_post_submission_review_uses_answer_text_without_leaking_indices():
+    question_order, option_order = materialize_exam(seed=17)
+    answers = _perfect_answers(question_order, option_order)
+    review = public_exam_review_payload(
+        question_order,
+        option_order,
+        answers,
+        _test_answer_key(question_order, option_order),
+    )
+
+    assert len(review) == 10
+    assert all(item["is_correct"] is True for item in review)
+    assert all(item["selected_option"] == item["correct_option"] for item in review)
+    assert all("correct_index" not in item and "option_order" not in item for item in review)
 
 
 def test_oauth_state_is_consumed_once(tmp_path):

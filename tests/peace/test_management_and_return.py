@@ -12,6 +12,8 @@ from bot.main import (
     DeleteUserConfirmationView,
     DeleteUserSelectionView,
     DeleteUserSelect,
+    DeveloperApprovalView,
+    DeveloperExperienceModal,
     EntryTypeSelect,
     PeaceBot,
     ReturnApprovalView,
@@ -1063,6 +1065,113 @@ def test_pending_return_sync_reuses_stored_card_instead_of_sending_duplicate(tmp
     channel.fetch_message.assert_awaited_once_with(123)
     channel.send.assert_not_called()
     message.edit.assert_awaited_once()
+
+
+def test_developer_interview_publishes_scan_card_with_avatar_and_persistent_actions(tmp_path):
+    scan_channel_id = 1495121743604617458
+    bot = PeaceBot(settings(tmp_path, scan_channel_id=scan_channel_id))
+    bot.database.initialize()
+    bot.add_view = MagicMock()
+    bot.send_to_channel = AsyncMock(return_value=True)
+
+    user = SimpleNamespace(
+        id=10,
+        display_avatar=SimpleNamespace(url="https://cdn.example.test/candidate.png"),
+    )
+    bot.developer_drafts[user.id] = SimpleNamespace(
+        full_name="Pessoa Candidata",
+        nickname="candidata",
+        motivation="Quero contribuir com uma rotina técnica clara e responsável.",
+        area="Frontend",
+    )
+    modal = DeveloperExperienceModal(bot)
+    modal.specialization_time._value = "2 anos"
+    modal.previous_experience._value = "Projetos próprios e estudos contínuos em aplicações web."
+    modal.portfolio._value = "https://github.com/example"
+
+    response = SimpleNamespace(
+        is_done=lambda: False,
+        send_message=AsyncMock(),
+    )
+    interaction = SimpleNamespace(user=user, response=response)
+
+    asyncio.run(modal.on_submit(interaction))
+
+    bot.send_to_channel.assert_awaited_once()
+    channel_id, kwargs = bot.send_to_channel.call_args.args[0], bot.send_to_channel.call_args.kwargs
+    assert channel_id == scan_channel_id
+    assert kwargs["embed"].thumbnail.url == "https://cdn.example.test/candidate.png"
+    custom_ids = {item.custom_id for item in kwargs["view"].children}
+    assert custom_ids == {"peace_dev_approve_1", "peace_dev_reject_1"}
+    bot.add_view.assert_called_once_with(kwargs["view"])
+    response.send_message.assert_awaited_once()
+    assert "Currículo enviado ao scan-only" in response.send_message.call_args.kwargs["content"]
+
+
+def test_developer_approval_view_advances_interview_and_rejects_pending_request(tmp_path):
+    bot = PeaceBot(settings(tmp_path, scan_channel_id=1495121743604617458, staff_role_id=501))
+    bot.database.initialize()
+    bot.add_view = MagicMock()
+    staff_role = FakeRole(501, "Staff", 20)
+    guild = SimpleNamespace(get_role=lambda role_id: None)
+    reviewer = MagicMock(spec=discord.Member)
+    reviewer.id = 99
+    reviewer.roles = [staff_role]
+    reviewer.bot = False
+    reviewer.mention = "<@99>"
+    candidate = FakeMember(10, [], guild)
+    bot.guild = guild
+    bot.member = AsyncMock(return_value=candidate)
+    bot.send_developer_interview_notice = AsyncMock(return_value=True)
+    bot.send_developer_rejection_notice = AsyncMock(return_value=True)
+
+    request_id = bot.database.save_developer_request(
+        discord_user_id=candidate.id,
+        full_name="Pessoa Candidata",
+        nickname="candidata",
+        motivation="Quero contribuir com uma rotina técnica clara e responsável.",
+        area="Frontend",
+        specialization_time="2 anos",
+        previous_experience="Projetos próprios e estudos contínuos em aplicações web.",
+        portfolio="https://github.com/example",
+    )
+    message = SimpleNamespace(edit=AsyncMock())
+    response = SimpleNamespace(is_done=lambda: False, defer=AsyncMock(), send_message=AsyncMock())
+    interaction = SimpleNamespace(user=reviewer, guild=guild, message=message, response=response)
+
+    view = DeveloperApprovalView(bot, request_id)
+    asyncio.run(view.approve(interaction))
+
+    assert bot.database.developer_request(request_id)["status"] == "interview_scheduled"
+    bot.send_developer_interview_notice.assert_awaited_once()
+    next_view = message.edit.call_args.kwargs["view"]
+    assert next_view.children[0].label == "✓ Aprovar como integrante"
+    assert next_view.children[0].custom_id == f"peace_dev_approve_{request_id}"
+    assert next_view.children[1].custom_id == f"peace_dev_reject_{request_id}"
+
+    rejected_id = bot.database.save_developer_request(
+        discord_user_id=11,
+        full_name="Outra Pessoa",
+        nickname="outra",
+        motivation="Quero contribuir com uma rotina técnica clara e responsável.",
+        area="Backend",
+        specialization_time="1 ano",
+        previous_experience="Projetos próprios e estudos contínuos em aplicações web.",
+        portfolio="",
+    )
+    reject_message = SimpleNamespace(edit=AsyncMock())
+    reject_interaction = SimpleNamespace(
+        user=reviewer,
+        guild=guild,
+        message=reject_message,
+        response=SimpleNamespace(is_done=lambda: False, defer=AsyncMock(), send_message=AsyncMock()),
+    )
+    reject_view = DeveloperApprovalView(bot, rejected_id)
+    asyncio.run(reject_view.reject(reject_interaction))
+
+    assert bot.database.developer_request(rejected_id)["status"] == "rejected"
+    bot.send_developer_rejection_notice.assert_awaited_once()
+    assert reject_message.edit.call_args.kwargs["view"] is reject_view
 
 
 def test_approved_return_repair_skips_member_with_a_new_active_id(tmp_path):

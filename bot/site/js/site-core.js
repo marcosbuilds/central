@@ -2,7 +2,7 @@
   "use strict";
 
   var body = document.body;
-  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process", "exam"];
+  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process", "exam", "terms"];
   var routeLabels = {
     "/": "Início",
     "/area/": "Área de membros",
@@ -59,7 +59,7 @@
     body.classList.add("public-context-page");
     document.documentElement.classList.add("public-context-page");
     var shell = document.querySelector(".site-shell");
-    if (!shell || shell.querySelector(".public-context-bar")) return;
+    if (!shell || shell.querySelector(".public-context-bar") || shell.querySelector(".flow-header")) return;
     var bar = document.createElement("header");
     bar.className = "public-context-bar";
     bar.setAttribute("role", "banner");
@@ -91,7 +91,7 @@
     backIcon.innerHTML = '<path d="M19 12H5M11 6l-6 6 6 6"></path>';
     back.appendChild(backIcon);
     var backLabel = document.createElement("span");
-    backLabel.textContent = "Voltar para " + (previous.label || labelForRoute(previous.path));
+    backLabel.textContent = "Voltar";
     back.appendChild(backLabel);
     back.addEventListener("click", function (event) {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -102,7 +102,10 @@
       window.setTimeout(function () { window.history.back(); }, 150);
     });
     bar.appendChild(back);
-    var contextTitle = document.createElement("h1");
+    // The document already owns the semantic h1 in the page content. The
+    // contextual title is navigation chrome, so keep it out of the heading
+    // outline while preserving the visual title in the shared header.
+    var contextTitle = document.createElement("p");
     contextTitle.className = "public-context-title";
     contextTitle.id = "public-context-title";
     contextTitle.textContent = contextTitles[body.dataset.page] || "Peace";
@@ -180,6 +183,20 @@
     link.prepend(icon);
   });
 
+  // Every disclosure uses the same SVG affordance. Pages that still contain
+  // a plain summary receive the shared icon here, so the CSS contract does
+  // not depend on a route-specific plus/minus character.
+  document.querySelectorAll("details > summary").forEach(function (summary) {
+    if (summary.querySelector(".disclosure-arrow")) return;
+    var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.classList.add("disclosure-arrow");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.setAttribute("focusable", "false");
+    icon.innerHTML = '<path d="m6 9 6 6 6-6"></path>';
+    summary.appendChild(icon);
+  });
+
   document.querySelectorAll("a[href]").forEach(function (link) {
     link.addEventListener("click", function (event) {
       if (reducedMotion || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -187,6 +204,10 @@
       var destination;
       try { destination = new URL(link.href, window.location.href); } catch (error) { return; }
       if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
+        if (link.hasAttribute("data-public-return-direct")) {
+          try { window.sessionStorage.removeItem("peace.route.previous.v1"); } catch (error) { /* optional */ }
+          return;
+        }
       try {
         window.sessionStorage.setItem(
           "peace.route.previous.v1",
@@ -533,9 +554,11 @@
     readMemberSessionToken: readMemberSessionToken,
     clearMemberSessionToken: clearMemberSessionToken,
     setStatusMessage: setStatusMessage,
+    setButtonLabel: setButtonLabel,
     setButtonBusy: setButtonBusy,
     friendlyError: friendlyError,
     attemptEndpoint: attemptEndpoint,
+    copyText: copyText,
     showToast: showToast,
     initMaterialCovers: initMaterialCovers
   };
