@@ -1002,6 +1002,7 @@
       renderAvatar(identity);
       renderSidebarProfile(identity);
       syncSidebarLocation();
+      applyCapabilityVisibility();
       setConnection("", "ready");
     }
 

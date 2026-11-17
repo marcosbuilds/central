@@ -2482,6 +2482,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-manager-submit' in member_html
     assert "Atribuir prova" in member_html
     assert "/api/exams/assignments" in member_script
+    assert "syncSidebarLocation();\n      applyCapabilityVisibility();" in member_script
     assert ".member-nav-icon" in system_stylesheet
     assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html
