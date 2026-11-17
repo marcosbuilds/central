@@ -1,5 +1,6 @@
 import asyncio
 import http.client
+import json
 import re
 import sqlite3
 import threading
@@ -14,6 +15,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from bot.main import PeaceBot
+from bot.selection import CIVIL_QUESTION_BANK
 
 
 def make_bot(tmp_path):
@@ -1690,6 +1692,69 @@ def test_peace_process_route_rechecks_live_peace_role_without_changing_candidate
     assert unavailable["code"] == "PEACE_MEMBERSHIP_UNAVAILABLE"
 
 
+def test_manager_workspace_and_assignment_use_structural_management_role(tmp_path):
+    bot = make_bot(tmp_path)
+    manager_id = 12345678901234567
+    candidate_id = 22345678901234567
+    peace_role = SimpleNamespace(id=100, name="Peace")
+    structural_manager_role = SimpleNamespace(id=1471532522394615850, name="Management")
+    manager = SimpleNamespace(
+        id=manager_id,
+        name="manager",
+        global_name="Manager",
+        display_name="Manager",
+        roles=[peace_role, structural_manager_role],
+    )
+    candidate = SimpleNamespace(
+        id=candidate_id,
+        name="candidate",
+        global_name="Candidate",
+        display_name="Candidate",
+        roles=[],
+    )
+    members = {manager_id: manager, candidate_id: candidate}
+    guild = SimpleNamespace(
+        roles=[peace_role, structural_manager_role],
+        text_channels=[],
+        get_role=lambda role_id: next((role for role in (peace_role, structural_manager_role) if role.id == role_id), None),
+        get_member=lambda user_id: members.get(user_id),
+    )
+    manager.guild = guild
+    candidate.guild = guild
+    bot.guild = guild
+    bot.settings.civil_answer_key = json.dumps({question.question_id: 0 for question in CIVIL_QUESTION_BANK})
+    token = bot.database.create_discord_oauth_session(
+        discord_user_id=str(manager_id),
+        username="manager",
+        global_name="Manager",
+        display_name="Manager",
+        avatar_hash=None,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    cookies = {"peace_discord_session": token}
+
+    status, process = run_configured_api(bot, "/api/peace/process", cookies=cookies)
+    assert status == 200
+    assert process["server"]["is_manager"] is True
+
+    status, assignment = run_configured_api(
+        bot,
+        "/api/exams/assignments",
+        method="POST",
+        headers={"Origin": "https://peacegg.com.br"},
+        cookies=cookies,
+        payload={
+            "candidate_discord_user_id": str(candidate_id),
+            "candidate_username": "candidate",
+            "exam_type": "tier_i",
+            "deadline_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert status == 200
+    assert assignment["ok"] is True
+    assert "/prova/?access=" in assignment["access_url"]
+
+
 def test_public_discord_session_accepts_default_avatar_and_reports_live_verification(tmp_path):
     bot = make_bot(tmp_path)
     discord_user_id = 12345678901234567
@@ -2411,6 +2476,12 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-nav-count="proofs"' in member_html
     assert "member-logout-icon" in member_html
     assert "member-nav-icon" in member_html
+    assert 'data-member-manager-open' in member_html
+    assert 'data-member-manager-modal' in member_html
+    assert 'data-member-manager-form' in member_html
+    assert 'data-member-manager-submit' in member_html
+    assert "Atribuir prova" in member_html
+    assert "/api/exams/assignments" in member_script
     assert ".member-nav-icon" in system_stylesheet
     assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html

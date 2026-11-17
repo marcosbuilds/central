@@ -8,7 +8,7 @@
     <title>Área de membros — Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
     <link rel="stylesheet" href="../styles.css?v=20261116-06">
-    <script defer src="../script.js?v=20261116-06"></script>
+    <script defer src="../script.js?v=20261117-01"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -202,7 +202,7 @@
               <section class="member-view member-manager-view" data-member-view="manager" hidden aria-labelledby="member-manager-title">
                 <div class="member-view-heading">
                   <div><p class="eyebrow">Gerência autorizada</p><h1 id="member-manager-title">Gerenciar provas</h1></div>
-                  <button class="button button--light" type="button" data-member-manager-open aria-haspopup="dialog" aria-controls="member-manager-modal">Gerar atribuição <span class="button-icon" aria-hidden="true">+</span></button>
+                  <button class="button button--light" type="button" data-member-manager-open aria-haspopup="dialog" aria-controls="member-manager-modal">Atribuir prova <span class="button-icon" aria-hidden="true">+</span></button>
                 </div>
                 <section class="member-panel" aria-labelledby="member-manager-history-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Minhas atribuições</p><h2 id="member-manager-history-title">Candidatos e resultados</h2></div><span class="member-view-count" data-member-manager-count>0 registros</span></div>
@@ -247,8 +247,8 @@
       <div class="member-modal-dialog">
         <button class="member-modal-close" type="button" data-member-manager-close aria-label="Fechar geração de atribuição"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
         <p class="eyebrow">Nova atribuição</p>
-        <h2 id="member-manager-modal-title">Gerar uma prova</h2>
-        <p class="member-view-lede" id="member-manager-modal-description">Preencha o Discord ID e o username atual do candidato. A prova ficará vinculada ao ID informado.</p>
+        <h2 id="member-manager-modal-title">Atribuir uma prova</h2>
+        <p class="member-view-lede" id="member-manager-modal-description">Informe o Discord ID e o username atual do candidato. A prova ficará vinculada ao ID informado.</p>
         <form data-member-manager-form>
           <div class="member-manager-form-grid">
             <label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" autocomplete="off" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" required placeholder="somente números"></label>
@@ -256,7 +256,7 @@
             <label class="field"><span>Tipo de prova</span><select name="exam_type"><option value="tier_i">Tier I · Civil</option></select></label>
             <label class="field"><span>Prazo final</span><input name="deadline_at" type="datetime-local" required></label>
           </div>
-          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-manager-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-manager-submit><span data-button-label>Gerar atribuição</span> <span class="button-spinner" aria-hidden="true"></span></button></div>
+          <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-manager-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-manager-submit><span data-button-label>Atribuir prova</span> <span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-manager-form-status role="status" aria-live="polite"></p>
           <div class="member-generated-link" data-member-manager-generated hidden><small>Link da prova</small><a data-member-manager-generated-link href="#" target="_blank" rel="noopener noreferrer"></a></div>
         </form>

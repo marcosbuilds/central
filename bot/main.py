@@ -4071,7 +4071,15 @@ class PeaceBot(commands.Bot):
             return role_id is not None and role_member(member, role_id)
 
         staff = has_role(configured_or_structural("staff_role_id", "staff"))
-        management = has_role(configured_or_structural("manager_role_id", "manager"))
+        try:
+            # Keep the capability exposed to the member shell identical to the
+            # authorization used by manager-only routes.  The latter resolves
+            # the structural Management role first, so a stale
+            # DISCORD_MANAGER_ROLE_ID must not hide the manager workspace while
+            # the API still accepts the same account.
+            management = management_role_member(member, self.settings)
+        except (AttributeError, TypeError):
+            management = has_role(configured_or_structural("manager_role_id", "manager"))
         founder = has_role(canonical_founder_role_id())
         # Dev and the two investigative roles are intentionally fail-closed
         # when their deployment IDs are not configured. Their labels are not
