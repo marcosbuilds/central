@@ -7,8 +7,8 @@
     <meta name="description" content="Área autenticada da comunidade Peace.">
     <title>Área de membros — Peace</title>
     <link rel="icon" href="../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../styles.css?v=20261116-06">
-    <script defer src="../script.js?v=20261117-02"></script>
+    <link rel="stylesheet" href="../styles.css?v=20261117-03">
+    <script defer src="../script.js?v=20261117-03"></script>
   </head>
   <body data-page="member">
     <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -91,8 +91,8 @@
                   <div class="member-sidebar-profile" data-member-sidebar-profile>
                     <div class="member-sidebar-avatar-wrap"><img data-member-sidebar-avatar alt="" width="48" height="48" hidden><span class="member-avatar-fallback" data-member-sidebar-avatar-fallback hidden aria-hidden="true"></span></div>
                     <div class="member-sidebar-profile-copy"><strong data-member-sidebar-name>membro</strong><span data-member-sidebar-username>@discord</span></div>
-                    <button class="member-sidebar-logout" data-member-logout type="button" aria-label="Sair da conta Discord"><svg class="member-logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg></button><span class="sr-only" data-member-logout-status role="status" aria-live="polite"></span>
                   </div>
+                  <button class="member-sidebar-logout" data-member-logout type="button"><svg class="member-logout-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"></path><path d="M13 8l4 4-4 4M17 12H8"></path></svg><span>Sair da conta</span></button><span class="sr-only" data-member-logout-status role="status" aria-live="polite"></span>
                 </div>
               </div>
             </aside>
@@ -102,6 +102,19 @@
               <div class="member-workspace-toolbar">
                 <button class="member-sidebar-toggle" type="button" data-member-sidebar-toggle aria-controls="member-sidebar" aria-expanded="false" aria-label="Abrir menu"><span class="member-sidebar-toggle-icon" data-member-sidebar-toggle-icon aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 7h14M5 12h14M5 17h14"></path></svg></span></button>
                 <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title><span>VISÃO</span><span>GERAL</span></strong><div class="member-live-status" data-member-connection role="status" aria-live="polite" hidden>Validando sessão…</div></div>
+                <form class="member-toolbar-search member-toolbar-search--clips clips-search" data-member-toolbar-clips-search data-clips-search role="search" hidden>
+                  <label class="sr-only" for="member-clips-query">Buscar clipes</label>
+                  <div class="clips-search-row"><span class="clips-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></span><input id="member-clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar clipes"><button class="clips-search-submit" data-clips-submit type="submit" aria-label="Buscar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></button></div>
+                </form>
+                <form class="member-toolbar-search member-toolbar-search--library" data-member-toolbar-library-search data-study-search-form hidden>
+                  <label class="sr-only" for="member-study-search">Buscar na biblioteca</label>
+                  <input id="member-study-search" data-study-search type="search" name="q" autocomplete="off" placeholder="Buscar na biblioteca…" aria-controls="member-study-library-list">
+                </form>
+                <div class="member-toolbar-view-actions">
+                  <button class="button button--light button--small" type="button" data-member-manager-open hidden aria-haspopup="dialog" aria-controls="member-manager-modal">Atribuir prova <span class="button-icon" aria-hidden="true">+</span></button>
+                  <button class="button button--light button--small" type="button" data-member-partner-open hidden aria-haspopup="dialog" aria-controls="member-partner-modal">Adicionar parceiro <span class="button-icon" aria-hidden="true">+</span></button>
+                  <button class="button button--light button--small" type="button" data-member-investigation-open hidden aria-haspopup="dialog" aria-controls="member-investigation-modal">Novo caso <span class="button-icon" aria-hidden="true">+</span></button>
+                </div>
                 <div class="member-toolbar-account" data-member-toolbar-account>
                   <button class="member-toolbar-account-trigger" type="button" data-member-toolbar-account-trigger aria-expanded="false" aria-haspopup="menu"><span class="member-toolbar-account-avatar-wrap"><img data-member-toolbar-avatar alt="" width="32" height="32" hidden><span data-member-toolbar-avatar-fallback class="member-avatar-fallback" hidden aria-hidden="true"></span></span><span class="member-toolbar-account-copy"><strong data-member-toolbar-name>membro</strong><small data-member-toolbar-username>@discord</small></span><svg class="member-toolbar-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"></path></svg></button>
                   <div class="member-toolbar-account-menu" data-member-toolbar-account-menu role="menu" hidden><a href="#overview" data-member-toolbar-profile role="menuitem">Meu perfil</a><a href="/area/?view=clips" role="menuitem">Meus clipes</a><button type="button" data-member-toolbar-logout role="menuitem">Sair da conta</button></div>
@@ -127,19 +140,13 @@
               </div>
 
               <aside class="member-notification-panel" id="member-notification-panel" data-member-notification-panel role="dialog" aria-modal="false" hidden aria-labelledby="member-notification-title">
-                <div class="member-notification-heading"><div><p class="eyebrow">Atualizações</p><h2 id="member-notification-title">Avisos</h2></div><div class="member-notification-heading-actions"><button class="button button--light button--small" type="button" data-member-notice-open hidden aria-haspopup="dialog" aria-controls="member-notice-modal" aria-label="Publicar aviso"><span aria-hidden="true">+</span><span>Publicar</span></button><button class="member-notification-close" type="button" data-member-notifications-close aria-label="Fechar avisos">×</button></div></div>
+                <div class="member-notification-heading"><div><h2 id="member-notification-title">Avisos</h2></div><div class="member-notification-heading-actions"><button class="button button--light button--small" type="button" data-member-notice-open hidden aria-haspopup="dialog" aria-controls="member-notice-modal" aria-label="Publicar aviso"><span aria-hidden="true">+</span><span>Publicar</span></button><button class="member-notification-close" type="button" data-member-notifications-close aria-label="Fechar avisos">×</button></div></div>
                 <div class="member-notification-list" data-member-notification-list aria-live="polite"><p class="member-notification-state">Abra para consultar os comunicados públicos.</p></div>
               </aside>
 
               <section class="member-view member-library-view" data-member-view="library" hidden aria-labelledby="member-library-title">
                 <h1 class="sr-only" id="member-library-title">Área de estudo / Biblioteca</h1>
-                <div class="study-library-toolbar member-view-toolbar" aria-label="Ferramentas da biblioteca">
-                  <label class="study-library-search" for="member-study-search">
-                    <span class="sr-only">Buscar na biblioteca</span>
-                    <input id="member-study-search" data-study-search type="search" name="q" autocomplete="off" placeholder="Buscar na biblioteca…" aria-controls="member-study-library-list">
-                  </label>
-                  <span class="study-library-count" data-study-count aria-live="polite">2 materiais</span>
-                </div>
+                <div class="study-library-toolbar member-view-toolbar" aria-label="Resumo da biblioteca"><span class="study-library-count" data-study-count aria-live="polite">2 materiais</span></div>
                 <div id="member-study-library-list" class="study-library-grid" data-study-library role="list">
                   <article class="study-library-item" data-study-item data-study-search="apostila civil investigação patrulhamento conduta radiocomunicação prova" role="listitem">
                     <a class="study-library-link" href="/estudos/civil/leitor/" aria-label="Ler a Apostila Civil">
@@ -158,7 +165,7 @@
               </section>
 
               <section class="member-view member-partners-view" data-member-view="partners" hidden aria-labelledby="member-partners-title">
-                <div class="member-view-heading"><div><p class="eyebrow">Curadoria pública</p><h1 id="member-partners-title">Parceiros</h1></div><button class="button button--light" type="button" data-member-partner-open hidden aria-haspopup="dialog" aria-controls="member-partner-modal">Adicionar parceiro <span class="button-icon" aria-hidden="true">+</span></button></div>
+                <h1 class="sr-only" id="member-partners-title">Parceiros</h1>
                 <p class="member-view-lede">Projetos aprovados pela gestão, com o contexto necessário para a comunidade entender por que estão aqui.</p>
                 <div class="member-partner-list" data-member-partners-list role="list" aria-live="polite">
                   <p class="member-block-state">Consultando parceiros publicados…</p>
@@ -168,11 +175,8 @@
               <section class="member-view member-clips-view" data-member-view="clips" hidden aria-labelledby="member-clips-title">
                 <h1 class="sr-only" id="member-clips-title">Clipes</h1>
                 <section class="clips-feed clips-feed--member" aria-label="Feed de clipes">
-                  <form class="clips-search" data-clips-search role="search">
-                    <label class="sr-only" for="member-clips-query">Buscar clipes</label>
-                    <div class="clips-search-row"><span class="clips-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></span><input id="member-clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar por vídeo ou autor"><button class="clips-search-submit" data-clips-submit type="submit" aria-label="Buscar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></button></div>
-                    <div class="clips-filter-row" role="group" aria-label="Filtrar clipes"><button type="button" class="clips-filter is-active" data-clips-filter="all" aria-pressed="true">Tudo</button><button type="button" class="clips-filter" data-clips-filter="engagement" aria-pressed="false">Mais reagidos</button><button type="button" class="clips-filter" data-clips-filter="least_engagement" aria-pressed="false">Menos reagidos</button><button type="button" class="clips-filter" data-clips-filter="recent" aria-pressed="false">Mais recentes</button></div>
-                  </form>
+                  <form class="clips-search" data-clips-search role="search" hidden aria-hidden="true"></form>
+                  <div class="clips-filter-row" role="group" aria-label="Filtrar clipes"><button type="button" class="clips-filter is-active" data-clips-filter="all" aria-pressed="true">Tudo</button><button type="button" class="clips-filter" data-clips-filter="engagement" aria-pressed="false">Mais vistos</button><button type="button" class="clips-filter" data-clips-filter="least_engagement" aria-pressed="false">Menos vistos</button><button type="button" class="clips-filter" data-clips-filter="recent" aria-pressed="false">Mais recentes</button></div>
                   <div class="clips-feed-heading"><p data-clips-status role="status" aria-live="polite">Preparando a busca…</p></div>
                   <div class="clips-grid" data-clips-list role="list" aria-busy="true" aria-label="Clipes publicados"></div>
                   <p class="clips-empty" data-clips-empty hidden role="status"></p>
@@ -182,48 +186,35 @@
               </section>
 
               <section class="member-view member-process-view" data-member-view="process" hidden aria-labelledby="member-process-title">
-                <div class="member-view-heading">
-                  <div><p class="eyebrow">Acompanhamento privado</p><h1 id="member-process-title">Meu processo</h1></div>
-                  <p>Sua conta conectada é a fonte de identidade. Veja atribuições, prazos e resultados sem sair da área.</p>
-                </div>
+                <h1 class="sr-only" id="member-process-title">Processo e provas</h1>
                 <section class="member-panel" aria-labelledby="member-process-summary-title">
-                  <div class="member-section-heading"><div><p class="eyebrow">Resumo</p><h2 id="member-process-summary-title">Próximo passo</h2></div><span class="status-tag status-tag--planned" data-member-process-status>Aguardando dados</span></div>
+                  <div class="member-section-heading"><div><h2 id="member-process-summary-title">Processo e provas</h2></div><span class="status-tag status-tag--planned" data-member-process-status>Aguardando dados</span></div>
                   <div class="member-process-summary" data-member-process-summary><p class="member-block-state">Consultando seu processo…</p></div>
-                </section>
-                <section class="member-panel" aria-labelledby="member-process-assignments-title">
-                  <div class="member-section-heading"><div><p class="eyebrow">Histórico</p><h2 id="member-process-assignments-title">Minhas atribuições</h2></div><span class="member-view-count" data-member-process-count>0 provas</span></div>
+                  <div class="member-process-assignments-heading"><span class="eyebrow">Atribuições</span><span class="member-view-count" data-member-process-count>0 provas</span></div>
                   <div class="member-process-assignments" data-member-process-assignments><p class="member-block-state">Consultando atribuições…</p></div>
                 </section>
               </section>
 
               <section class="member-view member-manager-view" data-member-view="manager" hidden aria-labelledby="member-manager-title">
-                <div class="member-view-heading">
-                  <div><p class="eyebrow">Gerência autorizada</p><h1 id="member-manager-title">Gerenciar provas</h1></div>
-                  <button class="button button--light" type="button" data-member-manager-open aria-haspopup="dialog" aria-controls="member-manager-modal">Atribuir prova <span class="button-icon" aria-hidden="true">+</span></button>
-                </div>
+                <h1 class="sr-only" id="member-manager-title">Gerenciar provas</h1>
                 <section class="member-panel" aria-labelledby="member-manager-history-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Acompanhamento</p><h2 id="member-manager-history-title">Candidatos e resultados</h2></div><span class="member-view-count" data-member-manager-count>0 registros</span></div>
                   <div class="member-manager-filters" role="search" aria-label="Filtrar candidatos"><label class="field member-manager-search"><span class="sr-only">Buscar candidato</span><input type="search" data-member-manager-search placeholder="Buscar por username ou Discord ID" autocomplete="off"></label><div class="member-manager-filter-buttons" role="group" aria-label="Filtrar situação"><button type="button" class="member-manager-filter is-active" data-member-manager-filter="all" aria-pressed="true">Todos</button><button type="button" class="member-manager-filter" data-member-manager-filter="assigned" aria-pressed="false">Pendentes</button><button type="button" class="member-manager-filter" data-member-manager-filter="in_progress" aria-pressed="false">Em andamento</button><button type="button" class="member-manager-filter" data-member-manager-filter="submitted" aria-pressed="false">Concluídas</button></div></div>
                   <div class="member-manager-list" data-member-manager-list><p class="member-block-state">Consultando atribuições…</p></div>
                 </section>
-                <section class="member-panel member-scan-panel" aria-labelledby="member-scan-summary-title">
-                  <div class="member-section-heading"><div><p class="eyebrow">Operação Discord</p><h2 id="member-scan-summary-title">Scan-only</h2></div><span class="status-tag status-tag--ready">Canal oficial</span></div>
-                  <p class="member-view-lede">A triagem operacional, entrevistas e aprovações continuam no canal scan-only do Discord. O site mostra apenas o acesso autorizado.</p>
-                  <a class="button button--outline" data-member-scan-link href="/discord/" target="_blank" rel="noopener noreferrer">Abrir scan-only <span class="button-icon" aria-hidden="true">↗</span></a>
-                </section>
               </section>
 
               <section class="member-view member-scan-view" data-member-view="scan" hidden aria-labelledby="member-scan-title">
-                <div class="member-view-heading"><div><p class="eyebrow">Operação Discord</p><h1 id="member-scan-title">Scan-only</h1></div><span class="status-tag status-tag--ready">Acesso operacional</span></div>
+                <h1 class="sr-only" id="member-scan-title">Scan-only</h1>
                 <section class="member-panel member-scan-panel" aria-labelledby="member-scan-panel-title">
-                  <div class="member-section-heading"><div><p class="eyebrow">Triagem e entrevistas</p><h2 id="member-scan-panel-title">O canal certo para cada decisão.</h2></div></div>
-                  <p class="member-view-lede">Entrevistas, aprovações e recusas são publicadas pelo bot no canal scan-only já existente. O site não replica mensagens privadas nem tenta substituir o Discord.</p>
-                  <a class="button button--light" data-member-scan-link href="/discord/" target="_blank" rel="noopener noreferrer">Abrir scan-only <span class="button-icon" aria-hidden="true">↗</span></a>
+                  <div class="member-section-heading"><div><p class="eyebrow">Triagem e entrevistas</p><h2 id="member-scan-panel-title">Decisões no scan-only</h2></div><a class="button button--outline button--small" data-member-scan-link href="/discord/" target="_blank" rel="noopener noreferrer">Abrir Discord <span class="button-icon" aria-hidden="true">↗</span></a></div>
+                  <div class="member-scan-filters" role="group" aria-label="Filtrar mensagens do scan-only"><button type="button" class="member-scan-filter is-active" data-member-scan-filter="all" aria-pressed="true">Todas</button><button type="button" class="member-scan-filter" data-member-scan-filter="pending" aria-pressed="false">Pendentes · aprovar/reprovar</button><button type="button" class="member-scan-filter" data-member-scan-filter="approved" aria-pressed="false">Aprovados</button><button type="button" class="member-scan-filter" data-member-scan-filter="rejected" aria-pressed="false">Reprovados</button></div>
+                  <div class="member-scan-list" data-member-scan-list aria-live="polite"><p class="member-block-state">Consultando o scan-only…</p></div>
                 </section>
               </section>
 
               <section class="member-view member-investigation-view" data-member-view="investigation" hidden aria-labelledby="member-investigation-title">
-                <div class="member-view-heading"><div><p class="eyebrow">Acesso investigativo</p><h1 id="member-investigation-title">Casos e ocorrências</h1></div><button class="button button--light" type="button" data-member-investigation-open aria-haspopup="dialog" aria-controls="member-investigation-modal">Novo caso <span class="button-icon" aria-hidden="true">+</span></button></div>
+                <h1 class="sr-only" id="member-investigation-title">Casos e ocorrências</h1>
                 <p class="member-view-lede">Registre ocorrências e referências controladas sem misturar evidências investigativas ao feed público de clipes.</p>
                 <section class="member-panel" aria-labelledby="member-investigation-list-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Trilha de trabalho</p><h2 id="member-investigation-list-title">Casos registrados</h2></div><span class="member-view-count" data-member-investigation-count>0 casos</span></div>
@@ -232,7 +223,7 @@
               </section>
 
               <section class="member-view member-notices-view" data-member-view="notices" hidden aria-labelledby="member-notices-title">
-                <div class="member-view-heading"><div><p class="eyebrow">Atualizações</p><h1 id="member-notices-title">Avisos</h1></div><div class="member-view-heading-actions"><p>Comunicados públicos e orientações recentes da Peace.</p><button class="button button--light" type="button" data-member-notice-view-open hidden aria-haspopup="dialog" aria-controls="member-notice-modal">Publicar aviso <span class="button-icon" aria-hidden="true">+</span></button></div></div>
+                <h1 class="sr-only" id="member-notices-title">Avisos</h1>
                 <section class="member-panel"><div class="member-notices-list" data-member-notices-view-list><p class="member-block-state">Consultando avisos públicos…</p></div></section>
               </section>
             </div>
@@ -331,7 +322,7 @@
           <div class="member-manager-form-grid">
             <label class="field member-form-field--wide"><span>Título</span><input name="title" maxlength="120" required placeholder="Ex.: Atualização do processo"></label>
             <label class="field member-form-field--wide"><span>Texto</span><textarea name="body" rows="6" minlength="5" maxlength="2000" required placeholder="Escreva somente o que deve ficar público."></textarea><small>Markdown e menções compatíveis com o Discord serão preservados. @everyone não dispara notificações.</small></label>
-            <label class="field member-form-field--wide"><span>Imagem HTTPS <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
+            <label class="field member-form-field--wide member-upload-dropzone" data-member-notice-dropzone><span class="member-upload-title">Anexo visual <em>(opcional)</em></span><span class="member-upload-placeholder">Arraste uma imagem aqui ou escolha um arquivo<span>PNG, JPG, GIF ou WebP · até 8 MB</span></span><input name="attachment" data-member-notice-attachment type="file" accept="image/png,image/jpeg,image/gif,image/webp"><span class="member-upload-preview" data-member-notice-attachment-preview hidden></span></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-notice-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-notice-submit><span data-button-label>Publicar aviso</span><span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-notice-form-status role="status" aria-live="polite"></p>
@@ -344,13 +335,14 @@
         <button class="member-modal-close" type="button" data-member-partner-close aria-label="Fechar cadastro de parceiro"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
         <p class="eyebrow">Curadoria</p>
         <h2 id="member-partner-modal-title">Adicionar parceiro</h2>
-        <p class="member-view-lede" id="member-partner-modal-description">A publicação será enviada ao canal oficial de parceiros e ficará pública para a Peace.</p>
+        <p class="member-view-lede" id="member-partner-modal-description">Cadastre a parceria para publicação pública. A capa, a descrição e os links ficam disponíveis no diretório da Peace.</p>
         <form data-member-partner-form>
           <div class="member-manager-form-grid">
             <label class="field member-form-field--wide"><span>Nome do projeto</span><input name="title" maxlength="120" required placeholder="Ex.: Projeto Peaceiro"></label>
             <label class="field member-form-field--wide"><span>Descrição</span><textarea name="description" rows="5" minlength="5" maxlength="1200" required placeholder="Explique o projeto e a relação aprovada com a Peace."></textarea></label>
-            <label class="field"><span>Link HTTPS <em>(opcional)</em></span><input name="url" type="url" maxlength="500" placeholder="https://…"></label>
-            <label class="field"><span>Imagem HTTPS <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
+            <label class="field"><span>Discord ID do parceiro <em>(opcional)</em></span><input name="discord_user_id" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" placeholder="somente números"></label>
+            <label class="field"><span>Link público <em>(opcional)</em></span><input name="url" type="url" maxlength="500" placeholder="https://…"></label>
+            <label class="field"><span>Capa da parceria <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-partner-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-partner-submit><span data-button-label>Adicionar parceiro</span><span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-partner-form-status role="status" aria-live="polite"></p>

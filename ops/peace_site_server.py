@@ -40,6 +40,7 @@ ACL_API_ROUTES = {
     "/api/auth/discord/logout",
     "/api/notices",
     "/api/partners",
+    "/api/scan-only",
     "/api/investigations",
     "/api/investigation-approvals",
     "/api/exams/process",
@@ -249,7 +250,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             )
             if frontend_origin:
                 headers["Origin"] = frontend_origin
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),
@@ -301,7 +302,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 for value in set_cookies
                 if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
             ]
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
             set_cookies = [
                 value
                 for value in set_cookies

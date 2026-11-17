@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import html
@@ -87,6 +88,7 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/clips": (60, 60),
     "/api/notices": (30, 60),
     "/api/partners": (30, 60),
+    "/api/scan-only": (60, 60),
     "/api/investigations": (60, 60),
     "/api/investigation-approvals": (30, 60),
     "/api/entry/start": (12, 60),
@@ -154,6 +156,7 @@ PUBLIC_API_NO_STORE_ROUTES = frozenset(
         "/api/clips",
         "/api/notices",
         "/api/partners",
+        "/api/scan-only",
         "/api/investigations",
         "/api/investigation-approvals",
     }
@@ -198,6 +201,9 @@ FOUNDER_ROLE_NAMES = ("Founder Peace", "Founder")
 MANAGEMENT_ROLE_NAMES = ("Gerência", "Management", "Gerencia")
 ANNOUNCEMENT_CHANNEL_NAMES = ("announcements", "avisos")
 PARTNER_CHANNEL_NAMES = ("parceiros", "partners")
+PUBLIC_NOTICES_CHANNEL_ID = 1459443449873830030
+PUBLIC_SCAN_CHANNEL_ID = 1495121743604617458
+PUBLIC_NOTICE_UPLOAD_MAX_BYTES = 8 * 1024 * 1024
 PUBLIC_MEMBER_OVERVIEW_MIN_INTERVAL_SECONDS = 10
 PUBLIC_DISCORD_SESSION_COOKIE = "peace_discord_session"
 PUBLIC_DISCORD_OAUTH_STATE_COOKIE = "peace_discord_oauth_state"
@@ -4294,12 +4300,12 @@ class PeaceBot(commands.Bot):
             limit=5,
             requester=member,
         )
-        partner_items, partner_available = await self.public_channel_messages(
-            self.public_partner_channel(),
-            kind="partner",
-            limit=8,
-            requester=member,
-        )
+        try:
+            partner_items = [self.public_partner_row_payload(row) for row in self.database.public_partners(limit=8)]
+            partner_available = True
+        except (sqlite3.Error, OSError):
+            log.warning("Fonte SQLite de parceiros indisponível para o overview", exc_info=True)
+            partner_items, partner_available = [], False
 
         active_items: list[dict[str, object]] = []
         active_available = True
@@ -4387,7 +4393,7 @@ class PeaceBot(commands.Bot):
             ),
             "partners": block(
                 partner_items,
-                "discord:parceiros",
+                "database:partners",
                 "Nenhum parceiro publicado agora.",
                 available=partner_available,
             ),
@@ -5510,7 +5516,7 @@ class PeaceBot(commands.Bot):
         guild = self.entry_guild()
         if guild is None:
             return None
-        configured_id = getattr(self.settings, "website_notices_channel_id", None)
+        configured_id = getattr(self.settings, "website_notices_channel_id", None) or PUBLIC_NOTICES_CHANNEL_ID
         if configured_id is not None:
             get_channel = getattr(guild, "get_channel", None)
             configured = get_channel(int(configured_id)) if callable(get_channel) else None
@@ -5556,6 +5562,30 @@ class PeaceBot(commands.Bot):
             title = str(payload.get("title", "") or "").strip()
             body = str(payload.get("body", "") or "").strip()
             image_url = self.public_https_url(payload.get("image_url"), limit=500)
+            attachment_file = None
+            attachment_name = ""
+            attachment_data = str(payload.get("attachment_data", "") or "").strip()
+            if attachment_data:
+                match = re.fullmatch(r"data:(image/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)", attachment_data)
+                if match is None:
+                    return web.json_response(
+                        {"ok": False, "code": "INVALID_NOTICE_ATTACHMENT", "message": "O anexo precisa ser uma imagem válida."},
+                        status=400,
+                    )
+                try:
+                    attachment_bytes = base64.b64decode(match.group(2), validate=True)
+                except (ValueError, binascii.Error):
+                    attachment_bytes = b""
+                if not attachment_bytes or len(attachment_bytes) > PUBLIC_NOTICE_UPLOAD_MAX_BYTES:
+                    return web.json_response(
+                        {"ok": False, "code": "NOTICE_ATTACHMENT_TOO_LARGE", "message": "O anexo precisa ter até 8 MB."},
+                        status=400,
+                    )
+                suffix = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}[match.group(1)]
+                attachment_name = Path(str(payload.get("attachment_name", "") or "anexo")).name[:80]
+                if not attachment_name.lower().endswith(suffix):
+                    attachment_name = "aviso" + suffix
+                attachment_file = discord.File(io.BytesIO(attachment_bytes), filename=attachment_name)
             if not 3 <= len(title) <= 120 or not 5 <= len(body) <= 2000:
                 return web.json_response(
                     {"ok": False, "code": "INVALID_NOTICE", "message": "Informe um título e um texto dentro dos limites indicados."},
@@ -5582,9 +5612,14 @@ class PeaceBot(commands.Bot):
                 embed.set_author(name=f"Publicado por {author_name}")
             if image_url:
                 embed.set_image(url=image_url)
+            elif attachment_file is not None:
+                embed.set_image(url=f"attachment://{attachment_name}")
             embed.set_footer(text="Peace · Avisos públicos")
             try:
-                message = await send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                send_kwargs = {"embed": embed, "allowed_mentions": discord.AllowedMentions.none()}
+                if attachment_file is not None:
+                    send_kwargs["file"] = attachment_file
+                message = await send(**send_kwargs)
             except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
                 log.warning("Não consegui publicar aviso público", exc_info=True)
                 return web.json_response(
@@ -5625,6 +5660,24 @@ class PeaceBot(commands.Bot):
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
+        return await self.public_api_partners_database(request)
+
+    @staticmethod
+    def public_partner_row_payload(row: object) -> dict[str, object]:
+        return {
+            "id": str(row["id"]),
+            "title": str(row["title"] or "Parceiro Peace"),
+            "description": str(row["description"] or ""),
+            "text": str(row["description"] or ""),
+            "image_url": row["image_url"],
+            "url": row["source_url"],
+            "discord_user_id": row["discord_user_id"],
+            "author": row["author_name"],
+            "avatar_url": row["author_avatar_url"],
+            "published_at": row["created_at"],
+        }
+
+    async def public_api_partners_database(self, request: web.Request) -> web.Response:
         if request.method == "POST":
             session, member, denied = await self.public_staff_context(request)
             if denied is not None:
@@ -5635,84 +5688,107 @@ class PeaceBot(commands.Bot):
                 if not isinstance(payload, dict):
                     raise TypeError
             except (TypeError, json.JSONDecodeError):
-                return web.json_response(
-                    {"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do parceiro inválidos."},
-                    status=400,
-                )
+                return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do parceiro inválidos."}, status=400)
             title = str(payload.get("title", "") or "").strip()
             description = str(payload.get("description", "") or "").strip()
             source_url = self.public_https_url(payload.get("url"), limit=500)
             image_url = self.public_https_url(payload.get("image_url"), limit=500)
+            discord_user_id = str(payload.get("discord_user_id", "") or "").strip()
             if not 2 <= len(title) <= 120 or not 5 <= len(description) <= 1200:
-                return web.json_response(
-                    {"ok": False, "code": "INVALID_PARTNER", "message": "Informe nome e descrição dentro dos limites indicados."},
-                    status=400,
-                )
+                return web.json_response({"ok": False, "code": "INVALID_PARTNER", "message": "Informe nome e descrição dentro dos limites indicados."}, status=400)
+            if discord_user_id and not re.fullmatch(r"[0-9]{15,25}", discord_user_id):
+                return web.json_response({"ok": False, "code": "INVALID_PARTNER_DISCORD", "message": "O Discord ID precisa conter somente números."}, status=400)
             if payload.get("url") and source_url is None:
-                return web.json_response(
-                    {"ok": False, "code": "INVALID_PARTNER_URL", "message": "O link do parceiro precisa ser HTTPS e válido."},
-                    status=400,
-                )
+                return web.json_response({"ok": False, "code": "INVALID_PARTNER_URL", "message": "O link do parceiro precisa ser HTTPS e válido."}, status=400)
             if payload.get("image_url") and image_url is None:
-                return web.json_response(
-                    {"ok": False, "code": "INVALID_PARTNER_IMAGE", "message": "A imagem do parceiro precisa ser HTTPS e válida."},
-                    status=400,
-                )
-            channel = self.public_partner_channel()
-            send = getattr(channel, "send", None) if channel is not None else None
-            if not callable(send):
-                return web.json_response(
-                    {"ok": False, "code": "PARTNER_CHANNEL_UNAVAILABLE", "message": "O canal público de parceiros não está disponível."},
-                    status=503,
-                )
-            author_name = str(
-                getattr(member, "display_name", None)
-                or getattr(member, "global_name", None)
-                or getattr(member, "name", None)
-                or "Peace"
-            )[:80]
-            embed = discord.Embed(title=title, description=description, color=0xB8D7D9)
-            if source_url:
-                embed.url = source_url
-            avatar_url = self.public_avatar_url(member)
-            if avatar_url:
-                embed.set_author(name=f"Publicado por {author_name}", icon_url=avatar_url)
-            else:
-                embed.set_author(name=f"Publicado por {author_name}")
-            if image_url:
-                embed.set_image(url=image_url)
-            embed.set_footer(text="Peace · Parceiros aprovados")
-            try:
-                message = await send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError):
-                log.warning("Não consegui publicar parceiro", exc_info=True)
-                return web.json_response(
-                    {"ok": False, "code": "PARTNER_PUBLISH_FAILED", "message": "Não consegui enviar o parceiro ao canal oficial."},
-                    status=502,
-                )
-            summary = self.public_message_summary(message, kind="partner") if message is not None else {
-                "title": title,
-                "text": description,
-                "url": source_url,
-                "author": author_name,
-            }
-            return web.json_response({"ok": True, "partner": summary}, status=201)
-
-        channel = self.public_partner_channel()
-        partners, available = await self.public_channel_messages(channel, kind="partner", limit=24)
+                return web.json_response({"ok": False, "code": "INVALID_PARTNER_IMAGE", "message": "A imagem do parceiro precisa ser HTTPS e válida."}, status=400)
+            author_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", None) or "Peace")[:80]
+            row = self.database.create_public_partner(
+                title=title,
+                description=description,
+                image_url=image_url,
+                source_url=source_url,
+                discord_user_id=discord_user_id or None,
+                created_by_discord_user_id=session["discord_user_id"],
+                author_name=author_name,
+                author_avatar_url=self.public_avatar_url(member),
+            )
+            return web.json_response({"ok": True, "partner": self.public_partner_row_payload(row)}, status=201)
+        try:
+            rows = self.database.public_partners(limit=24)
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui consultar parceiros públicos", exc_info=True)
+            return web.json_response({"ok": False, "code": "PARTNERS_UNAVAILABLE", "message": "Não consegui carregar os parceiros agora."}, status=503)
         refreshed_at = datetime.now(timezone.utc).isoformat()
-        response = web.json_response(
-            {
-                "ok": True,
-                "updated_at": refreshed_at if available else None,
-                "partners": partners,
-                "source": {
-                    "state": "ready" if partners else ("empty" if available else "unavailable"),
-                    "available": available,
-                    "channel": str(getattr(channel, "name", "")) or None,
-                },
-            }
+        partners = [self.public_partner_row_payload(row) for row in rows]
+        response = web.json_response({
+            "ok": True,
+            "updated_at": refreshed_at,
+            "partners": partners,
+            "source": {"state": "ready" if partners else "empty", "available": True, "channel": None},
+        })
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @staticmethod
+    def public_scan_status(message: object) -> str:
+        embeds = getattr(message, "embeds", ()) or ()
+        parts = [str(getattr(message, "content", "") or "")]
+        for embed in embeds:
+            parts.extend((str(getattr(embed, "title", "") or ""), str(getattr(embed, "description", "") or "")))
+        text = " ".join(parts).casefold()
+        if re.search(r"reprovad|recusad|não aprovado|nao aprovado|negativ", text):
+            return "rejected"
+        if re.search(r"aprovad|liberad|concedid|bem-vind", text):
+            return "approved"
+        if re.search(r"pendente|aguarda|aprovar|aprovação|aprovacao|entrevista|decisão", text):
+            return "pending"
+        return "other"
+
+    async def public_api_scan_only(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, member, denied = await self.public_capability_context(
+            request,
+            "scan_only",
+            denied_code="SCAN_ONLY_REQUIRED",
+            denied_message="Somente Staff ou Gerência pode consultar o scan-only.",
         )
+        if denied is not None:
+            return denied
+        assert member is not None
+        channel_id = getattr(self.settings, "scan_channel_id", None) or PUBLIC_SCAN_CHANNEL_ID
+        channel = await self.resolve_text_channel(channel_id) if channel_id is not None else None
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return web.json_response({"ok": True, "messages": [], "source": {"state": "unavailable", "available": False}}, status=200)
+        permissions_for = getattr(channel, "permissions_for", None)
+        if callable(permissions_for):
+            try:
+                permissions = permissions_for(member)
+                if not getattr(permissions, "view_channel", False) or not getattr(permissions, "read_message_history", False):
+                    return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "O canal scan-only não está disponível para esta conta."}, status=503)
+            except (AttributeError, TypeError, discord.DiscordException):
+                return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "O canal scan-only não está disponível agora."}, status=503)
+        items: list[dict[str, object]] = []
+        try:
+            async for message in history(limit=80):
+                summary = self.public_message_summary(message, kind="scan")
+                embeds = getattr(message, "embeds", ()) or ()
+                if embeds and getattr(embeds[0], "image", None) is not None:
+                    image = getattr(getattr(embeds[0], "image", None), "url", None)
+                    safe_image = self.public_media_url(str(image or ""))
+                    if safe_image:
+                        summary["image_url"] = safe_image
+                if not summary.get("text") and not summary.get("image_url"):
+                    continue
+                summary["status"] = self.public_scan_status(message)
+                items.append(summary)
+        except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError, AttributeError, TypeError):
+            log.info("Não consegui ler o scan-only para a área de membros")
+            return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "Não consegui carregar o scan-only agora."}, status=503)
+        response = web.json_response({"ok": True, "messages": items, "source": {"state": "ready" if items else "empty", "available": True, "channel": str(getattr(channel, "name", "")) or None}})
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -6671,7 +6747,7 @@ class PeaceBot(commands.Bot):
         capabilities = self.public_member_capabilities(member)
         verification_state = "verified" if is_peace_member or has_visitor else "verification_pending" if has_not_verified else "role_missing"
         scan_only_url = None
-        scan_channel_id = getattr(self.settings, "scan_channel_id", None)
+        scan_channel_id = getattr(self.settings, "scan_channel_id", None) or PUBLIC_SCAN_CHANNEL_ID
         guild_id = getattr(guild, "id", None) if guild is not None else None
         if capabilities["scan_only"] and guild_id is not None and scan_channel_id is not None:
             scan_only_url = f"https://discord.com/channels/{int(guild_id)}/{int(scan_channel_id)}"
@@ -6844,15 +6920,15 @@ class PeaceBot(commands.Bot):
             "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
         }
         if require_peace:
-            partner_items, partner_available = await self.public_channel_messages(
-                self.public_partner_channel(),
-                kind="partner",
-                limit=8,
-                requester=peace_member,
-            )
+            try:
+                partner_items = [self.public_partner_row_payload(row) for row in self.database.public_partners(limit=8)]
+                partner_available = True
+            except (sqlite3.Error, OSError):
+                log.warning("Fonte SQLite de parceiros indisponível para o processo", exc_info=True)
+                partner_items, partner_available = [], False
             response_payload["partners"] = {
                 "state": "ready" if partner_items else ("empty" if partner_available else "unavailable"),
-                "source": "discord:parceiros",
+                "source": "database:partners",
                 "updated_at": datetime.now(timezone.utc).isoformat() if partner_available else None,
                 "stale": not partner_available,
                 "items": partner_items,
@@ -7447,7 +7523,7 @@ class PeaceBot(commands.Bot):
     def public_api_app(self) -> web.Application:
         """Build the intentionally small public API surface used by Netlify."""
         app = web.Application(
-            client_max_size=64 * 1024,
+            client_max_size=12 * 1024 * 1024,
             middlewares=(self.public_api_cors,),
         )
         app.router.add_get("/healthz", self.public_api_health)
@@ -7459,6 +7535,7 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/notices", self.public_api_notices)
         app.router.add_get("/api/partners", self.public_api_partners)
         app.router.add_post("/api/partners", self.public_api_partners)
+        app.router.add_get("/api/scan-only", self.public_api_scan_only)
         app.router.add_get("/api/investigations", self.public_api_investigations)
         app.router.add_post("/api/investigations", self.public_api_investigations)
         app.router.add_get("/api/investigations/{case_id}", self.public_api_investigation_case)

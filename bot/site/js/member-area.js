@@ -22,6 +22,8 @@
     var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
     var memberViews = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-view]")) : [];
     var memberContextTitle = workspace && workspace.querySelector("[data-member-context-title]");
+    var toolbarClipsSearch = workspace && workspace.querySelector("[data-member-toolbar-clips-search]");
+    var toolbarLibrarySearch = workspace && workspace.querySelector("[data-member-toolbar-library-search]");
     var toolbarAccount = workspace && workspace.querySelector("[data-member-toolbar-account]");
     var toolbarAccountTrigger = workspace && workspace.querySelector("[data-member-toolbar-account-trigger]");
     var toolbarAccountMenu = workspace && workspace.querySelector("[data-member-toolbar-account-menu]");
@@ -76,6 +78,8 @@
     var scanGroup = workspace && workspace.querySelector("[data-member-scan-group]");
     var investigationGroup = workspace && workspace.querySelector("[data-member-investigation-group]");
     var scanLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-scan-link]")) : [];
+    var scanList = workspace && workspace.querySelector("[data-member-scan-list]");
+    var scanFilterButtons = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-scan-filter]")) : [];
     var investigationList = workspace && workspace.querySelector("[data-member-investigation-list]");
     var investigationCount = workspace && workspace.querySelector("[data-member-investigation-count]");
     var investigationOpen = workspace && workspace.querySelector("[data-member-investigation-open]");
@@ -105,6 +109,9 @@
     var noticeSubmit = noticeModal && noticeModal.querySelector("[data-member-notice-submit]");
     var noticeClose = noticeModal && noticeModal.querySelector("[data-member-notice-close]");
     var noticeCancel = noticeModal && noticeModal.querySelector("[data-member-notice-cancel]");
+    var noticeAttachment = noticeModal && noticeModal.querySelector("[data-member-notice-attachment]");
+    var noticeAttachmentPreview = noticeModal && noticeModal.querySelector("[data-member-notice-attachment-preview]");
+    var noticeDropzone = noticeModal && noticeModal.querySelector("[data-member-notice-dropzone]");
     var partnerOpen = workspace && workspace.querySelector("[data-member-partner-open]");
     var partnerModal = document.querySelector("[data-member-partner-modal]");
     var partnerForm = partnerModal && partnerModal.querySelector("[data-member-partner-form]");
@@ -123,6 +130,10 @@
     var managerAssignments = [];
     var managerStatusFilter = "all";
     var managerPollingTimer = null;
+    var scanLoading = false;
+    var scanMessages = [];
+    var scanStatusFilter = "all";
+    var noticeAttachmentData = null;
     var managerPreviousFocus = null;
     var activeModal = null;
     var activeModalPreviousFocus = null;
@@ -136,14 +147,14 @@
     var seenNoticeStorageKey = "peace.member.notices.seen.v1";
     var viewTitles = {
       overview: "Visão geral",
-      library: "Área de estudo / Biblioteca",
-      partners: "Parceiros",
+      library: "BIBLIOTECA",
+      partners: "PARCEIROS",
       clips: "CLIPES",
-      process: "Processo e provas",
-      manager: "Gerenciar provas",
-      scan: "Scan-only",
-      investigation: "Casos e ocorrências",
-      notices: "Avisos"
+      process: "PROCESSO E PROVAS",
+      manager: "GERENCIAR PROVAS",
+      scan: "SCAN-ONLY",
+      investigation: "CASOS E OCORRÊNCIAS",
+      notices: "AVISOS"
     };
 
     function request(url, options) {
@@ -222,12 +233,15 @@
     function renderPartners(payload) {
       if (!partnerList) return;
       var block = payload && payload.partners ? payload.partners : {};
-      var items = Array.isArray(block.items) ? block.items : [];
+      var items = Array.isArray(block) ? block : (Array.isArray(block.items) ? block.items : []);
+      var sourceState = payload && payload.source && payload.source.state
+        ? payload.source.state
+        : (block && block.state ? block.state : "");
       partnerList.textContent = "";
       if (!items.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
-        empty.textContent = block.state === "unavailable"
+        empty.textContent = sourceState === "unavailable"
           ? "A fonte de parceiros está indisponível agora. Tente novamente em instantes."
           : "Ainda não há parceiros publicados pela gestão.";
         partnerList.appendChild(empty);
@@ -237,23 +251,54 @@
         var article = document.createElement("article");
         article.className = "member-partner-item";
         article.setAttribute("role", "listitem");
+        var coverUrl = safePartnerImageUrl(item.image_url);
+        if (coverUrl) {
+          var cover = document.createElement("img");
+          cover.className = "member-partner-cover";
+          cover.src = coverUrl;
+          cover.alt = "Capa de " + (item.title || "parceiro");
+          cover.loading = "lazy";
+          article.appendChild(cover);
+        }
         var heading = document.createElement("h2");
         heading.textContent = item.title || item.author || "Parceiro Peace";
         var copy = document.createElement("p");
-        copy.textContent = item.text || "Projeto aprovado pela gestão da Peace.";
+        copy.textContent = item.description || item.text || "Projeto aprovado pela gestão da Peace.";
         article.appendChild(heading);
         article.appendChild(copy);
+        var links = document.createElement("div");
+        links.className = "member-partner-links";
+        if (/^[0-9]{15,25}$/.test(String(item.discord_user_id || ""))) {
+          var discord = document.createElement("a");
+          discord.className = "partner-link-badge";
+          discord.href = "https://discord.com/users/" + encodeURIComponent(item.discord_user_id);
+          discord.target = "_blank";
+          discord.rel = "noopener noreferrer";
+          discord.innerHTML = '<img src="/assets/discord.svg" alt="" aria-hidden="true" width="16" height="13"><span>Discord</span><span aria-hidden="true">↗</span>';
+          links.appendChild(discord);
+        }
         if (/^https?:\/\//i.test(String(item.url || ""))) {
           var link = document.createElement("a");
-          link.className = "text-link";
+          link.className = "partner-link-badge";
           link.href = String(item.url);
           link.target = "_blank";
           link.rel = "noopener noreferrer";
-          link.textContent = "Abrir origem ↗";
-          article.appendChild(link);
+          link.textContent = "Visitar ↗";
+          links.appendChild(link);
         }
+        if (links.childNodes.length) article.appendChild(links);
         partnerList.appendChild(article);
       });
+    }
+
+    function safePartnerImageUrl(value) {
+      var raw = String(value || "").trim();
+      if (!raw) return "";
+      try {
+        var parsed = new URL(raw, window.location.href);
+        if (parsed.protocol !== "https:" || parsed.username || parsed.password) return "";
+        return parsed.href;
+      } catch (error) { return ""; }
     }
     function statusLabel(item) {
       if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
@@ -337,13 +382,15 @@
       managerLinks.forEach(function (link) { link.hidden = !capabilities.manager; });
       if (scanGroup) scanGroup.hidden = !capabilities.scanOnly;
       if (investigationGroup) investigationGroup.hidden = !capabilities.investigator;
-      if (managerOpen) managerOpen.hidden = !capabilities.manager;
-      if (investigationOpen) investigationOpen.hidden = !capabilities.investigator;
+      if (managerOpen) managerOpen.hidden = !(capabilities.manager && currentView === "manager");
+      if (investigationOpen) investigationOpen.hidden = !(capabilities.investigator && currentView === "investigation");
       noticeOpenButtons.forEach(function (button) { button.hidden = !(capabilities.staff || capabilities.manager); });
-      if (partnerOpen) partnerOpen.hidden = !capabilities.partnersEdit;
+      if (partnerOpen) partnerOpen.hidden = !(capabilities.partnersEdit && currentView === "partners");
       var scanUrl = currentProcess && currentProcess.server && currentProcess.server.scan_only_url;
       scanLinks.forEach(function (link) {
-        link.href = /^https:\/\//i.test(String(scanUrl || "")) ? scanUrl : "/discord/";
+        link.href = link.hasAttribute("data-member-scan")
+          ? "/area/?view=scan"
+          : (/^https:\/\//i.test(String(scanUrl || "")) ? scanUrl : "/discord/");
       });
     }
 
@@ -649,6 +696,9 @@
 
       currentView = nextView;
       if (notificationTrigger) notificationTrigger.hidden = nextView !== "overview";
+      if (toolbarAccount) toolbarAccount.hidden = nextView === "overview" || nextView === "library";
+      if (toolbarClipsSearch) toolbarClipsSearch.hidden = nextView !== "clips";
+      if (toolbarLibrarySearch) toolbarLibrarySearch.hidden = nextView !== "library";
       if (notificationPanel && (!notificationPanel.hidden || nextView !== "overview")) setNotificationsOpen(false, false);
       memberViews.forEach(function (node) { node.hidden = node.dataset.memberView !== nextView; });
       if (memberContextTitle) {
@@ -662,9 +712,9 @@
       if (nextView === "overview") loadNotifications();
 
       var activeView = memberViews.find(function (node) { return node.dataset.memberView === nextView; });
-      if (nextView === "library" && activeView && typeof site.initStudies === "function") site.initStudies(activeView);
+      if (nextView === "library" && activeView && typeof site.initStudies === "function") site.initStudies(workspace || activeView);
       if (nextView === "partners" && activeView) renderPartners(currentProcess || {});
-      if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(activeView);
+      if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(workspace || activeView);
       if (nextView === "process") renderProcessView(currentProcess || {});
       if (nextView === "manager") {
         loadManagerAssignments();
@@ -673,8 +723,10 @@
         stopManagerPolling();
       }
       if (nextView === "scan") applyCapabilityVisibility();
+      if (nextView === "scan") loadScanMessages();
       if (nextView === "investigation") loadInvestigations();
       if (nextView === "notices") loadNotifications();
+      applyCapabilityVisibility();
       if (moveFocus && activeView) {
         var target = activeView.querySelector("[data-member-view-focus], input, a, button");
         if (!target) {
@@ -954,6 +1006,89 @@
         .finally(function () { investigationLoading = false; });
     }
 
+    function scanStatusLabel(status) {
+      return status === "approved" ? "Aprovado" : status === "rejected" ? "Reprovado" : status === "pending" ? "Pendente · aprovar/reprovar" : "Informativo";
+    }
+
+    function renderScanMessages() {
+      if (!scanList) return;
+      var items = scanMessages.filter(function (item) {
+        return scanStatusFilter === "all" || String(item.status || "other") === scanStatusFilter;
+      });
+      scanList.textContent = "";
+      if (!items.length) {
+        var empty = document.createElement("p");
+        empty.className = "member-block-state";
+        empty.textContent = scanMessages.length ? "Nenhuma mensagem corresponde a este filtro." : "Nenhuma decisão foi encontrada no scan-only.";
+        scanList.appendChild(empty);
+        return;
+      }
+      items.forEach(function (item) {
+        var article = document.createElement("article");
+        article.className = "member-scan-item";
+        var heading = document.createElement("div");
+        heading.className = "member-scan-item-heading";
+        var title = document.createElement("h3");
+        title.textContent = item.title || "Mensagem do scan-only";
+        var tag = document.createElement("span");
+        tag.className = "status-tag status-tag--" + (item.status === "approved" ? "ready" : item.status === "rejected" ? "error" : item.status === "pending" ? "pending" : "planned");
+        tag.textContent = scanStatusLabel(item.status);
+        heading.appendChild(title);
+        heading.appendChild(tag);
+        article.appendChild(heading);
+        var meta = document.createElement("small");
+        meta.textContent = (item.author || "Peace") + " · " + date(item.published_at);
+        article.appendChild(meta);
+        if (item.text) {
+          var copy = document.createElement("p");
+          copy.textContent = item.text;
+          article.appendChild(copy);
+        }
+        if (safeNoticeAssetUrl(item.image_url)) {
+          var asset = document.createElement("img");
+          asset.className = "member-scan-asset";
+          asset.src = safeNoticeAssetUrl(item.image_url);
+          asset.alt = item.title ? "Imagem de " + item.title : "Imagem da mensagem";
+          asset.loading = "lazy";
+          article.appendChild(asset);
+        }
+        if (/^https:\/\//i.test(String(item.url || ""))) {
+          var source = document.createElement("a");
+          source.className = "text-link";
+          source.href = item.url;
+          source.target = "_blank";
+          source.rel = "noopener noreferrer";
+          source.textContent = "Abrir mensagem no Discord ↗";
+          article.appendChild(source);
+        }
+        scanList.appendChild(article);
+      });
+    }
+
+    function loadScanMessages() {
+      if (!scanList || scanLoading || !currentCapabilities().scanOnly) return;
+      scanLoading = true;
+      scanList.textContent = "";
+      var loadingState = document.createElement("p");
+      loadingState.className = "member-block-state";
+      loadingState.textContent = "Consultando o scan-only…";
+      scanList.appendChild(loadingState);
+      request("/api/scan-only")
+        .then(function (payload) {
+          if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar o scan-only.");
+          scanMessages = Array.isArray(payload.messages) ? payload.messages : [];
+          renderScanMessages();
+        })
+        .catch(function (error) {
+          scanList.textContent = "";
+          var message = document.createElement("p");
+          message.className = "member-block-state";
+          message.textContent = error.message || "Não consegui carregar as mensagens do scan-only agora.";
+          scanList.appendChild(message);
+        })
+        .finally(function () { scanLoading = false; });
+    }
+
     function openMemberModal(modal, form, statusNode) {
       if (!modal) return;
       activeModal = modal;
@@ -963,6 +1098,7 @@
       if (workspace) workspace.setAttribute("inert", "");
       if (form) form.reset();
       if (statusNode) statusNode.textContent = "";
+      if (modal === noticeModal) clearNoticeAttachment();
       var first = form && form.querySelector("input:not([type=hidden]), textarea, select");
       if (first) first.focus();
     }
@@ -975,6 +1111,43 @@
       if (restoreFocus && activeModalPreviousFocus && typeof activeModalPreviousFocus.focus === "function") activeModalPreviousFocus.focus();
       activeModal = null;
       activeModalPreviousFocus = null;
+    }
+
+    function clearNoticeAttachment() {
+      noticeAttachmentData = null;
+      if (noticeAttachment) noticeAttachment.value = "";
+      if (noticeAttachmentPreview) {
+        noticeAttachmentPreview.textContent = "";
+        noticeAttachmentPreview.hidden = true;
+      }
+      if (noticeDropzone) noticeDropzone.classList.remove("is-dragover");
+    }
+
+    function readNoticeAttachment(file) {
+      if (!file) return;
+      var allowed = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+      if (allowed.indexOf(String(file.type || "").toLowerCase()) < 0 || file.size > 8 * 1024 * 1024) {
+        if (noticeFormStatus) {
+          noticeFormStatus.textContent = "Escolha uma imagem PNG, JPG, GIF ou WebP de até 8 MB.";
+          noticeFormStatus.dataset.state = "error";
+        }
+        clearNoticeAttachment();
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        noticeAttachmentData = { data: String(reader.result || ""), name: String(file.name || "anexo"), type: String(file.type || "image/png") };
+        if (noticeAttachmentPreview) {
+          noticeAttachmentPreview.textContent = "";
+          var image = document.createElement("img");
+          image.src = noticeAttachmentData.data;
+          image.alt = "Prévia do anexo";
+          noticeAttachmentPreview.appendChild(image);
+          noticeAttachmentPreview.hidden = false;
+        }
+        if (noticeFormStatus && noticeFormStatus.dataset.state === "error") noticeFormStatus.textContent = "";
+      };
+      reader.readAsDataURL(file);
     }
 
     function identityIsReady(identity) {
@@ -1015,7 +1188,15 @@
       var assignmentsBlock = document.createElement("section");
       assignmentsBlock.className = "member-data-block member-data-block--wide";
       assignmentsBlock.id = "member-results";
-      assignmentsBlock.innerHTML = "<div class=\"member-data-heading\"><h2 id=\"member-results-title\">Provas</h2></div>";
+      assignmentsBlock.innerHTML = "<div class=\"member-data-heading member-overview-process-heading\"><h2 id=\"member-results-title\">Processo e provas</h2><a class=\"text-link\" data-member-view-link=\"process\" href=\"/area/?view=process\">Ver detalhes ↗</a></div>";
+      var pendingCount = assignments.filter(function (assignment) { return assignment.status === "assigned" || assignment.status === "in_progress"; }).length;
+      var submittedCount = assignments.filter(function (assignment) { return assignment.status === "submitted"; }).length;
+      var summary = document.createElement("p");
+      summary.className = "member-overview-process-summary";
+      summary.textContent = assignments.length
+        ? assignments.length + (assignments.length === 1 ? " prova atribuída" : " provas atribuídas") + " · " + pendingCount + (pendingCount === 1 ? " pendente" : " pendentes") + " · " + submittedCount + (submittedCount === 1 ? " resultado" : " resultados")
+        : "Nenhuma prova foi atribuída ainda. Seu processo aparece aqui quando a Gerência iniciar uma etapa.";
+      assignmentsBlock.appendChild(summary);
       if (!assignments.length) {
         var empty = document.createElement("p");
         empty.className = "member-block-state";
@@ -1869,6 +2050,36 @@
         openMemberModal(noticeModal, noticeForm, noticeFormStatus);
       });
     });
+    scanFilterButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        scanStatusFilter = button.dataset.memberScanFilter || "all";
+        scanFilterButtons.forEach(function (candidate) {
+          var selected = candidate === button;
+          candidate.classList.toggle("is-active", selected);
+          candidate.setAttribute("aria-pressed", String(selected));
+        });
+        renderScanMessages();
+      });
+    });
+    if (noticeAttachment) noticeAttachment.addEventListener("change", function () { readNoticeAttachment(noticeAttachment.files && noticeAttachment.files[0]); });
+    if (noticeDropzone) {
+      ["dragenter", "dragover"].forEach(function (eventName) {
+        noticeDropzone.addEventListener(eventName, function (event) {
+          event.preventDefault();
+          noticeDropzone.classList.add("is-dragover");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (eventName) {
+        noticeDropzone.addEventListener(eventName, function (event) {
+          event.preventDefault();
+          noticeDropzone.classList.remove("is-dragover");
+        });
+      });
+      noticeDropzone.addEventListener("drop", function (event) {
+        var files = event.dataTransfer && event.dataTransfer.files;
+        readNoticeAttachment(files && files[0]);
+      });
+    }
     if (noticeClose) noticeClose.addEventListener("click", function () { closeMemberModal(noticeModal, true); });
     if (noticeCancel) noticeCancel.addEventListener("click", function () { closeMemberModal(noticeModal, true); });
     if (noticeModal) noticeModal.addEventListener("click", function (event) {
@@ -1886,6 +2097,11 @@
         body: String(formData.get("body") || "").trim(),
         image_url: String(formData.get("image_url") || "").trim()
       };
+      if (noticeAttachmentData) {
+        payload.attachment_data = noticeAttachmentData.data;
+        payload.attachment_name = noticeAttachmentData.name;
+        payload.attachment_type = noticeAttachmentData.type;
+      }
       if (noticeFormStatus) {
         noticeFormStatus.textContent = "Publicando aviso…";
         noticeFormStatus.dataset.state = "pending";
@@ -1910,6 +2126,53 @@
           noticeFormStatus.dataset.state = "error";
         }
       }).finally(function () { site.setButtonBusy(noticeSubmit, false); });
+    });
+    if (partnerOpen) partnerOpen.addEventListener("click", function () {
+      openMemberModal(partnerModal, partnerForm, partnerFormStatus);
+    });
+    if (partnerClose) partnerClose.addEventListener("click", function () { closeMemberModal(partnerModal, true); });
+    if (partnerCancel) partnerCancel.addEventListener("click", function () { closeMemberModal(partnerModal, true); });
+    if (partnerModal) partnerModal.addEventListener("click", function (event) {
+      if (event.target === partnerModal) closeMemberModal(partnerModal, true);
+    });
+    if (partnerForm) partnerForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!partnerForm.checkValidity()) {
+        partnerForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(partnerForm);
+      var payload = {
+        title: String(formData.get("title") || "").trim(),
+        description: String(formData.get("description") || "").trim(),
+        discord_user_id: String(formData.get("discord_user_id") || "").trim(),
+        url: String(formData.get("url") || "").trim(),
+        image_url: String(formData.get("image_url") || "").trim()
+      };
+      if (partnerFormStatus) {
+        partnerFormStatus.textContent = "Salvando parceria…";
+        partnerFormStatus.dataset.state = "pending";
+      }
+      site.setButtonBusy(partnerSubmit, true, "Salvando…");
+      request("/api/partners", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true) throw site.friendlyError(response, 201, "Não consegui salvar a parceria.");
+        if (partnerFormStatus) {
+          partnerFormStatus.textContent = "Parceria publicada.";
+          partnerFormStatus.dataset.state = "success";
+        }
+        renderPartners(Object.assign({}, currentProcess || {}, { partners: { items: [] } }));
+        if (currentView === "partners") request("/api/partners").then(function (fresh) { renderPartners(Object.assign({}, currentProcess || {}, fresh)); }).catch(function () {});
+        window.setTimeout(function () { closeMemberModal(partnerModal, true); }, 350);
+      }).catch(function (error) {
+        if (partnerFormStatus) {
+          partnerFormStatus.textContent = error.message || "Não consegui salvar a parceria agora.";
+          partnerFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(partnerSubmit, false); });
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");

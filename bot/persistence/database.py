@@ -464,6 +464,23 @@ CREATE TABLE IF NOT EXISTS public_media_comments (
 CREATE INDEX IF NOT EXISTS idx_public_media_comments_media
     ON public_media_comments(media_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS public_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    image_url TEXT,
+    source_url TEXT,
+    discord_user_id TEXT,
+    created_by_discord_user_id TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_avatar_url TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_partners_updated
+    ON public_partners(updated_at DESC, id DESC);
+
 """
 
 
@@ -1153,6 +1170,60 @@ class PeaceDatabase:
                 "SELECT * FROM candidate_profiles WHERE discord_user_id = ?",
                 (str(discord_user_id),),
             ).fetchone()
+
+    def create_public_partner(
+        self,
+        *,
+        title: str,
+        description: str,
+        image_url: str | None,
+        source_url: str | None,
+        discord_user_id: int | str | None,
+        created_by_discord_user_id: int | str,
+        author_name: str,
+        author_avatar_url: str | None,
+    ) -> sqlite3.Row:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO public_partners (
+                    title, description, image_url, source_url, discord_user_id,
+                    created_by_discord_user_id, author_name, author_avatar_url,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(title)[:120],
+                    str(description)[:1200],
+                    str(image_url) if image_url else None,
+                    str(source_url) if source_url else None,
+                    str(discord_user_id) if discord_user_id else None,
+                    str(created_by_discord_user_id),
+                    str(author_name)[:80],
+                    str(author_avatar_url) if author_avatar_url else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM public_partners WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        return row
+
+    def public_partners(self, *, limit: int = 24) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM public_partners ORDER BY updated_at DESC, id DESC LIMIT ?",
+                    (max(1, min(100, int(limit))),),
+                ).fetchall()
+            )
 
     def create_exam_assignment(
         self,

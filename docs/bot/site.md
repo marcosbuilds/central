@@ -227,6 +227,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/member/auth/revoke` | revokes the current member session and clears the cookie |
 | Netlify `/api/member/overview` | returns the read-only, capability-filtered member overview |
 | Netlify `/api/notices` | proxies the bounded public notices feed |
+| Netlify `/api/scan-only` | proxies the Staff/Gerência-only scan review feed |
 | Netlify `/api/auth/discord/start` | starts Discord OAuth with PKCE and a persisted state |
 | Netlify `/api/auth/discord/callback` | validates the state, exchanges the code, and creates the HttpOnly session |
 | Netlify `/api/auth/discord/session` | returns the authenticated Discord identity and guild state |
@@ -255,6 +256,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/member/auth/revoke` | revokes the current member session |
 | ACLClouds `/api/member/overview` | returns only source-backed blocks authorized for the current role |
 | ACLClouds `/api/notices` | returns the bounded public notices feed |
+| ACLClouds `/api/scan-only` | returns bounded scan-only messages and their approval status to authorized Staff/Gerência accounts |
 | ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
 | ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
 | ACLClouds `/api/peace/process` | rechecks the live Peace role before returning member-area process data; 401, 403, or 503 remain distinct |
@@ -287,9 +289,10 @@ notices panel on demand:
 - `/meu-processo/` — candidate-owned process view;
 - `/area/?view=manager` — shown only for the manager capability and still
   guarded by the server. `/gerencia/provas/` remains a compatibility redirect.
-- `/area/?view=scan` — the existing scan-only Discord handoff for Staff,
-  Gerência, and Founder; the site links to the configured channel and does not
-  copy its private messages into the public shell.
+- `/area/?view=scan` — the existing scan-only review surface for Staff,
+  Gerência, and Founder; the site shows bounded messages with pending,
+  approved, and rejected filters, while the configured Discord channel remains
+  the source of authority.
 - `/area/?view=investigation` — investigator-only case workspace. It contains
   the case register, evidence/clip references, a read-only audit trail, and the
   approval-link action.

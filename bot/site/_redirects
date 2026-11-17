@@ -34,6 +34,7 @@
 /api/auth/discord/logout https://peace-tools-8be02694.aclclouds.online/api/auth/discord/logout 200!
 /api/notices https://peace-tools-8be02694.aclclouds.online/api/notices 200!
 /api/partners https://peace-tools-8be02694.aclclouds.online/api/partners 200!
+/api/scan-only https://peace-tools-8be02694.aclclouds.online/api/scan-only 200!
 /api/investigations https://peace-tools-8be02694.aclclouds.online/api/investigations 200!
 /api/investigations/:case_id https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id 200!
 /api/investigations/:case_id/evidence https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id/evidence 200!

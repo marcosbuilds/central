@@ -1,4 +1,4 @@
-/* Public clips: a focused video library with source-safe playback and light social actions. */
+/* Public clips: a focused video library with source-safe playback. */
 .public-context-bar {
   position: sticky;
   z-index: 50;
@@ -98,6 +98,8 @@
 .clip-card-image { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; }
 .clip-card-embed { background: #050607; }
 .clip-card-video { background: #050607; }
+.clip-card-video-placeholder { display: grid; width: 100%; height: 100%; place-items: center; background: radial-gradient(circle at 50% 35%, rgba(185, 202, 211, 0.16), transparent 58%), #080b0e; color: var(--quiet); }
+.clip-card-video-placeholder::after { width: 2.2rem; height: 2.2rem; border: 1px solid rgba(185, 202, 211, 0.45); border-radius: 50%; content: "▶"; color: var(--accent); font-size: 0.72rem; line-height: 2.15rem; text-align: center; text-indent: 0.1rem; }
 .clip-card-image { transition: transform 420ms var(--ease); }
 .clip-card:hover .clip-card-image { transform: scale(1.025); }
 .clip-card-source { display: grid; min-height: 100%; align-content: center; gap: 0.55rem; padding: 1.2rem; background: radial-gradient(circle at 50% 24%, rgba(185, 202, 211, 0.15), transparent 62%), #091015; text-align: center; }
@@ -106,37 +108,15 @@
 .clip-card-badge { position: absolute; z-index: 2; top: 0.7rem; left: 0.7rem; max-width: calc(100% - 1.4rem); overflow: hidden; padding: 0.32rem 0.48rem; border: 1px solid rgba(238, 241, 243, 0.22); border-radius: 999px; background: rgba(5, 6, 7, 0.72); color: var(--text); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.52rem; letter-spacing: 0.06em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; backdrop-filter: blur(10px); }
 .clip-card-copy { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; padding: 0.95rem 1rem 1rem; }
 .clip-card-author { display: flex; min-width: 0; align-items: center; gap: 0.55rem; }
-.clip-card-author-avatar,
-.clip-comment-avatar { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 50%; background: #17232a; color: var(--accent); font-size: 0.62rem; font-weight: 800; }
-.clip-card-author-avatar img,
-.clip-comment-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.clip-card-author-avatar { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 50%; background: #17232a; color: var(--accent); font-size: 0.62rem; font-weight: 800; }
+.clip-card-author-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .clip-card-author-copy { display: grid; min-width: 0; gap: 0.15rem; }
 .clip-card-author-copy strong { overflow: hidden; color: var(--text); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
 .clip-card-author-copy small { color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.56rem; }
 .clip-card-title { margin: 0.9rem 0 0.35rem; overflow-wrap: anywhere; color: var(--text); font-size: 1.05rem; letter-spacing: -0.04em; line-height: 1.15; }
 .clip-card-description { min-height: 2.3rem; margin: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 0.7rem; line-height: 1.55; }
-.clip-card-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: auto; padding-top: 0.9rem; border-top: 1px solid var(--border); }
-.clip-action { display: inline-flex; min-height: 2.5rem; align-items: center; gap: 0.35rem; padding: 0.45rem 0.55rem; border: 1px solid transparent; border-radius: 0.5rem; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.64rem; font-weight: 700; }
-.clip-action svg { width: 1rem; height: 1rem; }
-.clip-action:hover,
-.clip-action:focus-visible { border-color: var(--border); background: rgba(185, 202, 211, 0.07); color: var(--text); outline: none; }
-.clip-action.is-active { border-color: rgba(217, 133, 142, 0.4); background: rgba(217, 133, 142, 0.1); color: var(--danger); }
-.clip-action:disabled { cursor: wait; opacity: 0.5; }
-.clip-action-count { color: var(--quiet); font-size: 0.58rem; font-weight: 600; }
-.clip-comment-panel { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--border); }
-.clip-comments { display: grid; gap: 0.65rem; }
-.clip-comments-empty { margin: 0; color: var(--quiet); font-size: 0.66rem; }
-.clip-comment { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem; align-items: start; }
-.clip-comment-avatar { width: 1.7rem; height: 1.7rem; font-size: 0.54rem; }
-.clip-comment-copy { min-width: 0; }
-.clip-comment-copy strong { color: var(--text); font-size: 0.64rem; }
-.clip-comment-copy p { margin: 0.15rem 0 0; overflow-wrap: anywhere; color: var(--muted); font-size: 0.65rem; line-height: 1.5; }
-.clip-comment-form { display: grid; gap: 0.55rem; margin-top: 0.85rem; }
-.clip-comment-form label { display: grid; gap: 0.35rem; color: var(--quiet); font-size: 0.62rem; font-weight: 700; }
-.clip-comment-form textarea { width: 100%; min-height: 4.1rem; resize: vertical; padding: 0.65rem 0.7rem; border: 1px solid var(--border); border-radius: 0.5rem; outline: 0; background: var(--surface-soft); color: var(--text); font: inherit; font-size: 0.7rem; line-height: 1.5; }
-.clip-comment-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(185, 202, 211, 0.09); }
-.clip-comment-form textarea:disabled { cursor: not-allowed; opacity: 0.58; }
-.clip-comment-form .button { justify-self: start; min-height: 2.35rem; padding-inline: 0.8rem; font-size: 0.64rem; }
+.clips-feed--member .clips-search { display: none; }
+.clips-feed--member .clips-filter-row { margin-top: 0; }
 .clips-empty { margin: 2rem 0 0; padding: 2rem 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; }
 .clips-retry { margin-top: 0.75rem; color: var(--accent); font-size: 0.7rem; }
 .clips-retry:hover, .clips-retry:focus-visible { color: var(--text); }

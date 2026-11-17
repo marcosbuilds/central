@@ -2419,7 +2419,7 @@ def test_public_site_files_are_complete():
     assert "flows.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert "studies.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert "responsive.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
-    assert "clips.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
+    assert "clips.css?v=20261117-03" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert "peace-polish.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
     assert 'data-notices-bell' in notices_html
@@ -2507,9 +2507,17 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-manager-modal' in member_html
     assert 'data-member-manager-form' in member_html
     assert 'data-member-manager-submit' in member_html
+    assert 'data-member-partner-open' in member_html
+    assert 'data-member-investigation-open' in member_html
+    assert 'data-member-scan-link' in member_html
     assert "Atribuir prova" in member_html
     assert "/api/exams/assignments" in member_script
     assert "syncSidebarLocation();\n      applyCapabilityVisibility();" in member_script
+    assert 'link.hasAttribute("data-member-scan")' in member_script
+    assert 'Array.isArray(block) ? block' in member_script
+    assert 'currentView === "manager"' in member_script
+    assert 'currentView === "partners"' in member_script
+    assert 'currentView === "investigation"' in member_script
     assert ".member-nav-icon" in system_stylesheet
     assert "Sair da conta" in member_html
     assert "member-sidebar-toggle" in member_html
@@ -2573,6 +2581,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/estudos/a-peace/ /estudos/peace/leitor/ 301!" in redirect_lines
     assert "/api/status https://peace-tools-8be02694.aclclouds.online/api/status 200!" in redirects
     assert "/api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!" in redirects
+    assert "/api/scan-only https://peace-tools-8be02694.aclclouds.online/api/scan-only 200!" in redirect_lines
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
@@ -2596,6 +2605,12 @@ def test_local_proxy_accepts_only_numeric_manager_reject_ids():
     assert EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/42/reject")
     assert not EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/not-an-id/reject")
     assert not EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/42/reject/extra")
+
+
+def test_local_proxy_exposes_the_protected_scan_only_route():
+    from ops.peace_site_server import ACL_API_ROUTES
+
+    assert "/api/scan-only" in ACL_API_ROUTES
 
 
 def test_local_proxy_forwards_only_the_member_session_and_bearer():

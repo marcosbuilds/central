@@ -13,13 +13,11 @@
   var input = form && form.querySelector("[data-clips-query]");
   var submit = form && form.querySelector("[data-clips-submit]");
   var retry = scope.querySelector("[data-clips-retry]");
-  var toast = scope.querySelector("[data-clips-toast]");
   var filterButtons = Array.prototype.slice.call(scope.querySelectorAll("[data-clips-filter]"));
-  var toastTimer = null;
-  var viewer = { state: "anonymous", can_interact: false };
   var loading = false;
   var activeFilter = "all";
   var currentItems = [];
+  var videoObserver = null;
 
   function isActiveView() {
     var view = form && form.closest && form.closest("[data-member-view]");
@@ -109,14 +107,13 @@
       iframe.title = titleFor(item);
       visual.appendChild(iframe);
     } else if (kind === "video" && url) {
-      var video = node("video", "clip-card-video");
-      video.src = url;
-      video.controls = true;
-      video.preload = "metadata";
-      video.playsInline = true;
-      if (thumbnail) video.poster = thumbnail;
-      video.setAttribute("aria-label", "Reproduzir " + titleFor(item));
-      visual.appendChild(video);
+      var placeholder = node("div", "clip-card-video-placeholder");
+      placeholder.dataset.videoUrl = url;
+      placeholder.dataset.videoTitle = titleFor(item);
+      if (thumbnail) placeholder.dataset.videoPoster = thumbnail;
+      placeholder.setAttribute("role", "img");
+      placeholder.setAttribute("aria-label", "Vídeo: " + titleFor(item));
+      visual.appendChild(placeholder);
     } else if (kind === "image" && url) {
       var image = node("img", "clip-card-image");
       image.src = url;
@@ -156,104 +153,6 @@
     return visual;
   }
 
-  function icon(name) {
-    var paths = {
-      heart: '<path d="M20.8 8.8c0 5.1-8.8 10.1-8.8 10.1S3.2 13.9 3.2 8.8A4.7 4.7 0 0 1 12 6.3a4.7 4.7 0 0 1 8.8 2.5Z"></path>',
-      comment: '<path d="M20 11.5a7.6 7.6 0 0 1-8 7.1 8.8 8.8 0 0 1-3.8-.8L4 19l1.1-3.2A6.9 6.9 0 0 1 4 11.5a7.6 7.6 0 0 1 8-7.1 7.6 7.6 0 0 1 8 7.1Z"></path><path d="M8 11.7h.1M12 11.7h.1M16 11.7h.1"></path>'
-    };
-    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "1.6");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.setAttribute("aria-hidden", "true");
-    svg.innerHTML = paths[name] || "";
-    return svg;
-  }
-
-  function showToast(message, tone) {
-    if (!toast) return;
-    toast.textContent = message;
-    toast.dataset.state = tone || "info";
-    toast.hidden = false;
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(function () { toast.hidden = true; }, 4800);
-  }
-
-  function interactionHint() {
-    if (viewer.state === "peace_member") return "";
-    if (viewer.state === "peace_required") return "Solicite a setagem para interagir.";
-    if (viewer.state === "not_member") return "Entre na Peace para interagir.";
-    if (viewer.state === "unavailable") return "A conexão precisa ser validada novamente.";
-    return "Conecte o Discord para interagir.";
-  }
-
-  function openInteraction() {
-    var returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-    if (viewer.state === "peace_required" || viewer.state === "not_member") {
-      window.location.assign("/entrar/");
-      return;
-    }
-    window.location.assign("/acessar/?return_to=" + returnTo);
-  }
-
-  function updateSocial(card, item) {
-    var social = item.social || {};
-    var like = card.querySelector("[data-clip-like]");
-    var count = card.querySelector("[data-clip-like-count]");
-    var commentsCount = card.querySelector("[data-clip-comment-count]");
-    if (count) count.textContent = String(Number(social.like_count || 0));
-    if (commentsCount) commentsCount.textContent = String(Number(social.comment_count || 0));
-    if (like) {
-      like.classList.toggle("is-active", social.liked === true);
-      like.setAttribute("aria-pressed", String(social.liked === true));
-      like.setAttribute("aria-label", social.liked === true ? "Descurtir clip" : "Curtir clip");
-    }
-  }
-
-  function renderComments(card, item) {
-    var comments = card.querySelector("[data-clip-comments]");
-    if (!comments) return;
-    comments.replaceChildren();
-    var values = Array.isArray(item.comments) ? item.comments : [];
-    if (!values.length) {
-      comments.appendChild(node("p", "clip-comments-empty", "Ainda não há comentários."));
-      return;
-    }
-    values.forEach(function (comment) {
-      var row = node("article", "clip-comment");
-      var avatar = node("span", "clip-comment-avatar");
-      var avatarUrl = safeUrl(comment.author_avatar_url);
-      if (avatarUrl) {
-        var image = node("img", "", "");
-        image.src = avatarUrl;
-        image.alt = "";
-        image.width = 28;
-        image.height = 28;
-        image.loading = "lazy";
-        avatar.appendChild(image);
-      } else {
-        avatar.textContent = String(comment.author_name || "M").charAt(0).toUpperCase();
-      }
-      var copy = node("div", "clip-comment-copy");
-      copy.appendChild(node("strong", "", comment.author_name || "Membro"));
-      copy.appendChild(node("p", "", comment.body || ""));
-      row.appendChild(avatar);
-      row.appendChild(copy);
-      comments.appendChild(row);
-    });
-  }
-
-  function requestAction(payload) {
-    return site.attemptEndpoint("/api/clips", {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }, 12000).then(function (response) { return response.json(); });
-  }
-
   function makeCard(item) {
     var card = node("article", "clip-card");
     card.setAttribute("role", "listitem");
@@ -286,109 +185,42 @@
       copy.appendChild(node("p", "clip-card-description", cleanText(item.provider_description)));
     }
 
-    var actions = node("div", "clip-card-actions");
-    var like = node("button", "clip-action", "");
-    like.type = "button";
-    like.setAttribute("data-clip-like", "");
-    like.setAttribute("aria-pressed", "false");
-    like.appendChild(icon("heart"));
-    like.appendChild(node("span", "", "Curtir"));
-    var likeCount = node("strong", "clip-action-count", "0");
-    likeCount.setAttribute("data-clip-like-count", "");
-    like.appendChild(likeCount);
-    like.addEventListener("click", function () {
-      if (!viewer.can_interact) {
-        showToast(interactionHint(), "warning");
-        openInteraction();
-        return;
-      }
-      like.disabled = true;
-      requestAction({ action: "like", media_id: item.id })
-        .then(function (payload) {
-          item.social = item.social || {};
-          item.social.liked = payload.liked === true;
-          item.social.like_count = payload.like_count || 0;
-          updateSocial(card, item);
-        })
-        .catch(function (error) {
-          showToast(error.message || "Não consegui registrar a curtida.", "error");
-        })
-        .finally(function () { like.disabled = false; });
-    });
-    actions.appendChild(like);
-
-    var commentToggle = node("button", "clip-action", "");
-    commentToggle.type = "button";
-    commentToggle.setAttribute("aria-expanded", "false");
-    var commentPanelId = "clip-comments-" + String(item.id || Math.random().toString(36).slice(2)).replace(/[^a-z0-9_-]/gi, "-");
-    commentToggle.setAttribute("aria-controls", commentPanelId);
-    commentToggle.appendChild(icon("comment"));
-    commentToggle.appendChild(node("span", "", "Comentários"));
-    var commentCount = node("strong", "clip-action-count", "0");
-    commentCount.setAttribute("data-clip-comment-count", "");
-    commentToggle.appendChild(commentCount);
-    actions.appendChild(commentToggle);
-    copy.appendChild(actions);
-
-    var commentPanel = node("div", "clip-comment-panel");
-    commentPanel.id = commentPanelId;
-    commentPanel.hidden = true;
-    var comments = node("div", "clip-comments");
-    comments.setAttribute("data-clip-comments", "");
-    commentPanel.appendChild(comments);
-    var commentForm = node("form", "clip-comment-form");
-    var label = node("label", "", "Escreva um comentário");
-    var textarea = node("textarea", "", "");
-    textarea.name = "comment";
-    textarea.maxLength = 500;
-    textarea.rows = 2;
-    textarea.placeholder = viewer.can_interact ? "Compartilhe uma observação…" : "Conecte o Discord para comentar";
-    textarea.disabled = !viewer.can_interact;
-    var send = node("button", "button button--outline", "Publicar");
-    send.type = "submit";
-    send.disabled = !viewer.can_interact;
-    label.appendChild(textarea);
-    commentForm.appendChild(label);
-    commentForm.appendChild(send);
-    commentForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      if (!viewer.can_interact) {
-        showToast(interactionHint(), "warning");
-        openInteraction();
-        return;
-      }
-      var text = textarea.value.trim();
-      if (!text) {
-        textarea.focus();
-        return;
-      }
-      send.disabled = true;
-      requestAction({ action: "comment", media_id: item.id, text: text })
-        .then(function (payload) {
-          item.comments = (item.comments || []).concat(payload.comment || []);
-          item.social = item.social || {};
-          item.social.comment_count = Number(item.social.comment_count || 0) + 1;
-          textarea.value = "";
-          renderComments(card, item);
-          updateSocial(card, item);
-          showToast("Comentário publicado.", "success");
-        })
-        .catch(function (error) {
-          showToast(error.message || "Não consegui publicar o comentário.", "error");
-        })
-        .finally(function () { send.disabled = false; });
-    });
-    commentPanel.appendChild(commentForm);
-    copy.appendChild(commentPanel);
-    commentToggle.addEventListener("click", function () {
-      commentPanel.hidden = !commentPanel.hidden;
-      commentToggle.setAttribute("aria-expanded", String(!commentPanel.hidden));
-      if (!commentPanel.hidden && viewer.can_interact) textarea.focus();
-    });
     card.appendChild(copy);
-    renderComments(card, item);
-    updateSocial(card, item);
     return card;
+  }
+
+  function hydrateVideoCard(card) {
+    var placeholder = card && card.querySelector("[data-video-url]");
+    if (!placeholder || placeholder.dataset.hydrated === "true") return;
+    placeholder.dataset.hydrated = "true";
+    var video = node("video", "clip-card-video");
+    video.src = placeholder.dataset.videoUrl;
+    video.controls = true;
+    video.preload = "metadata";
+    video.playsInline = true;
+    if (placeholder.dataset.videoPoster) video.poster = placeholder.dataset.videoPoster;
+    video.setAttribute("aria-label", "Reproduzir " + (placeholder.dataset.videoTitle || "clipe"));
+    placeholder.replaceWith(video);
+  }
+
+  function observeVideoCards() {
+    if (videoObserver) videoObserver.disconnect();
+    var cards = Array.prototype.slice.call(list.querySelectorAll(".clip-card"));
+    if (!cards.length) return;
+    if (typeof IntersectionObserver !== "function") {
+      cards.forEach(hydrateVideoCard);
+      return;
+    }
+    videoObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        hydrateVideoCard(entry.target);
+        videoObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: "280px 0px" });
+    cards.forEach(function (card) {
+      if (card.querySelector("[data-video-url]")) videoObserver.observe(card);
+    });
   }
 
   function renderSkeleton() {
@@ -416,7 +248,6 @@
     if (activeFilter === "engagement") items.sort(function (a, b) { return Number((b && b.engagement) || 0) - Number((a && a.engagement) || 0); });
     if (activeFilter === "least_engagement") items.sort(function (a, b) { return Number((a && a.engagement) || 0) - Number((b && b.engagement) || 0); });
     if (activeFilter === "recent") items.sort(function (a, b) { return new Date(b && b.created_at || 0).getTime() - new Date(a && a.created_at || 0).getTime(); });
-    viewer = payload.viewer || { state: "anonymous", can_interact: false };
     list.replaceChildren();
     list.classList.remove("is-refreshing");
     list.setAttribute("aria-busy", "false");
@@ -433,6 +264,7 @@
     } else {
       if (empty) empty.hidden = true;
       items.forEach(function (item) { list.appendChild(makeCard(item)); });
+      observeVideoCards();
     }
     var total = Number(payload.total || items.length);
     if (status) status.textContent = total
@@ -472,7 +304,6 @@
           source: media && media.sources && media.sources.clips
             ? media.sources.clips
             : { state: "ready", available: true, stale: false },
-          viewer: { state: "anonymous", can_interact: false },
           fallback: "media"
         };
       });
@@ -550,7 +381,7 @@
     button.addEventListener("click", function () {
       activeFilter = button.dataset.clipsFilter || "all";
       filterButtons.forEach(function (candidate) { var selected = candidate === button; candidate.classList.toggle("is-active", selected); candidate.setAttribute("aria-pressed", String(selected)); });
-      render({ clips: currentItems, total: currentItems.length, source: { state: "ready" }, viewer: viewer });
+      render({ clips: currentItems, total: currentItems.length, source: { state: "ready" } });
     });
   });
 
