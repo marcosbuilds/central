@@ -69,12 +69,12 @@
     if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
     if (item.status === "in_progress") return "Em andamento";
     if (item.status === "expired") return "Prazo encerrado";
+    if (item.status === "rejected" || item.status === "revoked") return "Reprovado";
     return "Aguardando candidato";
   }
   function examTypeLabel(item) {
     if (item && item.exam_type_label) return item.exam_type_label;
-    if (item && item.exam_type === "tier_i") return "Tier I";
-    return item && item.question_bank_version ? item.question_bank_version : "Tipo não identificado";
+    return "Prova teórica — Civil";
   }
   function renderList(assignments) {
     if (!list) return;
@@ -93,7 +93,7 @@
       var heading = document.createElement("h3");
       heading.textContent = "#" + item.id + " · " + item.candidate_username;
       var detail = document.createElement("p");
-      detail.textContent = examTypeLabel(item) + " · Discord ID " + (item.candidate_discord_user_id || "—") + " · Prazo " + date(item.deadline_at) + " · " + (item.score === null ? "sem resultado" : "nota " + item.score + "/100");
+      detail.textContent = examTypeLabel(item) + " · " + (item.deadline_at ? "termina " + date(item.deadline_at) : "tempo de " + (item.duration_hours || 24) + "h após iniciar") + " · " + (item.score === null ? "sem resultado" : "nota " + item.score + "/100");
       copy.appendChild(heading);
       copy.appendChild(detail);
       var badge = document.createElement("span");
@@ -132,28 +132,24 @@
   }
 
   if (form) {
-    var deadlineInput = form.elements.deadline_at;
-    if (deadlineInput) {
-      var initial = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      initial.setSeconds(0, 0);
-      deadlineInput.value = new Date(initial.getTime() - initial.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    }
+    var durationInput = form.elements.duration_hours;
+    if (durationInput) durationInput.value = "24";
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       var formData = new FormData(form);
       var examType = String(formData.get("exam_type") || "").trim();
-      var deadlineDate = new Date(String(formData.get("deadline_at") || ""));
-      if (examType !== "tier_i") {
-        setMessage(formMessage, "Somente a prova Tier I está disponível nesta fase.", "error");
+      var durationHours = Number(formData.get("duration_hours"));
+      if (examType !== "theoretical_civil") {
+        setMessage(formMessage, "Este tipo de prova ainda não está disponível.", "error");
         return;
       }
-      if (!formData.get("candidate_discord_user_id") || !formData.get("candidate_username") || !Number.isFinite(deadlineDate.getTime())) {
-        setMessage(formMessage, "Preencha o ID, o username e o prazo.", "error");
+      if (!formData.get("candidate_discord_user_id") || !formData.get("candidate_username") || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 168) {
+        setMessage(formMessage, "Preencha o candidato e informe entre 1 e 168 horas.", "error");
         return;
       }
       submitButton.disabled = true;
       setMessage(formMessage, "Gerando atribuição…", "pending");
-      request("/api/exams/assignments", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ exam_type: examType, candidate_discord_user_id: String(formData.get("candidate_discord_user_id")), candidate_username: String(formData.get("candidate_username")), deadline_at: deadlineDate.toISOString() }) })
+      request("/api/exams/assignments", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ exam_type: examType, candidate_discord_user_id: String(formData.get("candidate_discord_user_id")), candidate_username: String(formData.get("candidate_username")), duration_hours: durationHours }) })
         .then(function (payload) {
           setMessage(formMessage, "Atribuição criada. Copie o link antes de sair.", "success");
           if (generated) generated.hidden = false;

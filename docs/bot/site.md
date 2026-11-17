@@ -104,7 +104,10 @@ investigative case, or synthetic record. With the public member session it
 revalidates the cookie/bearer and the live Peace role, then loads the profile,
 process summary, and only the actions authorized by the current capability.
 Public notices are kept in the separate notices feed and loaded on demand by
-the overview bell; they do not block the initial workspace request.
+the overview bell; they do not block the initial workspace request. Staff and
+Gerência see a compact `+` action inside that panel to publish a title, Discord
+Markdown body, and optional image; the API keeps the author avatar and does
+not allow `@everyone` notifications.
 Investigator data and actions are omitted from the payload unless the live
 member has `Investigator` or `Lead Investigator`. When present, the block reads
 from the site-owned investigative surface and does not read an investigation
@@ -147,9 +150,12 @@ fragment targets are focusable so keyboard and screen-reader users can move
 from the outline to the requested chapter.
 
 The selection contract is intentionally narrower than the member area: only
-Gerência may create, assign, revoke, or grade an exam, and that authorization
-is enforced server-side by a stable Discord role ID. Candidate sessions read
-only records bound to their authenticated Discord ID. A username is a display
+Gerência may create and list its exam assignments, reject its own assigned or
+in-progress assignments, or read the submitted review, and that authorization
+is enforced server-side by a stable Discord role ID. Candidate submissions are
+graded server-side; there is no public Gerência endpoint for manually
+correcting a grade in the current surface. Candidate sessions read only
+records bound to their authenticated Discord ID. A username is a display
 snapshot rather than an authorization key. See
 `docs/architecture/decisions/2026-11-13-peace-public-learning-and-selection.md`
 for the public boundary and delivered flow.
@@ -231,6 +237,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
 | Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
 | Netlify `/api/exams/assignments` | allows only Gerência to create and list assignments |
+| Netlify `/api/exams/assignments/{assignment_id}/reject` | allows only the owning Gerência to reject an assigned or in-progress assignment |
 | Netlify `/api/investigations` | lists or creates site-owned investigative cases for members with `Investigator` or `Lead Investigator` |
 | Netlify `/api/investigations/{case_id}` | reads a case or moves it through the investigator lifecycle; archiving requires unanimous approval |
 | Netlify `/api/investigations/{case_id}/evidence` | records a bounded occurrence, confirmed clip, Discord message, or HTTPS reference while the case is still editable |
@@ -320,9 +327,11 @@ Candidate process and exam surfaces use the same contextual header pattern: the
 route title stays in the header and the next authenticated action appears first.
 Supporting identity boundaries and process stages are available below the action
 instead of preceding it. The Gerência surface is a view inside `/area/`, with a
-centralized assignment modal, candidate history, expandable result review,
-avatar/profile identity and copyable Discord ID. The legacy route only redirects
-there, so it cannot drift into a second form or navigation model.
+centralized assignment modal, candidate search and status filters, expandable
+result review, avatar/profile identity, and an immediate owner-checked reject
+action. Its visible list refreshes while the view is active and pauses when the
+tab is hidden. The legacy route only redirects there, so it cannot drift into a
+second form or navigation model.
 
 ### Investigator approval workflow
 

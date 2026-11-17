@@ -92,7 +92,7 @@
     if (title) title.textContent = caseRecord.title || "Caso investigativo";
     if (summary) summary.textContent = caseRecord.summary || "Sem resumo informado.";
     if (expectation) expectation.textContent = approval.expected_outcome || "A expectativa não foi informada.";
-    if (evaluator) evaluator.textContent = "Discord ID " + String(approval.evaluator_discord_user_id || "autorizado");
+    if (evaluator) evaluator.textContent = "Avaliador " + String(approval.evaluator_discord_user_id || "autorizado");
     renderEvidence(caseRecord.evidence);
     if (approval.status === "approved" || approval.status === "rejected") {
       setStatus(approval.status === "approved" ? "Sua decisão foi registrada como aprovada." : "Sua decisão foi registrada como reprovada.", approval.status === "approved" ? "success" : "error");

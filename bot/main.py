@@ -75,11 +75,12 @@ PUBLIC_MEMBER_SESSION_EXPIRED = "Sua sessão expirou. Entre novamente para conti
 PUBLIC_MEMBER_AUTH_UNAVAILABLE = "A autenticação está temporariamente indisponível. Tente novamente em instantes."
 PUBLIC_MEMBER_OVERVIEW_THROTTLED = "Aguarde alguns segundos antes de atualizar a área."
 PUBLIC_EXAM_TYPE_CONFIG = {
-    "tier_i": {
-        "label": "Tier I",
+    "theoretical_civil": {
+        "label": "Prova teórica — Civil",
         "question_bank_version": CIVIL_BANK_VERSION,
     },
 }
+PUBLIC_EXAM_TYPE_ALIASES = {"tier_i": "theoretical_civil"}
 PUBLIC_API_RATE_LIMITS = {
     "/api/status": (120, 60),
     "/api/media": (12, 60),
@@ -6278,6 +6279,13 @@ class PeaceBot(commands.Bot):
             configured = 14
         return min(30, max(1, configured))
 
+    def public_exam_duration_hours(self, value: object) -> int | None:
+        try:
+            hours = int(str(value or "").strip())
+        except (TypeError, ValueError):
+            return None
+        return hours if 1 <= hours <= 168 else None
+
     @staticmethod
     def public_exam_token(value: object) -> str | None:
         token = str(value or "").strip()
@@ -6321,6 +6329,8 @@ class PeaceBot(commands.Bot):
             ),
             "unknown",
         )
+        if exam_type == "unknown":
+            exam_type = PUBLIC_EXAM_TYPE_ALIASES.get(str(row["question_bank_version"]), exam_type)
         return {
             "id": int(row["id"]),
             "candidate_username": str(row["candidate_username_snapshot"]),
@@ -6328,6 +6338,8 @@ class PeaceBot(commands.Bot):
             "exam_type": exam_type,
             "exam_type_label": PUBLIC_EXAM_TYPE_CONFIG.get(exam_type, {}).get("label", "Tipo não identificado"),
             "passing_score": int(row["passing_score"]),
+            "duration_hours": int(row["duration_hours"] or 24),
+            "question_count": len(materialize_exam(seed=0)[0]) if question_bank_version == CIVIL_BANK_VERSION else None,
             "deadline_at": str(row["deadline_at"]),
             "status": str(row["status"]),
             "created_at": str(row["created_at"]),
@@ -6825,6 +6837,8 @@ class PeaceBot(commands.Bot):
                 "score_scale": int(profile["score_scale"]) if profile is not None else 100,
                 "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
                 "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
+                "completed_exam_count": sum(1 for row in assignments if str(row["status"]) == "submitted"),
+                "pending_exam_count": sum(1 for row in assignments if str(row["status"]) in {"assigned", "in_progress"}),
             },
             "server": membership,
             "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
@@ -6874,7 +6888,7 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "EXAM_LINK_NOT_FOUND", "message": "Esse link não existe ou já não está disponível."}, status=404)
         if str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "Este link foi atribuído a outra conta Discord."}, status=403)
-        if assignment["status"] in {"revoked", "expired"}:
+        if assignment["status"] in {"revoked", "rejected", "expired"}:
             return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Este prazo ou atribuição não está mais disponível."}, status=410)
         return web.json_response({"ok": True, "assignment": self.public_exam_assignment_payload(assignment)})
 
@@ -6905,6 +6919,8 @@ class PeaceBot(commands.Bot):
         assignment_id = int(assignment["id"])
         if assignment["status"] == "submitted":
             return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi enviada e não pode ser refeita.", "assignment": self.public_exam_assignment_payload(assignment)}, status=409)
+        if assignment["status"] in {"revoked", "rejected", "expired"}:
+            return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Esta atribuição não está mais disponível."}, status=410)
         question_order, option_order = materialize_exam()
         assignment, attempt = self.database.start_exam_attempt(
             assignment_id=assignment_id,
@@ -6925,6 +6941,8 @@ class PeaceBot(commands.Bot):
         except (TypeError, ValueError, KeyError, json.JSONDecodeError):
             log.error("Tentativa de prova %s possui materialização inválida", int(attempt["id"]))
             return web.json_response({"ok": False, "code": "EXAM_CORRUPTED", "message": "Não consegui abrir esta prova. A equipe precisa revisar a atribuição."}, status=500)
+        questions = public_exam_payload(stored_order, stored_options)
+        seconds_per_question = int(round((int(assignment["duration_hours"] or 24) * 3600) / max(1, len(questions))))
         return web.json_response(
             {
                 "ok": True,
@@ -6932,7 +6950,8 @@ class PeaceBot(commands.Bot):
                 "attempt": {
                     "id": int(attempt["id"]),
                     "started_at": str(attempt["started_at"]),
-                    "questions": public_exam_payload(stored_order, stored_options),
+                    "questions": questions,
+                    "seconds_per_question": seconds_per_question,
                 },
             }
         )
@@ -7108,22 +7127,24 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da atribuição inválidos."}, status=400)
         candidate_id = str(payload.get("candidate_discord_user_id", "") or "").strip()
         candidate_username = str(payload.get("candidate_username", "") or "").strip()
-        exam_type = str(payload.get("exam_type", "tier_i") or "tier_i").strip().casefold()
+        requested_exam_type = str(payload.get("exam_type", "theoretical_civil") or "theoretical_civil").strip().casefold()
+        exam_type = PUBLIC_EXAM_TYPE_ALIASES.get(requested_exam_type, requested_exam_type)
         if exam_type not in PUBLIC_EXAM_TYPE_CONFIG:
             return web.json_response(
-                {"ok": False, "code": "EXAM_TYPE_UNAVAILABLE", "message": "Este tipo de prova ainda não está disponível. Escolha Tier I."},
+                {"ok": False, "code": "EXAM_TYPE_UNAVAILABLE", "message": "Este tipo de prova ainda não está disponível."},
                 status=400,
             )
-        deadline = self.public_exam_deadline(payload.get("deadline_at"))
+        duration_hours = self.public_exam_duration_hours(payload.get("duration_hours"))
+        legacy_deadline = self.public_exam_deadline(payload.get("deadline_at"))
+        if duration_hours is None and legacy_deadline is not None:
+            remaining_hours = (legacy_deadline - datetime.now(timezone.utc)).total_seconds() / 3600
+            duration_hours = max(1, min(168, int(remaining_hours + 0.999)))
         if not re.fullmatch(r"[0-9]{15,25}", candidate_id):
             return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_ID", "message": "Informe um Discord ID válido."}, status=400)
         if not 2 <= len(candidate_username) <= 80:
             return web.json_response({"ok": False, "code": "INVALID_CANDIDATE_USERNAME", "message": "Informe o username real do Discord."}, status=400)
-        now = datetime.now(timezone.utc)
-        if deadline is None or deadline <= now + timedelta(minutes=1):
-            return web.json_response({"ok": False, "code": "INVALID_DEADLINE", "message": "O prazo precisa estar no futuro."}, status=400)
-        if deadline > now + timedelta(days=self.public_exam_max_deadline_days()):
-            return web.json_response({"ok": False, "code": "DEADLINE_TOO_LONG", "message": "O prazo ultrapassa o limite configurado pela equipe."}, status=400)
+        if duration_hours is None:
+            return web.json_response({"ok": False, "code": "INVALID_DURATION", "message": "Informe a duração da prova em horas."}, status=400)
         candidate_member, candidate_state = await self.public_discord_member_state(candidate_id)
         if candidate_state == "member":
             known_names = {
@@ -7147,14 +7168,15 @@ class PeaceBot(commands.Bot):
                 manager_discord_user_id=session["discord_user_id"],
                 question_bank_version=PUBLIC_EXAM_TYPE_CONFIG[exam_type]["question_bank_version"],
                 passing_score=self.public_exam_passing_score(),
-                deadline_at=deadline.isoformat(),
+                deadline_at=legacy_deadline.isoformat() if legacy_deadline is not None else "",
+                duration_hours=duration_hours,
             )
         except ExamAssignmentExistsError:
             return web.json_response(
                 {
                     "ok": False,
                     "code": "EXAM_ALREADY_ASSIGNED",
-                    "message": "Este Discord ID já possui uma prova única registrada.",
+                    "message": "Este candidato já possui uma atribuição ativa deste tipo de prova.",
                 },
                 status=409,
             )
@@ -7220,6 +7242,35 @@ class PeaceBot(commands.Bot):
             "review": review,
         })
 
+    async def public_exam_reject_assignment(self, request: web.Request) -> web.Response:
+        """Reject an owned, not-yet-submitted assignment immediately."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        manager = await self.public_manager_member(session["discord_user_id"])
+        if manager is None:
+            return web.json_response(
+                {"ok": False, "code": "MANAGER_REQUIRED", "message": "Somente Gerência pode reprovar uma atribuição."},
+                status=403,
+            )
+        assignment_id = self.public_exam_assignment_id(request.match_info.get("assignment_id"))
+        if assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_ASSIGNMENT", "message": "A atribuição informada é inválida."}, status=400)
+        try:
+            assignment = self.database.reject_exam_assignment(assignment_id, session["discord_user_id"])
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui reprovar atribuição de prova", exc_info=True)
+            return web.json_response({"ok": False, "code": "EXAM_ASSIGNMENT_UNAVAILABLE", "message": "Não consegui atualizar esta atribuição agora."}, status=503)
+        if assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "A atribuição não pertence à sua Gerência ou não existe."}, status=404)
+        return web.json_response({"ok": True, "assignment": await self.public_exam_manager_assignment_live_payload(assignment)})
+
     @staticmethod
     @web.middleware
     async def public_api_cors(request: web.Request, handler) -> web.StreamResponse:
@@ -7257,16 +7308,20 @@ class PeaceBot(commands.Bot):
                 }
                 or route.startswith("/api/investigations/")
                 or route.startswith("/api/investigation-approvals/")
+                or route.startswith("/api/exams/assignments/")
             )
         )
-        if (
+        manager_assignment_mutation = (
             request.method == "POST"
-            and cookie_mutation
-            and (
-                request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE)
-                or request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE)
-                or request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE)
-            )
+            and route.startswith("/api/exams/assignments/")
+        )
+        has_member_cookie = bool(
+            request.cookies.get(PUBLIC_MEMBER_SESSION_COOKIE)
+            or request.cookies.get(PUBLIC_MEMBER_CHALLENGE_COOKIE)
+            or request.cookies.get(PUBLIC_DISCORD_SESSION_COOKIE)
+        )
+        if (
+            (cookie_mutation and has_member_cookie or manager_assignment_mutation)
             and origin not in PUBLIC_API_ORIGINS
         ):
             # A cookie-authenticated mutation must prove that it came from
@@ -7285,6 +7340,7 @@ class PeaceBot(commands.Bot):
         dynamic_private_route = (
             route.startswith("/api/investigations/")
             or route.startswith("/api/investigation-approvals/")
+            or route.startswith("/api/exams/assignments/")
         )
         if route in PUBLIC_API_NO_STORE_ROUTES or dynamic_private_route:
             response.headers["Cache-Control"] = "no-store, private"
@@ -7344,6 +7400,8 @@ class PeaceBot(commands.Bot):
             policy = PUBLIC_API_RATE_LIMITS.get("/api/investigations")
         if policy is None and route.startswith("/api/investigation-approvals/"):
             policy = PUBLIC_API_RATE_LIMITS.get("/api/investigation-approvals")
+        if policy is None and route.startswith("/api/exams/assignments/"):
+            policy = PUBLIC_API_RATE_LIMITS.get("/api/exams/assignments")
         if policy is None:
             return None
         limit, window_seconds = policy
@@ -7432,6 +7490,7 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/exams/review", self.public_exam_review)
         app.router.add_get("/api/exams/assignments", self.public_exam_assignments)
         app.router.add_post("/api/exams/assignments", self.public_exam_assignments)
+        app.router.add_post("/api/exams/assignments/{assignment_id}/reject", self.public_exam_reject_assignment)
         app.router.add_get("/api/exams/assignments/{assignment_id}/review", self.public_exam_manager_review)
         for route in (
             "/api/status",

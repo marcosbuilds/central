@@ -45,5 +45,6 @@
 /api/exams/start https://peace-tools-8be02694.aclclouds.online/api/exams/start 200!
 /api/exams/submit https://peace-tools-8be02694.aclclouds.online/api/exams/submit 200!
 /api/exams/review https://peace-tools-8be02694.aclclouds.online/api/exams/review 200!
+/api/exams/assignments/:assignment_id/reject https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/reject 200!
 /api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!
 /api/exams/assignments https://peace-tools-8be02694.aclclouds.online/api/exams/assignments 200!

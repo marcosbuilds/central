@@ -1240,6 +1240,30 @@ def test_public_member_logout_rejects_cookie_without_allowed_origin(tmp_path):
     assert bot.database.validate_central_login_session(token=token, client_id="peacegg-web") is not None
 
 
+def test_manager_assignment_subroutes_require_origin_and_are_private(tmp_path):
+    bot = make_bot(tmp_path)
+
+    status, headers, payload = run_configured_api_with_headers(
+        bot,
+        "/api/exams/assignments/42/reject",
+        method="POST",
+        payload={},
+        headers={"Origin": "https://peacegg.com.br"},
+    )
+    assert status == 401
+    assert payload["code"] == "OAUTH_SESSION_INVALID"
+    assert headers["Cache-Control"] == "no-store, private"
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/exams/assignments/42/reject",
+        method="POST",
+        payload={},
+    )
+    assert status == 403
+    assert payload["code"] == "ORIGIN_REQUIRED"
+
+
 def test_public_auth_member_uses_fresh_discord_role_state(tmp_path):
     cached_member = SimpleNamespace(
         id=12345678901234567,
@@ -2380,11 +2404,11 @@ def test_public_site_files_are_complete():
     assert '<section id="pdf" tabindex="-1"' in peace_html
     assert 'class="process-empty process-empty--primary" id="conexao" tabindex="-1"' in process_html
     assert "Somente a Gerência poderá gerar, atribuir, revogar e corrigir provas." in process_html
-    assert "Mesmo banco de questões" in civil_html
+    assert "Mesmo conjunto de questões" in civil_html
     assert "Sequência individual" in civil_html
     assert "class=\"process-identity-list\"" in process_html
-    assert "Discord ID" in process_html and "Membro Peace" in process_html
-    assert "Link único, prazo final e versão do banco de questões registrados no processo." in process_html
+    assert "Conta" in process_html and "Cargo Peace" in process_html
+    assert "Você recebe um link individual e o tempo começa quando abrir a prova." in process_html
     assert "Começar pela Apostila Civil" not in process_html
     assert 'class="process-details"' in process_html
     assert "synthetic" not in process_html.lower()
@@ -2454,7 +2478,10 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'class="member-sidebar"' in member_html
     assert 'href="/area/"' in member_html
     assert 'href="/area/?view=library"' in member_html
-    assert 'href="/avisos/"' in member_html
+    assert 'href="/avisos/"' not in member_html
+    assert 'data-member-notifications' in member_html
+    assert 'data-member-notice-open' in member_html
+    assert 'data-member-notice-form' in member_html
     assert 'href="/area/?view=partners"' in member_html
     assert 'href="/area/?view=clips"' in member_html
     assert 'href="/area/?view=process"' in member_html
@@ -2550,6 +2577,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
     assert "/api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!" in redirect_lines
+    assert "/api/exams/assignments/:assignment_id/reject https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/reject 200!" in redirect_lines
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros", "/termos"):
         assert f"{route} {route}/ 301!" not in redirects
 
@@ -2560,6 +2588,14 @@ def test_local_proxy_accepts_only_numeric_manager_review_ids():
     assert EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/42/review")
     assert not EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/not-an-id/review")
     assert not EXAM_MANAGER_REVIEW_ROUTE.fullmatch("/api/exams/assignments/42/review/extra")
+
+
+def test_local_proxy_accepts_only_numeric_manager_reject_ids():
+    from ops.peace_site_server import EXAM_MANAGER_REJECT_ROUTE
+
+    assert EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/42/reject")
+    assert not EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/not-an-id/reject")
+    assert not EXAM_MANAGER_REJECT_ROUTE.fullmatch("/api/exams/assignments/42/reject/extra")
 
 
 def test_local_proxy_forwards_only_the_member_session_and_bearer():

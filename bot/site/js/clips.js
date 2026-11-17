@@ -14,9 +14,12 @@
   var submit = form && form.querySelector("[data-clips-submit]");
   var retry = scope.querySelector("[data-clips-retry]");
   var toast = scope.querySelector("[data-clips-toast]");
+  var filterButtons = Array.prototype.slice.call(scope.querySelectorAll("[data-clips-filter]"));
   var toastTimer = null;
   var viewer = { state: "anonymous", can_interact: false };
   var loading = false;
+  var activeFilter = "all";
+  var currentItems = [];
 
   function isActiveView() {
     var view = form && form.closest && form.closest("[data-member-view]");
@@ -408,7 +411,11 @@
   }
 
   function render(payload) {
-    var items = Array.isArray(payload.clips) ? payload.clips : [];
+    currentItems = Array.isArray(payload.clips) ? payload.clips.slice() : [];
+    var items = currentItems.slice();
+    if (activeFilter === "engagement") items.sort(function (a, b) { return Number((b && b.engagement) || 0) - Number((a && a.engagement) || 0); });
+    if (activeFilter === "least_engagement") items.sort(function (a, b) { return Number((a && a.engagement) || 0) - Number((b && b.engagement) || 0); });
+    if (activeFilter === "recent") items.sort(function (a, b) { return new Date(b && b.created_at || 0).getTime() - new Date(a && a.created_at || 0).getTime(); });
     viewer = payload.viewer || { state: "anonymous", can_interact: false };
     list.replaceChildren();
     list.classList.remove("is-refreshing");
@@ -539,6 +546,13 @@
     load();
   });
   if (retry) retry.addEventListener("click", load);
+  filterButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      activeFilter = button.dataset.clipsFilter || "all";
+      filterButtons.forEach(function (candidate) { var selected = candidate === button; candidate.classList.toggle("is-active", selected); candidate.setAttribute("aria-pressed", String(selected)); });
+      render({ clips: currentItems, total: currentItems.length, source: { state: "ready" }, viewer: viewer });
+    });
+  });
 
   var initialQuery = new URL(window.location.href).searchParams.get("q") || "";
   if (input) input.value = initialQuery;

@@ -354,7 +354,7 @@
   function userFacingEndpointMessage(payload, status, fallback) {
     var code = payload && typeof payload.code === "string" ? payload.code : "";
     var knownMessages = {
-      DISCORD_NOT_READY: "O Peace Tools está conectando ao Discord. Tente novamente em instantes.",
+      DISCORD_NOT_READY: "A Peace está conectando ao Discord. Tente novamente em instantes.",
       VERIFY_CHANNEL_UNAVAILABLE: "O canal de verificação está temporariamente indisponível. Tente novamente em instantes.",
       INVITE_UNAVAILABLE: "Não consegui gerar seu convite agora. Tente novamente em instantes.",
       INVITE_INVALID: "Não consegui preparar seu convite agora. Tente novamente em instantes.",
@@ -378,11 +378,11 @@
       INVALID_CODE: "O código não confere ou já expirou. Confira a DM e tente novamente.",
       AUTH_SESSION_INVALID: "Sua sessão expirou. Entre novamente.",
       AUTH_SESSION_UNAVAILABLE: "A sessão não pôde ser criada agora. Tente novamente em instantes.",
-      MEMBER_NOT_FOUND: "Não encontrei essa conta no servidor. Revise o username e tente novamente.",
+      MEMBER_NOT_FOUND: "Não encontrei essa conta na Peace. Revise o username e tente novamente.",
       MEMBER_AMBIGUOUS: "Encontrei mais de uma conta com esse username. Informe também o ID ou o link do perfil.",
       INVALID_DISCORD_PROFILE: "Informe um link de perfil válido do Discord.",
       MEMBER_IDENTITY_MISMATCH: "O username, o ID e o link informado não pertencem à mesma conta.",
-      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta no servidor. Revise os dados e tente novamente.",
+      ENTRY_MEMBER_NOT_FOUND: "Não encontrei sua conta na Peace. Revise os dados e tente novamente.",
       ENTRY_NOT_VERIFIED: "Conclua a verificação humana no Discord antes de enviar a candidatura.",
       DISCORD_IDENTITY_MISMATCH: "A conta conectada não corresponde à entrada identificada.",
       PEACE_MEMBER: "Sua conta já possui o cargo Peace. Abrindo a área de membros.",
@@ -409,9 +409,9 @@
       MANAGER_REQUIRED: "Somente Gerência pode acessar esta área.",
       INVALID_DEADLINE: "Escolha um prazo futuro para a prova.",
       DEADLINE_TOO_LONG: "O prazo escolhido ultrapassa o limite da equipe.",
-      EXAM_TYPE_UNAVAILABLE: "Este tipo de prova ainda não está disponível. Escolha Tier I.",
+      EXAM_TYPE_UNAVAILABLE: "Este tipo de prova ainda não está disponível.",
       EXAM_ASSIGNMENT_UNAVAILABLE: "Não consegui gerar a prova agora.",
-      CANDIDATE_IDENTITY_MISMATCH: "O username informado não corresponde ao Discord ID encontrado no servidor."
+      CANDIDATE_IDENTITY_MISMATCH: "O username informado não corresponde à conta vinculada."
     };
 
     if (knownMessages[code]) return knownMessages[code];

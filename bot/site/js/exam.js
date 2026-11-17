@@ -54,6 +54,13 @@
     try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value || "—"; }
   }
 
+  function formatMinutes(minutes) {
+    var total = Math.max(1, Math.round(Number(minutes) || 0));
+    var hours = Math.floor(total / 60);
+    var remainder = total % 60;
+    return (hours ? hours + "h " : "") + (remainder ? remainder + "min" : "").trim();
+  }
+
   function showMessage(message, tone) {
     setText(messageNode, message || "");
     if (messageNode) messageNode.dataset.state = tone || "pending";
@@ -68,7 +75,7 @@
     var title = document.querySelector("#exam-auth-title");
     var copy = authPanel && authPanel.querySelector("p:not(.eyebrow):not(.form-status)");
     var connect = authPanel && authPanel.querySelector("[data-discord-connect]");
-    if (title) title.textContent = "Discord identificado.";
+    if (title) title.textContent = "Conta identificada.";
     if (copy) copy.textContent = "Sua conta está conectada. Abra o link individual enviado pela Gerência para consultar a prova atribuída.";
     if (connect) connect.hidden = true;
     showMessage("Nenhuma atribuição foi aberta nesta página. Use o link individual da Gerência.", "success");
@@ -99,9 +106,10 @@
     if (resultPanel) resultPanel.hidden = true;
     if (formPanel) formPanel.hidden = true;
     if (assignmentPanel) assignmentPanel.hidden = false;
-    setText(document.querySelector("[data-exam-version]"), assignment.question_bank_version || "—");
+    setText(document.querySelector("[data-exam-version]"), assignment.exam_type_label || "Prova teórica — Civil");
     setText(document.querySelector("[data-exam-passing]"), (assignment.passing_score || 0) + "/100");
-    setText(document.querySelector("[data-exam-deadline]"), formatDate(assignment.deadline_at));
+    setText(document.querySelector("[data-exam-duration]"), (assignment.duration_hours || 24) + "h");
+    setText(document.querySelector("[data-exam-per-question]"), assignment.question_count ? formatMinutes((assignment.duration_hours || 24) * 60 / assignment.question_count) : "calculado ao abrir");
     setText(document.querySelector("[data-exam-status]"), statusLabel(assignment));
     if (assignment.status === "submitted") {
       showResult({ score: assignment.score, scale: 100, passing_score: assignment.passing_score, correct_count: assignment.correct_count, total_questions: assignment.total_questions, passed: assignment.passed, submitted_at: assignment.submitted_at });
@@ -266,7 +274,7 @@
       if (!Number.isFinite(remaining) || remaining <= 0) {
         setText(clock, "Prazo encerrado");
         if (submitButton) submitButton.disabled = true;
-        showSubmitMessage("O prazo terminou. O servidor recusará qualquer envio depois do limite.", "error");
+        showSubmitMessage("O prazo terminou. O envio não pode mais ser aceito.", "error");
         return;
       }
       var minutes = Math.floor(remaining / 60000);
@@ -283,6 +291,8 @@
     if (formPanel) formPanel.hidden = false;
     renderQuestions(payload.attempt.questions || []);
     startCountdown(payload.assignment.deadline_at);
+    setText(document.querySelector("[data-exam-duration]"), (payload.assignment.duration_hours || 24) + "h");
+    setText(document.querySelector("[data-exam-per-question]"), payload.attempt.seconds_per_question ? formatMinutes(payload.attempt.seconds_per_question / 60) : "—");
     if (submitButton) submitButton.disabled = false;
   }
 
@@ -369,7 +379,7 @@
       }
       if (!window.confirm("O envio é definitivo e não permite refazer. Deseja enviar agora?")) return;
       submitButton.disabled = true;
-      showSubmitMessage("Corrigindo a tentativa no servidor…", "pending");
+      showSubmitMessage("Conferindo sua tentativa…", "pending");
       request("/api/exams/submit", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ assignment_id: assignmentState.id, answers: answers }) })
         .then(function (payload) { showResult(payload.result, payload.manager_delivery); })
         .catch(function (error) {

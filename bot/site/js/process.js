@@ -51,7 +51,7 @@
     if (assignment.status === "submitted") return assignment.passed ? "Aprovado" : "Não aprovado";
     if (assignment.status === "in_progress") return "Em andamento";
     if (assignment.status === "expired") return "Prazo encerrado";
-    if (assignment.status === "revoked") return "Revogada";
+    if (assignment.status === "revoked" || assignment.status === "rejected") return "Reprovado";
     return "Aguardando início";
   }
 
@@ -68,12 +68,12 @@
       item.className = "process-assignment";
       var main = document.createElement("div");
       var heading = document.createElement("h3");
-      heading.textContent = "Apostila Civil · atribuição #" + assignment.id;
+      heading.textContent = (assignment.exam_type_label || "Prova teórica — Civil") + " · atribuição #" + assignment.id;
       var description = document.createElement("p");
-      description.textContent = "Prazo: " + formatDate(assignment.deadline_at) + " · versão " + assignment.question_bank_version;
+      description.textContent = assignment.deadline_at ? "Termina em " + formatDate(assignment.deadline_at) : "Tempo de " + (assignment.duration_hours || 24) + "h após iniciar";
       var meta = document.createElement("div");
       meta.className = "process-assignment-meta";
-      meta.innerHTML = "<span>" + statusLabel(assignment) + "</span><span>" + (assignment.correct_count === null ? "tentativa única" : assignment.correct_count + "/10 acertos") + "</span>";
+      meta.innerHTML = "<span>" + statusLabel(assignment) + "</span><span>" + (assignment.correct_count === null ? "ainda não realizada" : assignment.correct_count + "/" + (assignment.question_count || "—") + " acertos") + "</span>";
       main.appendChild(heading);
       main.appendChild(description);
       main.appendChild(meta);
@@ -105,21 +105,21 @@
     var profile = data.profile || {};
     setText(kickerNode, "Identidade confirmada");
     setText(titleNode, assignments.length ? "Seu processo está vinculado." : "Conta conectada; aguardando atribuição.");
-    setText(copyNode, assignments.length ? "O histórico abaixo pertence ao Discord ID conectado. Abra a prova pelo link enviado pela Gerência." : "A Gerência ainda não atribuiu uma prova a esta conta. Você pode continuar estudando enquanto aguarda.");
+    setText(copyNode, assignments.length ? "Confira suas etapas abaixo e abra a prova pelo link enviado pela Gerência." : "A Gerência ainda não atribuiu uma prova a esta conta. Você pode continuar estudando enquanto aguarda.");
     setText(idNode, identity.discord_id || "—");
     setText(usernameNode, identity.username ? "@" + identity.username : "—");
     if (membershipNode) {
-      setText(membershipNode, membership.state === "peace" ? "Sim, cargo Peace confirmado." : membership.state === "member" ? "Está no servidor; cargo Peace ainda não confirmado." : membership.state === "not_member" ? "Ainda não está no servidor." : "Confirmação do servidor indisponível agora.");
+      setText(membershipNode, membership.state === "peace" ? "Sim, cargo Peace confirmado." : membership.state === "member" ? "Conta encontrada; cargo Peace ainda não confirmado." : membership.state === "not_member" ? "Ainda não possui vínculo com a Peace." : "Confirmação do cargo indisponível agora.");
     }
     if (membershipNoteNode) {
       membershipNoteNode.hidden = false;
       var membershipCopy = membership.state === "peace"
-        ? "Sua conta já está vinculada ao servidor Peace. A área de membros pode mostrar o processo e a prova atribuída."
+        ? "Sua conta já tem o cargo Peace. A área de membros pode mostrar o processo e a prova atribuída."
         : membership.state === "member"
-          ? "Sua conta está no servidor, mas o cargo Peace ainda não foi localizado. Use o fluxo de entrada para pedir set quando a Gerência orientar."
+          ? "Sua conta foi encontrada, mas o cargo Peace ainda não foi localizado. Use o fluxo de entrada quando a Gerência orientar."
           : membership.state === "not_member"
-            ? "Sua conta Discord foi identificada, mas ainda não está no servidor. Entre pelo fluxo de entrada para pedir set."
-            : "A conta está conectada, mas o Discord não respondeu a confirmação de servidor agora.";
+            ? "Sua conta Discord foi identificada, mas ainda não possui vínculo com a Peace. Entre pelo fluxo de entrada para pedir set."
+            : "A conta está conectada, mas a confirmação do cargo ainda não respondeu.";
       setText(membershipNoteNode, membershipCopy);
       membershipNoteNode.dataset.state = membership.state || "unavailable";
     }
@@ -127,7 +127,7 @@
     if (connectLink) connectLink.hidden = true;
     if (scorePanel) scorePanel.hidden = false;
     if (scoreValueNode) setText(scoreValueNode, profile.score === null || profile.score === undefined ? "—" : profile.score + "/" + (profile.score_scale || 100));
-    if (scoreCopyNode) setText(scoreCopyNode, profile.score === null || profile.score === undefined ? "Nenhuma prova enviada ainda." : (profile.passed ? "Aprovado na última prova registrada." : "Não aprovado na última prova registrada."));
+    if (scoreCopyNode) setText(scoreCopyNode, profile.score === null || profile.score === undefined ? "Nenhuma avaliação concluída ainda." : "Média das avaliações concluídas.");
     if (logoutButton) logoutButton.hidden = false;
     renderAssignments(assignments);
     updateSteps(assignments);
@@ -137,10 +137,10 @@
   function showDisconnected(message) {
     setText(kickerNode, "Identidade ainda não conectada");
     setText(titleNode, "Conecte o Discord para abrir seu processo.");
-    setText(copyNode, "O site confirmará a conta pela autorização oficial do Discord e mostrará somente os registros pertencentes ao seu Discord ID.");
+    setText(copyNode, "O site mostrará somente as etapas vinculadas à conta conectada.");
     setText(idNode, "Aguardando conexão.");
     setText(usernameNode, "Identificação visual.");
-    setText(membershipNode, "Será confirmado pelo servidor.");
+    setText(membershipNode, "Será confirmado.");
     if (membershipNoteNode) {
       membershipNoteNode.textContent = "";
       membershipNoteNode.hidden = true;
@@ -163,7 +163,7 @@
     setText(usernameNode, "A identidade não foi liberada.");
     setText(membershipNode, "Confirmação pendente.");
     if (membershipNoteNode) {
-      membershipNoteNode.textContent = "A área permanece fechada até o Discord e o Peace Tools responderem com dados completos.";
+      membershipNoteNode.textContent = "A área permanece fechada até a confirmação completa da conta.";
       membershipNoteNode.hidden = false;
       membershipNoteNode.dataset.state = "unavailable";
     }

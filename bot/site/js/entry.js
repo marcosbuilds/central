@@ -34,8 +34,8 @@
       }
       showSessionState(
         server.is_verified === true
-          ? "Sua conta já está no servidor. Continue pela entrevista; não é necessário gerar outro convite."
-          : "Sua conta já está no servidor. Conclua a verificação no Discord; não é necessário gerar outro convite.",
+          ? "Sua conta já participa da Peace. Continue pela entrevista; não é necessário gerar outro convite."
+          : "Sua conta já participa da Peace. Conclua a verificação no Discord; não é necessário gerar outro convite.",
         server.is_verified === true ? "success" : "pending"
       );
     }

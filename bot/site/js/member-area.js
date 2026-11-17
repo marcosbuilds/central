@@ -22,6 +22,14 @@
     var sidebarLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-nav-link]")) : [];
     var memberViews = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-view]")) : [];
     var memberContextTitle = workspace && workspace.querySelector("[data-member-context-title]");
+    var toolbarAccount = workspace && workspace.querySelector("[data-member-toolbar-account]");
+    var toolbarAccountTrigger = workspace && workspace.querySelector("[data-member-toolbar-account-trigger]");
+    var toolbarAccountMenu = workspace && workspace.querySelector("[data-member-toolbar-account-menu]");
+    var toolbarAccountAvatar = workspace && workspace.querySelector("[data-member-toolbar-avatar]");
+    var toolbarAccountAvatarFallback = workspace && workspace.querySelector("[data-member-toolbar-avatar-fallback]");
+    var toolbarAccountName = workspace && workspace.querySelector("[data-member-toolbar-name]");
+    var toolbarAccountUsername = workspace && workspace.querySelector("[data-member-toolbar-username]");
+    var toolbarAccountLogout = workspace && workspace.querySelector("[data-member-toolbar-logout]");
     var sidebarName = workspace && workspace.querySelector("[data-member-sidebar-name]");
     var sidebarUsername = workspace && workspace.querySelector("[data-member-sidebar-username]");
     var sidebarAvatar = workspace && workspace.querySelector("[data-member-sidebar-avatar]");
@@ -54,6 +62,8 @@
     var processAssignments = workspace && workspace.querySelector("[data-member-process-assignments]");
     var managerList = workspace && workspace.querySelector("[data-member-manager-list]");
     var managerCount = workspace && workspace.querySelector("[data-member-manager-count]");
+    var managerSearch = workspace && workspace.querySelector("[data-member-manager-search]");
+    var managerFilterButtons = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-manager-filter]")) : [];
     var managerModal = document.querySelector("[data-member-manager-modal]");
     var managerForm = managerModal && managerModal.querySelector("[data-member-manager-form]");
     var managerFormStatus = managerModal && managerModal.querySelector("[data-member-manager-form-status]");
@@ -88,7 +98,7 @@
     var approvalGenerated = approvalModal && approvalModal.querySelector("[data-member-approval-generated]");
     var approvalClose = approvalModal && approvalModal.querySelector("[data-member-approval-close]");
     var approvalCancel = approvalModal && approvalModal.querySelector("[data-member-approval-cancel]");
-    var noticeOpen = workspace && workspace.querySelector("[data-member-notice-open]");
+    var noticeOpenButtons = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-notice-open], [data-member-notice-view-open]")) : [];
     var noticeModal = document.querySelector("[data-member-notice-modal]");
     var noticeForm = noticeModal && noticeModal.querySelector("[data-member-notice-form]");
     var noticeFormStatus = noticeModal && noticeModal.querySelector("[data-member-notice-form-status]");
@@ -110,6 +120,9 @@
     var notificationsLoaded = false;
     var clipsCountLoading = false;
     var managerAssignmentsLoading = false;
+    var managerAssignments = [];
+    var managerStatusFilter = "all";
+    var managerPollingTimer = null;
     var managerPreviousFocus = null;
     var activeModal = null;
     var activeModalPreviousFocus = null;
@@ -125,7 +138,7 @@
       overview: "Visão geral",
       library: "Área de estudo / Biblioteca",
       partners: "Parceiros",
-      clips: "Clipes",
+      clips: "CLIPES",
       process: "Processo e provas",
       manager: "Gerenciar provas",
       scan: "Scan-only",
@@ -246,6 +259,7 @@
       if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
       if (item.status === "in_progress") return "Em andamento";
       if (item.status === "expired") return "Prazo encerrado";
+      if (item.status === "rejected" || item.status === "revoked") return "Reprovado";
       return "Aguardando início";
     }
     function initials(identity) {
@@ -275,13 +289,17 @@
     function renderAvatar(identity) {
       renderAvatarNode(memberAvatar, memberAvatarFallback, identity);
       renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, identity);
+      renderAvatarNode(toolbarAccountAvatar, toolbarAccountAvatarFallback, identity);
     }
 
     function renderSidebarProfile(identity) {
       var profile = identity || {};
       if (sidebarName) sidebarName.textContent = profile.global_name || profile.display_name || profile.username || "membro";
       if (sidebarUsername) sidebarUsername.textContent = profile.username ? "@" + profile.username : "@discord";
+      if (toolbarAccountName) toolbarAccountName.textContent = profile.global_name || profile.display_name || profile.username || "membro";
+      if (toolbarAccountUsername) toolbarAccountUsername.textContent = profile.username ? "@" + profile.username : "@discord";
       renderAvatarNode(sidebarAvatar, sidebarAvatarFallback, profile);
+      renderAvatarNode(toolbarAccountAvatar, toolbarAccountAvatarFallback, profile);
     }
 
     function renderRoles(server) {
@@ -314,17 +332,66 @@
 
     function applyCapabilityVisibility() {
       var capabilities = currentCapabilities();
-      if (managementGroup) managementGroup.hidden = !capabilities.manager;
+      if (managementGroup) managementGroup.hidden = !(capabilities.manager || capabilities.scanOnly);
+      var managerLinks = workspace ? Array.prototype.slice.call(workspace.querySelectorAll("[data-member-manager]")) : [];
+      managerLinks.forEach(function (link) { link.hidden = !capabilities.manager; });
       if (scanGroup) scanGroup.hidden = !capabilities.scanOnly;
       if (investigationGroup) investigationGroup.hidden = !capabilities.investigator;
       if (managerOpen) managerOpen.hidden = !capabilities.manager;
       if (investigationOpen) investigationOpen.hidden = !capabilities.investigator;
-      if (noticeOpen) noticeOpen.hidden = !(capabilities.staff || capabilities.manager);
+      noticeOpenButtons.forEach(function (button) { button.hidden = !(capabilities.staff || capabilities.manager); });
       if (partnerOpen) partnerOpen.hidden = !capabilities.partnersEdit;
       var scanUrl = currentProcess && currentProcess.server && currentProcess.server.scan_only_url;
       scanLinks.forEach(function (link) {
         link.href = /^https:\/\//i.test(String(scanUrl || "")) ? scanUrl : "/discord/";
       });
+    }
+
+    function safeNoticeAssetUrl(value) {
+      var raw = String(value || "").trim();
+      if (!raw) return "";
+      try {
+        var parsed = new URL(raw, window.location.href);
+        var allowed = ["cdn.discordapp.com", "media.discordapp.net", "images-ext-1.discordapp.net"];
+        return parsed.protocol === "https:" && allowed.indexOf(parsed.hostname.toLowerCase()) >= 0 ? parsed.href : "";
+      } catch (error) { return ""; }
+    }
+
+    function renderNoticeMarkdown(container, value) {
+      if (!container) return;
+      String(value || "Comunicado sem texto.").split(/\n{2,}/).forEach(function (paragraphText) {
+        var paragraph = document.createElement("p");
+        var pattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|`[^`]+`|\[[^\]]+\]\(https:\/\/[^)]+\))/g;
+        var parts = String(paragraphText).split(pattern);
+        parts.forEach(function (part) {
+          if (!part) return;
+          var match = part.match(/^\[([^\]]+)\]\((https:\/\/[^)]+)\)$/);
+          if (match) {
+            var link = document.createElement("a"); link.href = match[2]; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = match[1]; paragraph.appendChild(link);
+          } else if (/^\*\*|^__/.test(part)) { var strong = document.createElement("strong"); strong.textContent = part.slice(2, -2); paragraph.appendChild(strong);
+          } else if (/^\*|^_/.test(part)) { var emphasis = document.createElement("em"); emphasis.textContent = part.slice(1, -1); paragraph.appendChild(emphasis);
+          } else if (part.charAt(0) === "`") { var code = document.createElement("code"); code.textContent = part.slice(1, -1); paragraph.appendChild(code);
+          } else paragraph.appendChild(document.createTextNode(part));
+        });
+        container.appendChild(paragraph);
+      });
+    }
+
+    function createNoticeArticle(item, className) {
+      var article = document.createElement("article");
+      article.className = className || "member-notice-item";
+      var heading = document.createElement("div"); heading.className = "member-notice-author";
+      var avatar = document.createElement("span"); avatar.className = "member-notice-avatar";
+      var avatarUrl = safeNoticeAssetUrl(item && item.avatar_url);
+      if (avatarUrl) { var image = document.createElement("img"); image.src = avatarUrl; image.alt = ""; image.width = 32; image.height = 32; image.loading = "lazy"; image.addEventListener("error", function () { image.remove(); avatar.textContent = String(item.author || "P").charAt(0).toUpperCase(); }); avatar.appendChild(image); }
+      else avatar.textContent = String(item && item.author || "P").charAt(0).toUpperCase();
+      var author = document.createElement("div"); var name = document.createElement("strong"); name.textContent = item && item.author || "Peace"; var meta = document.createElement("small"); meta.textContent = date(item && item.published_at); author.appendChild(name); author.appendChild(meta); heading.appendChild(avatar); heading.appendChild(author); article.appendChild(heading);
+      if (item && item.title) { var title = document.createElement("h3"); title.textContent = item.title; article.appendChild(title); }
+      var copy = document.createElement("div"); copy.className = "member-notice-markdown"; renderNoticeMarkdown(copy, item && item.text); article.appendChild(copy);
+      var imageUrl = safeNoticeAssetUrl(item && item.image_url);
+      if (imageUrl) { var asset = document.createElement("img"); asset.className = "member-notice-asset"; asset.src = imageUrl; asset.alt = item && item.title ? "Imagem do aviso: " + item.title : "Imagem do aviso"; asset.loading = "lazy"; article.appendChild(asset); }
+      if (/^https:\/\//i.test(String(item && item.url || ""))) { var link = document.createElement("a"); link.className = "text-link"; link.href = item.url; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Abrir origem ↗"; article.appendChild(link); }
+      return article;
     }
 
     function renderNotifications(payload) {
@@ -372,27 +439,7 @@
         return;
       }
 
-      items.slice(0, 4).forEach(function (item) {
-        var article = document.createElement("article");
-        article.className = "member-notification-item";
-        var meta = document.createElement("p");
-        meta.className = "eyebrow";
-        meta.textContent = date(item.published_at) + " · " + (item.author || "Peace");
-        var copy = document.createElement("p");
-        copy.textContent = item.text || "Comunicado sem texto.";
-        article.appendChild(meta);
-        article.appendChild(copy);
-        if (/^https?:\/\//i.test(String(item.url || ""))) {
-          var link = document.createElement("a");
-          link.className = "text-link";
-          link.href = String(item.url);
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = "Abrir origem ↗";
-          article.appendChild(link);
-        }
-        notificationList.appendChild(article);
-      });
+      items.slice(0, 4).forEach(function (item) { notificationList.appendChild(createNoticeArticle(item, "member-notification-item")); });
       if (currentView === "notices") markNoticesSeen(items);
       if (notificationPanel && !notificationPanel.hidden) {
         markNoticesSeen(items);
@@ -414,27 +461,7 @@
         noticesViewList.appendChild(empty);
         return;
       }
-      items.forEach(function (item) {
-        var article = document.createElement("article");
-        article.className = "member-notice-item";
-        var meta = document.createElement("p");
-        meta.className = "eyebrow";
-        meta.textContent = date(item.published_at) + " · " + (item.author || "Peace");
-        var copy = document.createElement("p");
-        copy.textContent = item.text || "Comunicado sem texto.";
-        article.appendChild(meta);
-        article.appendChild(copy);
-        if (/^https?:\/\//i.test(String(item.url || ""))) {
-          var link = document.createElement("a");
-          link.className = "text-link";
-          link.href = String(item.url);
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = "Abrir origem ↗";
-          article.appendChild(link);
-        }
-        noticesViewList.appendChild(article);
-      });
+      items.forEach(function (item) { noticesViewList.appendChild(createNoticeArticle(item)); });
     }
 
     function loadNotifications() {
@@ -501,7 +528,7 @@
       if (investigationGroup) investigationGroup.hidden = true;
       if (managerOpen) managerOpen.hidden = true;
       if (investigationOpen) investigationOpen.hidden = true;
-      if (noticeOpen) noticeOpen.hidden = true;
+      noticeOpenButtons.forEach(function (button) { button.hidden = true; });
       if (partnerOpen) partnerOpen.hidden = true;
       if (investigationList) investigationList.textContent = "";
       if (investigationCount) investigationCount.textContent = "0 casos";
@@ -514,8 +541,12 @@
       }
       if (sidebarName) sidebarName.textContent = "membro";
       if (sidebarUsername) sidebarUsername.textContent = "@discord";
+      if (toolbarAccountName) toolbarAccountName.textContent = "membro";
+      if (toolbarAccountUsername) toolbarAccountUsername.textContent = "@discord";
       if (sidebarAvatar) sidebarAvatar.hidden = true;
       if (sidebarAvatarFallback) sidebarAvatarFallback.hidden = true;
+      if (toolbarAccountAvatar) toolbarAccountAvatar.hidden = true;
+      if (toolbarAccountAvatarFallback) toolbarAccountAvatarFallback.hidden = true;
       var managerLink = workspace && workspace.querySelector("[data-member-manager]");
       if (managerLink) managerLink.hidden = true;
       if (overview) overview.textContent = "";
@@ -620,7 +651,13 @@
       if (notificationTrigger) notificationTrigger.hidden = nextView !== "overview";
       if (notificationPanel && (!notificationPanel.hidden || nextView !== "overview")) setNotificationsOpen(false, false);
       memberViews.forEach(function (node) { node.hidden = node.dataset.memberView !== nextView; });
-      if (memberContextTitle) memberContextTitle.textContent = viewTitles[nextView];
+      if (memberContextTitle) {
+        if (nextView === "overview") {
+          memberContextTitle.innerHTML = "<span>VISÃO</span><span>GERAL</span>";
+        } else {
+          memberContextTitle.textContent = viewTitles[nextView];
+        }
+      }
       syncSidebarLocation();
       if (nextView === "overview") loadNotifications();
 
@@ -629,7 +666,12 @@
       if (nextView === "partners" && activeView) renderPartners(currentProcess || {});
       if (nextView === "clips" && activeView && typeof site.initClips === "function") site.initClips(activeView);
       if (nextView === "process") renderProcessView(currentProcess || {});
-      if (nextView === "manager") loadManagerAssignments();
+      if (nextView === "manager") {
+        loadManagerAssignments();
+        scheduleManagerPolling();
+      } else {
+        stopManagerPolling();
+      }
       if (nextView === "scan") applyCapabilityVisibility();
       if (nextView === "investigation") loadInvestigations();
       if (nextView === "notices") loadNotifications();
@@ -1079,7 +1121,7 @@
       var title = document.createElement("strong");
       title.textContent = (assignment.exam_type_label || "Prova") + " · atribuição #" + assignment.id;
       var subtitle = document.createElement("small");
-      subtitle.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at);
+      subtitle.textContent = statusLabel(assignment) + " · " + (assignment.deadline_at ? "termina " + date(assignment.deadline_at) : "tempo de " + (assignment.duration_hours || 24) + "h após iniciar");
       copy.appendChild(title);
       copy.appendChild(subtitle);
       summary.appendChild(copy);
@@ -1090,7 +1132,7 @@
       var meta = document.createElement("div");
       meta.className = "member-assignment-meta";
       var scoreScale = assignment.score_scale || 100;
-      var totalQuestions = assignment.total_questions ? "/" + assignment.total_questions : "";
+      var totalQuestions = assignment.question_count ? "/" + assignment.question_count : "";
       [["Status", statusLabel(assignment)], ["Nota", assignment.score == null ? "Pendente" : assignment.score + "/" + scoreScale], ["Acertos", assignment.correct_count == null ? "—" : String(assignment.correct_count) + totalQuestions]].forEach(function (pair) {
         var cell = document.createElement("div");
         var label = document.createElement("small");
@@ -1201,7 +1243,7 @@
         var title = document.createElement("strong");
         title.textContent = (assignment.exam_type_label || "Prova") + " · #" + assignment.id;
         var subtitle = document.createElement("small");
-        subtitle.textContent = statusLabel(assignment) + " · prazo " + date(assignment.deadline_at);
+        subtitle.textContent = statusLabel(assignment) + " · " + (assignment.deadline_at ? "termina " + date(assignment.deadline_at) : "tempo começa ao iniciar");
         candidate.appendChild(title);
         candidate.appendChild(subtitle);
         var arrow = disclosureArrow();
@@ -1234,30 +1276,11 @@
           profileLink.title = "Abrir perfil Discord em nova guia";
         }
         profileLink.textContent = "@" + (assignment.candidate_username || "candidato");
-        var idRow = document.createElement("div");
-        var copyButton = document.createElement("button");
-        copyButton.type = "button";
-        copyButton.className = "member-copy-id";
-        copyButton.setAttribute("aria-label", "Copiar Discord ID do candidato");
-        copyButton.title = "Copiar Discord ID";
-        copyButton.disabled = !candidateId;
-        if (!candidateId) copyButton.title = "Discord ID indisponível";
-        var copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        copyIcon.setAttribute("viewBox", "0 0 24 24");
-        copyIcon.setAttribute("aria-hidden", "true");
-        copyIcon.innerHTML = '<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-8A1.5 1.5 0 0 0 5 6.5v8A1.5 1.5 0 0 0 6.5 16H8"></path>';
-        var copyId = document.createElement("span");
-        copyId.textContent = candidateId || "—";
-        copyButton.appendChild(copyIcon);
-        copyButton.appendChild(copyId);
-        var copyStatus = document.createElement("span");
-        copyStatus.className = "sr-only";
-        copyStatus.setAttribute("role", "status");
-        if (candidateId) copyButton.addEventListener("click", function () { copyValue(candidateId, copyStatus); });
-        idRow.appendChild(copyButton);
-        idRow.appendChild(copyStatus);
         identityCopy.appendChild(profileLink);
-        identityCopy.appendChild(idRow);
+        var candidateIdNote = document.createElement("small");
+        candidateIdNote.className = "manager-candidate-id-note";
+        candidateIdNote.textContent = candidateId ? "Identidade confirmada" : "Identidade indisponível";
+        identityCopy.appendChild(candidateIdNote);
         identity.appendChild(avatar);
         identity.appendChild(identityCopy);
         content.appendChild(identity);
@@ -1275,6 +1298,32 @@
           meta.appendChild(cell);
         });
         content.appendChild(meta);
+        if (assignment.status === "assigned" || assignment.status === "in_progress") {
+          var rejectRow = document.createElement("div");
+          rejectRow.className = "member-manager-inline-actions";
+          var rejectButton = document.createElement("button");
+          rejectButton.type = "button";
+          rejectButton.className = "button button--danger button--small";
+          rejectButton.textContent = "Reprovar candidato";
+          rejectButton.addEventListener("click", function () {
+            if (!window.confirm("Reprovar esta atribuição? O link deixará de funcionar imediatamente.")) return;
+            rejectButton.disabled = true;
+            rejectButton.textContent = "Atualizando…";
+            request("/api/exams/assignments/" + encodeURIComponent(assignment.id) + "/reject", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
+              .then(function (payload) {
+                if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui reprovar esta atribuição.");
+                managerAssignments = managerAssignments.map(function (item) { return Number(item.id) === Number(assignment.id) ? payload.assignment : item; });
+                refreshVisibleManagerAssignments();
+              })
+              .catch(function (error) {
+                rejectButton.disabled = false;
+                rejectButton.textContent = "Reprovar candidato";
+                window.alert(error.message || "Não consegui reprovar esta atribuição agora.");
+              });
+          });
+          rejectRow.appendChild(rejectButton);
+          content.appendChild(rejectRow);
+        }
         if (assignment.status === "submitted") {
           var review = document.createElement("div");
           review.className = "member-review-list";
@@ -1287,27 +1336,57 @@
       });
     }
 
-    function loadManagerAssignments() {
+    function visibleManagerAssignments() {
+      var query = managerSearch ? managerSearch.value.trim().toLowerCase() : "";
+      return managerAssignments.filter(function (assignment) {
+        var matchesStatus = managerStatusFilter === "all" || String(assignment.status || "") === managerStatusFilter;
+        var haystack = [assignment.candidate_username, assignment.candidate_discord_user_id, assignment.exam_type_label, statusLabel(assignment)].join(" ").toLowerCase();
+        return matchesStatus && (!query || haystack.indexOf(query) >= 0);
+      });
+    }
+
+    function refreshVisibleManagerAssignments() {
+      renderManagerAssignments(visibleManagerAssignments());
+    }
+
+    function stopManagerPolling() {
+      if (managerPollingTimer) window.clearTimeout(managerPollingTimer);
+      managerPollingTimer = null;
+    }
+
+    function scheduleManagerPolling() {
+      stopManagerPolling();
+      if (currentView !== "manager" || document.hidden) return;
+      managerPollingTimer = window.setTimeout(function () {
+        managerPollingTimer = null;
+        loadManagerAssignments(true);
+      }, 15000);
+    }
+
+    function loadManagerAssignments(silent) {
       if (!managerList || managerAssignmentsLoading) return;
       managerAssignmentsLoading = true;
-      managerList.textContent = "";
-      var loading = document.createElement("p");
-      loading.className = "member-block-state";
-      loading.textContent = "Consultando atribuições da Gerência…";
-      managerList.appendChild(loading);
+      if (!silent) {
+        managerList.textContent = "";
+        var loading = document.createElement("p");
+        loading.className = "member-block-state";
+        loading.textContent = "Consultando atribuições da Gerência…";
+        managerList.appendChild(loading);
+      }
       request("/api/exams/assignments")
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar as atribuições.");
-          renderManagerAssignments(Array.isArray(payload.assignments) ? payload.assignments : []);
+          managerAssignments = Array.isArray(payload.assignments) ? payload.assignments : [];
+          refreshVisibleManagerAssignments();
         })
         .catch(function (error) {
           managerList.textContent = "";
           var message = document.createElement("p");
           message.className = "member-block-state";
           message.textContent = error.message || "Não consegui consultar as atribuições agora.";
-          managerList.appendChild(message);
+          if (!silent || !managerList.children.length) managerList.appendChild(message);
         })
-        .finally(function () { managerAssignmentsLoading = false; });
+        .finally(function () { managerAssignmentsLoading = false; scheduleManagerPolling(); });
     }
 
     function closeManagerModal(restoreFocus) {
@@ -1328,12 +1407,8 @@
       if (managerFormStatus) managerFormStatus.textContent = "";
       if (managerGenerated) managerGenerated.hidden = true;
       if (managerForm) managerForm.reset();
-      var deadline = managerForm && managerForm.elements.deadline_at;
-      if (deadline) {
-        var initial = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        initial.setSeconds(0, 0);
-        deadline.value = new Date(initial.getTime() - initial.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      }
+      var duration = managerForm && managerForm.elements.duration_hours;
+      if (duration) duration.value = "24";
       var first = managerForm && managerForm.querySelector("input");
       if (first) first.focus();
     }
@@ -1442,6 +1517,10 @@
       setMemberView(target.dataset.memberViewLink, false, true);
     }, true);
     window.addEventListener("popstate", function () { setMemberView(requestedView(), true, true); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stopManagerPolling();
+      else if (currentView === "manager") scheduleManagerPolling();
+    });
     document.addEventListener("keydown", function (event) {
       var openModal = managerModal && !managerModal.hidden ? managerModal : activeModal && !activeModal.hidden ? activeModal : null;
       if (event.key === "Escape" && openModal) {
@@ -1496,11 +1575,27 @@
       }
     });
     document.addEventListener("click", function (event) {
+      if (toolbarAccount && toolbarAccountMenu && !toolbarAccount.contains(event.target)) {
+        toolbarAccountMenu.hidden = true;
+        if (toolbarAccountTrigger) toolbarAccountTrigger.setAttribute("aria-expanded", "false");
+      }
       if (!notificationPanel || notificationPanel.hidden) return;
       if (notificationPanel.contains(event.target) || notificationTrigger.contains(event.target)) return;
       setNotificationsOpen(false, false);
     });
     if (managerOpen) managerOpen.addEventListener("click", openManagerModal);
+    if (managerSearch) managerSearch.addEventListener("input", refreshVisibleManagerAssignments);
+    managerFilterButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        managerStatusFilter = button.dataset.memberManagerFilter || "all";
+        managerFilterButtons.forEach(function (candidate) {
+          var selected = candidate === button;
+          candidate.classList.toggle("is-active", selected);
+          candidate.setAttribute("aria-pressed", String(selected));
+        });
+        refreshVisibleManagerAssignments();
+      });
+    });
     if (managerClose) managerClose.addEventListener("click", function () { closeManagerModal(true); });
     if (managerCancel) managerCancel.addEventListener("click", function () { closeManagerModal(true); });
     if (managerModal) managerModal.addEventListener("click", function (event) {
@@ -1513,17 +1608,16 @@
         return;
       }
       var formData = new FormData(managerForm);
-      var deadlineValue = String(formData.get("deadline_at") || "").trim();
-      var deadline = new Date(deadlineValue);
-      if (!deadlineValue || Number.isNaN(deadline.getTime())) {
-        if (managerFormStatus) managerFormStatus.textContent = "Escolha um prazo final válido.";
+      var durationHours = Number(formData.get("duration_hours"));
+      if (!Number.isInteger(durationHours) || durationHours < 1 || durationHours > 168) {
+        if (managerFormStatus) managerFormStatus.textContent = "Informe entre 1 e 168 horas.";
         return;
       }
       var payload = {
         candidate_discord_user_id: String(formData.get("candidate_discord_user_id") || "").trim(),
         candidate_username: String(formData.get("candidate_username") || "").trim(),
-        exam_type: String(formData.get("exam_type") || "tier_i").trim(),
-        deadline_at: deadline.toISOString()
+        exam_type: String(formData.get("exam_type") || "theoretical_civil").trim(),
+        duration_hours: durationHours
       };
       if (managerFormStatus) {
         managerFormStatus.textContent = "Gerando atribuição…";
@@ -1759,7 +1853,7 @@
           approvalGenerated.hidden = false;
         }
         if (approvalFormStatus) {
-          approvalFormStatus.textContent = "Links criados. Eles expiram em 7 dias e só abrem para o Discord ID correspondente.";
+          approvalFormStatus.textContent = "Links criados. Eles expiram em 7 dias e só abrem para a conta autorizada.";
           approvalFormStatus.dataset.state = "success";
         }
         loadInvestigations();
@@ -1769,6 +1863,53 @@
           approvalFormStatus.dataset.state = "error";
         }
       }).finally(function () { site.setButtonBusy(approvalSubmit, false); });
+    });
+    noticeOpenButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        openMemberModal(noticeModal, noticeForm, noticeFormStatus);
+      });
+    });
+    if (noticeClose) noticeClose.addEventListener("click", function () { closeMemberModal(noticeModal, true); });
+    if (noticeCancel) noticeCancel.addEventListener("click", function () { closeMemberModal(noticeModal, true); });
+    if (noticeModal) noticeModal.addEventListener("click", function (event) {
+      if (event.target === noticeModal) closeMemberModal(noticeModal, true);
+    });
+    if (noticeForm) noticeForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!noticeForm.checkValidity()) {
+        noticeForm.reportValidity();
+        return;
+      }
+      var formData = new FormData(noticeForm);
+      var payload = {
+        title: String(formData.get("title") || "").trim(),
+        body: String(formData.get("body") || "").trim(),
+        image_url: String(formData.get("image_url") || "").trim()
+      };
+      if (noticeFormStatus) {
+        noticeFormStatus.textContent = "Publicando aviso…";
+        noticeFormStatus.dataset.state = "pending";
+      }
+      site.setButtonBusy(noticeSubmit, true, "Publicando…");
+      request("/api/notices", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response || response.ok !== true) throw site.friendlyError(response, 201, "Não consegui publicar o aviso.");
+        if (noticeFormStatus) {
+          noticeFormStatus.textContent = "Aviso publicado no mural público.";
+          noticeFormStatus.dataset.state = "success";
+        }
+        notificationsLoaded = false;
+        loadNotifications();
+        window.setTimeout(function () { closeMemberModal(noticeModal, true); }, 350);
+      }).catch(function (error) {
+        if (noticeFormStatus) {
+          noticeFormStatus.textContent = error.message || "Não consegui publicar o aviso agora.";
+          noticeFormStatus.dataset.state = "error";
+        }
+      }).finally(function () { site.setButtonBusy(noticeSubmit, false); });
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");
@@ -1799,6 +1940,25 @@
           logout.disabled = false;
           if (logoutStatus) logoutStatus.textContent = "Não foi possível sair agora. Tente novamente.";
         });
+    });
+    function logoutFromToolbar() {
+      if (logout) logout.click();
+    }
+    if (toolbarAccountTrigger) toolbarAccountTrigger.addEventListener("click", function () {
+      var open = toolbarAccountMenu && !toolbarAccountMenu.hidden;
+      if (toolbarAccountMenu) toolbarAccountMenu.hidden = open;
+      toolbarAccountTrigger.setAttribute("aria-expanded", String(!open));
+      if (!open && toolbarAccountMenu) {
+        var first = toolbarAccountMenu.querySelector("a, button");
+        if (first) first.focus();
+      }
+    });
+    if (toolbarAccountLogout) toolbarAccountLogout.addEventListener("click", logoutFromToolbar);
+    var toolbarProfile = workspace && workspace.querySelector("[data-member-toolbar-profile]");
+    if (toolbarProfile) toolbarProfile.addEventListener("click", function () {
+      if (toolbarAccountMenu) toolbarAccountMenu.hidden = true;
+      if (toolbarAccountTrigger) toolbarAccountTrigger.setAttribute("aria-expanded", "false");
+      setMemberView("overview", false, true);
     });
     load();
   }

@@ -214,3 +214,46 @@ def test_exam_cannot_start_after_deadline(tmp_path):
 
     assert expired["status"] == "expired"
     assert attempt is None
+
+
+def test_exam_duration_starts_on_first_open_and_manager_rejection_is_owned(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    assignment, _ = database.create_exam_assignment(
+        candidate_discord_user_id="12345678901234567",
+        candidate_username="candidate",
+        manager_discord_user_id="22345678901234567",
+        question_bank_version="civil-duration-test",
+        passing_score=70,
+        duration_hours=6,
+    )
+    question_order, option_order = materialize_exam(seed=12)
+    started, attempt = database.start_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        question_order=question_order,
+        option_order=option_order,
+        now="2029-01-01T00:00:00+00:00",
+    )
+
+    assert started["status"] == "in_progress"
+    assert started["deadline_at"] == "2029-01-01T06:00:00+00:00"
+    assert attempt["status"] == "in_progress"
+
+    rejected = database.reject_exam_assignment(
+        assignment["id"],
+        "22345678901234567",
+        now="2029-01-01T00:30:00+00:00",
+    )
+    assert rejected["status"] == "rejected"
+    assert database.reject_exam_assignment(assignment["id"], "99999999999999999") is None
+    assert database.reject_exam_assignment(assignment["id"], "22345678901234567")["status"] == "rejected"
+    status, _, _ = database.submit_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        answers=_perfect_answers(question_order, option_order),
+        score=100,
+        correct_count=10,
+        passed=True,
+        now="2029-01-01T01:00:00+00:00",
+    )
+    assert status == "not_submittable"

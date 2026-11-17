@@ -16,7 +16,7 @@ else:
 
 
 class ExamAssignmentExistsError(sqlite3.IntegrityError):
-    """Raised when a candidate already has the one allowed selection exam."""
+    """Raised when a candidate already has the same active exam type."""
 
 
 SCHEMA = """
@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS exam_assignments (
     manager_discord_user_id TEXT NOT NULL,
     question_bank_version TEXT NOT NULL,
     passing_score INTEGER NOT NULL,
+    duration_hours INTEGER NOT NULL DEFAULT 24,
     deadline_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'assigned',
     created_at TEXT NOT NULL,
@@ -594,6 +595,11 @@ class PeaceDatabase:
             profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(candidate_profiles)")}
             if profile_columns and "avatar_hash" not in profile_columns:
                 connection.execute("ALTER TABLE candidate_profiles ADD COLUMN avatar_hash TEXT")
+            exam_assignment_columns = {row["name"] for row in connection.execute("PRAGMA table_info(exam_assignments)")}
+            if exam_assignment_columns and "duration_hours" not in exam_assignment_columns:
+                connection.execute(
+                    "ALTER TABLE exam_assignments ADD COLUMN duration_hours INTEGER NOT NULL DEFAULT 24"
+                )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_central_login_challenges_token "
                 "ON central_login_challenges(client_id, challenge_token_hash)"
@@ -1156,7 +1162,8 @@ class PeaceDatabase:
         manager_discord_user_id: int | str,
         question_bank_version: str,
         passing_score: int,
-        deadline_at: str,
+        deadline_at: str = "",
+        duration_hours: int = 24,
     ) -> tuple[sqlite3.Row, str]:
         """Create an assignment and return its opaque access link token once."""
         self.initialize()
@@ -1166,8 +1173,14 @@ class PeaceDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT id, status FROM exam_assignments WHERE candidate_discord_user_id = ? LIMIT 1",
-                (candidate_id,),
+                """
+                SELECT id, status FROM exam_assignments
+                WHERE candidate_discord_user_id = ?
+                  AND question_bank_version = ?
+                  AND status NOT IN ('revoked', 'expired', 'rejected')
+                ORDER BY id DESC LIMIT 1
+                """,
+                (candidate_id, str(question_bank_version)),
             ).fetchone()
             if existing is not None:
                 raise ExamAssignmentExistsError(f"candidate already has assignment {int(existing['id'])}")
@@ -1176,8 +1189,8 @@ class PeaceDatabase:
                 INSERT INTO exam_assignments (
                     access_token_hash, candidate_discord_user_id, candidate_username_snapshot,
                     manager_discord_user_id, question_bank_version, passing_score,
-                    deadline_at, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?)
+                    duration_hours, deadline_at, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?)
                 """,
                 (
                     _exam_access_token_hash(raw_token),
@@ -1186,7 +1199,8 @@ class PeaceDatabase:
                     str(manager_discord_user_id),
                     str(question_bank_version),
                     int(passing_score),
-                    deadline_at,
+                    max(1, min(int(duration_hours), 168)),
+                    str(deadline_at or ""),
                     timestamp,
                 ),
             )
@@ -1250,6 +1264,54 @@ class PeaceDatabase:
                     (str(discord_user_id),),
                 ).fetchall()
             )
+
+    def reject_exam_assignment(
+        self,
+        assignment_id: int | str,
+        manager_discord_user_id: int | str,
+        *,
+        now: str | None = None,
+    ) -> sqlite3.Row | None:
+        """Reject one owned, not-yet-submitted assignment."""
+        self.initialize()
+        current_time = now or now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            assignment = connection.execute(
+                """
+                SELECT * FROM exam_assignments
+                WHERE id = ? AND manager_discord_user_id = ?
+                """,
+                (int(assignment_id), str(manager_discord_user_id)),
+            ).fetchone()
+            if assignment is None:
+                connection.rollback()
+                return None
+            if str(assignment["status"]) not in {"assigned", "in_progress"}:
+                connection.commit()
+                return assignment
+            connection.execute(
+                """
+                UPDATE exam_assignments
+                SET status = 'rejected', revoked_at = ?
+                WHERE id = ? AND manager_discord_user_id = ?
+                  AND status IN ('assigned', 'in_progress')
+                """,
+                (current_time, int(assignment_id), str(manager_discord_user_id)),
+            )
+            connection.execute(
+                """
+                INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                VALUES (?, ?, 'rejected', '{}', ?)
+                """,
+                (int(assignment_id), str(manager_discord_user_id), current_time),
+            )
+            updated = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            connection.commit()
+        return updated
 
     def create_investigation_case(
         self,
@@ -1890,7 +1952,8 @@ class PeaceDatabase:
                 (int(assignment_id),),
             ).fetchone()
             if assignment["status"] == "assigned":
-                if str(assignment["deadline_at"]) <= current_time:
+                stored_deadline = str(assignment["deadline_at"] or "").strip()
+                if stored_deadline and stored_deadline <= current_time:
                     connection.execute(
                         "UPDATE exam_assignments SET status = 'expired' WHERE id = ? AND status = 'assigned'",
                         (int(assignment_id),),
@@ -1904,6 +1967,11 @@ class PeaceDatabase:
                     )
                 else:
                     attempt_token = secrets.token_urlsafe(32)
+                    deadline_at = stored_deadline or (
+                        datetime.fromisoformat(current_time) + timedelta(
+                            hours=max(1, min(int(assignment["duration_hours"] or 24), 168))
+                        )
+                    ).isoformat()
                     connection.execute(
                         """
                         INSERT INTO exam_attempts (
@@ -1921,15 +1989,24 @@ class PeaceDatabase:
                         ),
                     )
                     connection.execute(
-                        "UPDATE exam_assignments SET status = 'in_progress', started_at = ? WHERE id = ? AND status = 'assigned'",
-                        (current_time, int(assignment_id)),
+                        """
+                        UPDATE exam_assignments
+                        SET status = 'in_progress', started_at = ?, deadline_at = ?
+                        WHERE id = ? AND status = 'assigned'
+                        """,
+                        (current_time, deadline_at, int(assignment_id)),
                     )
                     connection.execute(
                         """
                         INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
-                        VALUES (?, ?, 'started', '{}', ?)
+                        VALUES (?, ?, 'started', ?, ?)
                         """,
-                        (int(assignment_id), candidate_id, current_time),
+                        (
+                            int(assignment_id),
+                            candidate_id,
+                            json.dumps({"deadline_at": deadline_at}, ensure_ascii=True, separators=(",", ":")),
+                            current_time,
+                        ),
                     )
             assignment = connection.execute(
                 "SELECT * FROM exam_assignments WHERE id = ?",
@@ -2033,6 +2110,18 @@ class PeaceDatabase:
                 """,
                 (current_time, int(score), int(correct_count), int(bool(passed)), int(assignment_id)),
             )
+            overall = connection.execute(
+                """
+                SELECT AVG(score) AS average_score,
+                       COUNT(*) AS submitted_count,
+                       MIN(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS all_passed
+                FROM exam_assignments
+                WHERE candidate_discord_user_id = ? AND status = 'submitted'
+                """,
+                (candidate_id,),
+            ).fetchone()
+            overall_score = int(round(float(overall["average_score"] or score)))
+            overall_passed = int(bool(overall["all_passed"])) if overall is not None else int(bool(passed))
             connection.execute(
                 """
                 INSERT INTO candidate_profiles (
@@ -2050,8 +2139,8 @@ class PeaceDatabase:
                 (
                     candidate_id,
                     str(assignment["candidate_username_snapshot"]),
-                    int(score),
-                    int(bool(passed)),
+                    overall_score,
+                    overall_passed,
                     int(assignment_id),
                     current_time,
                     current_time,
@@ -2142,6 +2231,7 @@ class PeaceDatabase:
                 f"SELECT media_id, COUNT(*) AS count FROM public_media_likes WHERE media_id IN ({placeholders}) GROUP BY media_id",
                 ids,
             ).fetchall()
+
             comment_rows = connection.execute(
                 f"SELECT media_id, COUNT(*) AS count FROM public_media_comments WHERE media_id IN ({placeholders}) GROUP BY media_id",
                 ids,

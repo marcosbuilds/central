@@ -36,10 +36,14 @@ Discord identity and must not be rendered by a static page before a real
 backend session exists. The candidate-facing shell therefore shows the
 planned states without synthetic grades, attempts, deadlines, or approvals.
 
-Only the Gerência role may create, assign, revoke, or grade an exam.
-Authorization is enforced server-side using the configured stable Discord role
-ID and fails closed. Staff, candidate-facing sessions, and frontend-only
-controls are not treated as permission to generate an exam.
+Only the Gerência role may use the manager-side exam operations exposed by the
+current public surface: creating assignments, listing its assignments, reading
+submitted reviews, and rejecting its own assigned or in-progress assignments.
+Candidate submissions are graded server-side. There is currently no public
+manual-grade-correction endpoint; adding that operation requires a separate
+contract decision. Authorization is enforced server-side using the configured
+stable Discord role ID and fails closed. Staff, candidate-facing sessions, and
+frontend-only controls are not treated as permission to generate an exam.
 
 The candidate flow uses Discord OAuth identity, compares the authenticated
 Discord ID with the assignment, and shows only records owned by that ID. A
@@ -54,7 +58,7 @@ the guild, member, role, or hierarchy check is unavailable.
 
 | Role or identity | Planned capability | Authority boundary |
 | --- | --- | --- |
-| `Gerência` | Generate, assign, revoke, publish, and correct exams | The only identity allowed to mutate exam records |
+| `Gerência` | Create assignments, list its assignments, read submitted reviews, and reject its own assigned/in-progress assignments | The only identity allowed to use manager-side exam operations exposed today |
 | `Recrutador` (optional later role) | Read assigned candidates and coordinate the next step | Must not generate, publish, revoke, or correct an exam unless a later decision explicitly expands the policy |
 | `Aluno` | Receive the role after an approved set request | Outcome/access role; never an exam-authority role |
 | Candidate Discord identity | Authenticate, start an assigned attempt, submit it, and read its own result | Bound to the authenticated Discord user ID; no Peace membership required |
@@ -69,21 +73,30 @@ role, application, or permission was changed for this decision.
 
 The public backend now delivers OAuth2 Authorization Code + PKCE with a
 consumed state, protected cookies, persistent candidate/assignment/attempt/
-event records, Gerência-only assignment creation, deadline enforcement,
-server-side grading, per-attempt question and option order, and one definitive
-submission per candidate assignment. The assignment URL is individualized and
-stores only a hash server-side; reloading resumes the same in-progress attempt
-and never creates a second attempt.
+event records, Gerência-only assignment creation, server-side deadline
+enforcement, server-side grading, per-attempt question and option order, and
+one definitive submission per assignment. The current visible type is
+`theoretical_civil`, labelled `Prova teórica — Civil`; `tier_i` remains an
+input compatibility alias only. Each assignment stores a bounded duration in
+hours, calculates its UTC deadline when the candidate first starts, and
+exposes the derived time-per-question from the immutable question bank. Older
+assignments with an absolute deadline remain valid. The assignment URL is
+individualized and stores only a hash server-side; reloading resumes the same
+in-progress attempt and never creates a second attempt. A candidate may have
+separate active assignments when their question-bank types differ, while the
+general profile score is the average across submitted assignments.
 
 ## Selection flow
 
 1. A manager authenticates with Discord and the server verifies the current
    `Gerência` role by stable ID. A frontend-only button or an old role snapshot
    is never enough.
-2. The manager selects the immutable Civil question-bank version, the target
-   Discord user ID, the visible username snapshot, and an absolute deadline in
-   UTC. The username is displayed for recognition and audit only.
-3. The server creates one assignment per candidate Discord ID, generates a
+2. The manager selects the named exam type, the target Discord user ID, the
+   visible username snapshot, and a duration from 1 to 168 hours. The timer
+   begins only when the candidate starts; the username is displayed for
+   recognition and audit only.
+3. The server creates one active assignment per candidate and question-bank
+   type, generates a
    high-entropy opaque token, stores only its hash, and publishes an
    individualized link scoped to that assignment. The URL does not contain the
    raw Discord ID or answer data.
@@ -96,7 +109,7 @@ and never creates a second attempt.
    option order where applicable). The seed/order is stored for audit and is
    never accepted from the browser. Two simultaneous candidates therefore see
    different orderings without changing the contents of the exam.
-6. The server enforces the deadline for both start and submit. After submission,
+6. The server enforces the calculated deadline for both start and submit. After submission,
    the result remains private to the candidate and authorized staff, with an
    append-only audit event for the assignment, attempt, actor, timestamp, and
    outcome. Raw tokens and answer keys do not enter public logs.

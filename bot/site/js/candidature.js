@@ -377,7 +377,7 @@
       var tail = ".";
       var showChannel = state === "verification_pending" && channelAvailable;
       if (state === "role_missing") {
-        copy = " está no servidor, mas o cargo de entrada não foi localizado.";
+        copy = " está na Peace, mas o cargo de entrada não foi localizado.";
         tail = "";
       } else if (state === "unavailable") {
         copy = " foi encontrada, mas o Discord não respondeu com um estado atualizado.";
@@ -435,7 +435,7 @@
       }
 
       if (payload.status === "visitor_member") {
-        if (memberResult) memberResult.textContent = "Sua entrada no servidor foi confirmada. Continue a entrevista.";
+        if (memberResult) memberResult.textContent = "Sua entrada na Peace foi confirmada. Continue a entrevista.";
         setStage(3, false);
         updateWizard(wizardStep, false);
         return;
@@ -582,7 +582,7 @@
         setEntryUser(null);
         setInviteLinks("", "", false);
         setStage(1, false);
-        if (connectResult) connectResult.textContent = "Não encontrei mais essa entrada no servidor. Gere um novo convite para continuar.";
+        if (connectResult) connectResult.textContent = "Não encontrei mais essa solicitação na Peace. Gere um novo convite para continuar.";
         if (sessionNote) sessionNote.textContent = "A entrada anterior deixou de estar disponível.";
         return true;
       }
@@ -858,7 +858,7 @@
           if (connectResult) connectResult.textContent = existingPopup
             ? "Convite aberto. Entre na Peace por ele e volte para acompanhar."
             : "Permita novas guias no navegador para abrir o convite.";
-          setInviteWaiting("pending", "Aguardando sua entrada", "Entre no servidor pelo convite e volte quando terminar.");
+          setInviteWaiting("pending", "Aguardando sua entrada", "Entre na Peace pelo convite e volte quando terminar.");
           startEntryPolling();
           return;
         }
@@ -1254,13 +1254,13 @@
           roleMissing ? "warning" : "pending",
           roleMissing ? "Cargo de entrada ausente" : "Verificação pendente",
           roleMissing
-            ? "Sua conta está no servidor, mas o cargo de entrada não foi localizado. Abra Estou com problemas para tentar corrigir."
+            ? "Sua conta está na Peace, mas o cargo de entrada não foi localizado. Abra Estou com problemas para tentar corrigir."
             : "Sua conta já está na Peace. Abra o canal #verify, conclua a verificação humana e atualize este status."
         );
-        if (manualEntryNote) manualEntryNote.textContent = "A conta conectada já foi encontrada no servidor. Não é necessário gerar outro convite.";
+        if (manualEntryNote) manualEntryNote.textContent = "A conta conectada já foi encontrada na Peace. Não é necessário gerar outro convite.";
         if (sessionNote) sessionNote.textContent = roleMissing
-          ? "Conta encontrada no servidor, mas o cargo de entrada precisa ser corrigido."
-          : "Conta encontrada no servidor. Conclua o #verify para liberar a entrevista.";
+          ? "Conta encontrada na Peace, mas o cargo de entrada precisa ser corrigido."
+          : "Conta encontrada na Peace. Conclua o #verify para liberar a entrevista.";
         if (refreshResult) refreshResult.textContent = roleMissing ? "O cargo de entrada precisa ser corrigido." : "Aguardando sua verificação no #verify.";
         if (roleMissing) openHelpPanel(true);
         else closeHelpPanel(false);
@@ -1277,9 +1277,9 @@
         if (!identity.discord_id || !identity.username) return false;
         setEntryUser({ id: identity.discord_id, mention: "@" + identity.username });
         setVerificationChannel(session.verification);
-        if (memberResult) memberResult.textContent = "Sua entrada no servidor foi confirmada pela conta Discord conectada. A entrevista é o próximo passo.";
+        if (memberResult) memberResult.textContent = "Sua entrada na Peace foi confirmada pela conta Discord conectada. A entrevista é o próximo passo.";
         if (manualEntryNote) manualEntryNote.textContent = "Não é necessário conectar novamente nem informar username ou ID. Esta conta já foi identificada pelo Discord.";
-        if (sessionNote) sessionNote.textContent = "Conta identificada no servidor. Continue pela etapa de entrevista.";
+        if (sessionNote) sessionNote.textContent = "Conta identificada na Peace. Continue pela etapa de entrevista.";
         setStage(3, false);
         updateWizard(wizardStep, false);
         return true;
