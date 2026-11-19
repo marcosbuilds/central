@@ -28,8 +28,8 @@
         <div class="gate-copy">
           <p class="eyebrow">Área de membros</p>
           <h1 id="gate-title">Tudo o que importa, <em>em um só lugar.</em></h1>
-          <p data-member-gate-message>Conecte seu Discord para acompanhar progresso, materiais e informações autorizadas. Verificação, pedidos e conversas continuam no Discord.</p>
-          <div class="gate-actions"><a class="button button--light button--large" href="../acessar/?return_to=%2Farea%2F" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><button class="text-button" type="button" data-member-retry hidden>Tentar validar novamente</button><a class="text-button" href="../discord">Abrir Discord ↗</a></div>
+          <p data-member-gate-message>Conecte seu Discord para acompanhar progresso, materiais e informações autorizadas nesta área.</p>
+          <div class="gate-actions"><a class="button button--light button--large" href="../acessar/?return_to=%2Farea%2F" data-member-discord-connect>Conectar Discord <span class="button-icon" aria-hidden="true">→</span></a><button class="text-button" type="button" data-member-retry hidden>Tentar validar novamente</button></div>
         </div>
         <aside class="gate-note" aria-label="Limite da área web">
           <p class="eyebrow">Fonte de autoridade</p>
@@ -168,7 +168,7 @@
                 <h1 class="sr-only" id="member-partners-title">Parceiros</h1>
                 <p class="member-view-lede">Organizações e comunidades parceiras da Peace.</p>
                 <div class="member-partner-list" data-member-partners-list role="list" aria-live="polite">
-                  <p class="member-block-state">Consultando parceiros publicados…</p>
+                  <div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando parceiros publicados…</span></div>
                 </div>
               </section>
 
@@ -189,9 +189,9 @@
                 <h1 class="sr-only" id="member-process-title">Processo e provas</h1>
                 <section class="member-panel" aria-labelledby="member-process-summary-title">
                   <div class="member-section-heading"><div><h2 id="member-process-summary-title">Processo e provas</h2></div><span class="status-tag status-tag--planned" data-member-process-status>Aguardando dados</span></div>
-                  <div class="member-process-summary" data-member-process-summary><p class="member-block-state">Consultando seu processo…</p></div>
+                  <div class="member-process-summary" data-member-process-summary><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando seu processo…</span></div></div>
                   <div class="member-process-assignments-heading"><span class="eyebrow">Atribuições</span><span class="member-view-count" data-member-process-count>0 provas</span></div>
-                  <div class="member-process-assignments" data-member-process-assignments><p class="member-block-state">Consultando atribuições…</p></div>
+                  <div class="member-process-assignments" data-member-process-assignments><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando atribuições…</span></div></div>
                 </section>
               </section>
 
@@ -200,7 +200,7 @@
                 <section class="member-panel" aria-labelledby="member-manager-history-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Acompanhamento</p><h2 id="member-manager-history-title">Candidatos e resultados</h2></div><span class="member-view-count" data-member-manager-count>0 registros</span></div>
                   <div class="member-manager-filters" role="search" aria-label="Filtrar candidatos"><label class="field member-manager-search"><span class="sr-only">Buscar candidato</span><input type="search" data-member-manager-search placeholder="Buscar por username ou Discord ID" autocomplete="off"></label><div class="member-manager-filter-buttons" role="group" aria-label="Filtrar situação"><button type="button" class="member-manager-filter is-active" data-member-manager-filter="all" aria-pressed="true">Todos</button><button type="button" class="member-manager-filter" data-member-manager-filter="assigned" aria-pressed="false">Pendentes</button><button type="button" class="member-manager-filter" data-member-manager-filter="in_progress" aria-pressed="false">Em andamento</button><button type="button" class="member-manager-filter" data-member-manager-filter="submitted" aria-pressed="false">Concluídas</button></div></div>
-                  <div class="member-manager-list" data-member-manager-list><p class="member-block-state">Consultando atribuições…</p></div>
+                  <div class="member-manager-list" data-member-manager-list><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando atribuições…</span></div></div>
                 </section>
               </section>
 
@@ -209,7 +209,7 @@
                 <section class="member-panel member-scan-panel" aria-labelledby="member-scan-panel-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Triagem e entrevistas</p><h2 id="member-scan-panel-title">Decisões no scan-only</h2></div></div>
                   <div class="member-scan-filters" role="group" aria-label="Filtrar mensagens do scan-only"><button type="button" class="member-scan-filter is-active" data-member-scan-filter="all" aria-pressed="true">Todas</button><button type="button" class="member-scan-filter" data-member-scan-filter="pending" aria-pressed="false">Pendentes · aprovar/reprovar</button><button type="button" class="member-scan-filter" data-member-scan-filter="approved" aria-pressed="false">Aprovados</button><button type="button" class="member-scan-filter" data-member-scan-filter="rejected" aria-pressed="false">Reprovados</button></div>
-                  <div class="member-scan-list" data-member-scan-list aria-live="polite"><p class="member-block-state">Consultando o scan-only…</p></div>
+                  <div class="member-scan-list" data-member-scan-list aria-live="polite"><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando o scan-only…</span></div></div>
                 </section>
               </section>
 
@@ -218,13 +218,13 @@
                 <p class="member-view-lede">Registre ocorrências e referências controladas sem misturar evidências investigativas ao feed público de clipes.</p>
                 <section class="member-panel" aria-labelledby="member-investigation-list-title">
                   <div class="member-section-heading"><div><p class="eyebrow">Trilha de trabalho</p><h2 id="member-investigation-list-title">Casos registrados</h2></div><span class="member-view-count" data-member-investigation-count>0 casos</span></div>
-                  <div class="member-investigation-list" data-member-investigation-list><p class="member-block-state">Consultando casos investigativos…</p></div>
+                  <div class="member-investigation-list" data-member-investigation-list><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando casos investigativos…</span></div></div>
                 </section>
               </section>
 
               <section class="member-view member-notices-view" data-member-view="notices" hidden aria-labelledby="member-notices-title">
                 <h1 class="sr-only" id="member-notices-title">Avisos</h1>
-                <section class="member-panel"><div class="member-notices-list" data-member-notices-view-list><p class="member-block-state">Consultando avisos públicos…</p></div></section>
+                <section class="member-panel"><div class="member-notices-list" data-member-notices-view-list><div class="member-block-state member-block-state--loading"><span class="peace-spinner" aria-hidden="true"></span><span>Consultando avisos públicos…</span></div></div></section>
               </section>
             </div>
           </div>
@@ -243,7 +243,7 @@
             <label class="field"><span>Discord ID do candidato</span><input name="candidate_discord_user_id" autocomplete="off" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" required placeholder="somente números"></label>
             <label class="field"><span>Username do candidato</span><input name="candidate_username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="2" maxlength="80" required placeholder="ex.: peaceiro"></label>
             <label class="field"><span>Tipo de prova</span><select name="exam_type"><option value="theoretical_civil">Prova teórica — Civil</option></select></label>
-            <label class="field"><span>Tempo após iniciar</span><div class="field-input-with-suffix"><input name="duration_hours" type="number" min="1" max="168" step="1" value="24" required><span>horas</span></div><small>A contagem começa quando o candidato iniciar. O tempo será dividido igualmente entre as questões.</small></label>
+            <label class="field"><span>Tempo após iniciar</span><div class="field-input-with-suffix"><input name="duration_hours" type="number" min="1" max="168" step="1" value="24" required><span>horas</span></div></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-manager-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-manager-submit><span data-button-label>Atribuir prova</span> <span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-manager-form-status role="status" aria-live="polite"></p>

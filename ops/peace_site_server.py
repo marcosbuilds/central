@@ -154,7 +154,6 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/entrar",
             "/candidatura",
             "/acessar",
-            "/avisos",
             "/parceiros",
             "/clipes",
             "/termos",

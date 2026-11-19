@@ -234,12 +234,6 @@
 .public-hero-mark { align-self: stretch; display: flex; flex-direction: column; justify-content: end; min-height: 13rem; padding: 1.3rem; }
 .public-hero-mark .flow-symbol { margin: 0 0 auto; }
 .public-hero-mark .flow-symbol--peace { width: 3rem; height: 3rem; object-fit: contain; filter: grayscale(1) brightness(1.3); }
-.notice-bell { position: relative; display: grid; width: 2.75rem; height: 2.75rem; place-items: center; margin: 0 0 auto; border: 1px solid var(--border); border-radius: 0.7rem; background: rgba(185, 202, 211, 0.05); color: var(--quiet); }
-.notice-bell svg { width: 1.35rem; height: 1.35rem; }
-.notice-bell.is-new { border-color: rgba(223, 190, 125, 0.65); background: rgba(223, 190, 125, 0.1); color: var(--warning); }
-.notice-bell[data-notices-bell]::after { position: absolute; top: 0.45rem; right: 0.45rem; width: 0.38rem; height: 0.38rem; border-radius: 50%; background: var(--warning); content: ""; opacity: 0; transform: scale(0.5); transition: opacity 180ms var(--ease-fast), transform 180ms var(--ease-fast); }
-.notice-bell.is-new::after { opacity: 1; transform: scale(1); }
-.notice-bell [data-notices-badge] { position: absolute; top: -0.45rem; right: -0.5rem; display: grid; min-width: 1.3rem; min-height: 1.3rem; place-items: center; padding: 0 0.25rem; border: 2px solid var(--canvas); border-radius: 999px; background: var(--warning); color: var(--canvas); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.5rem; font-weight: 800; line-height: 1; }
 .public-hero-mark strong { margin-top: 1.5rem; color: var(--text); font-size: 0.9rem; }
 .public-hero-mark p { max-width: 20rem; margin: 0.45rem 0 1.2rem; color: var(--muted); font-size: 0.77rem; line-height: 1.65; }
 .terms-main { padding-bottom: clamp(4rem, 8vw, 7rem); }
@@ -253,21 +247,8 @@
 .terms-section .terms-list li { padding-left: 1rem; border-left: 2px solid var(--border); color: var(--muted); font-size: 0.8rem; line-height: 1.75; }
 .terms-section .terms-list strong { color: var(--text); }
 .terms-note { color: var(--quiet) !important; font-size: 0.68rem !important; }
-.notice-board, .partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); }
-.notice-board-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding-bottom: 1.35rem; border-bottom: 1px solid var(--border); }
-.notice-board-heading .eyebrow { margin-bottom: 0.65rem; }
-.notice-board-heading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3.8rem); letter-spacing: -0.07em; line-height: 0.95; }
+.partner-board { margin-top: clamp(4rem, 8vw, 7rem); padding: clamp(1.25rem, 4vw, 2.5rem); }
 .state-tag--pending { border-color: rgba(223, 190, 125, 0.35); background: rgba(223, 190, 125, 0.08); color: var(--warning); }
-.notice-empty { max-width: 42rem; padding: 3.2rem 0 2.6rem; }
-.notice-empty .flow-symbol { margin-bottom: 1rem; }
-.notice-empty h3 { margin: 0 0 0.65rem; font-size: clamp(1.35rem, 3vw, 2.2rem); letter-spacing: -0.045em; line-height: 1; }
-.notice-empty p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.75; }
-.notice-board .notice-ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--border); border-left: 0; padding: 0; }
-.notice-board .notice-line { grid-template-columns: 1fr; gap: 0.25rem; min-width: 0; padding: 1rem 1rem 1rem 0; border-bottom: 0; border-right: 1px solid var(--border); }
-.notice-board .notice-line + .notice-line { padding-left: 1rem; }
-.notice-board .notice-line:last-child { border-right: 0; }
-.notice-board .notice-line:first-child { border-top: 0; }
-.notice-board .notice-line strong, .notice-board .notice-line small { grid-column: auto; }
 .public-invite { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: end; gap: 2rem; margin-top: clamp(4rem, 8vw, 7rem); padding: 1.4rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .public-invite h2, .public-contact h2 { margin: 0 0 0.6rem; font-size: clamp(1.8rem, 4vw, 3.4rem); letter-spacing: -0.065em; line-height: 0.95; }
 .public-invite p { margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.65; }
@@ -296,7 +277,6 @@
 .application-card,
 .login-card,
 .public-hero-mark,
-.notice-board,
 .partner-board {
   border: 1px solid var(--container-border);
   border-radius: var(--container-radius);
@@ -355,9 +335,9 @@ body[data-page="candidatura"] [data-entry-connect] { min-width: 15rem; }
   .connection-guide, .verification-steps { grid-template-columns: 1fr; gap: 0; }
   .connection-guide li, .connection-guide li + li { padding: 0.85rem 0; border-left: 0; border-bottom: 1px solid var(--border); }
   .connection-guide li:last-child { border-bottom: 0; }
-  .notice-board .notice-ledger, .partner-principles { grid-template-columns: 1fr; }
-  .notice-board .notice-line, .notice-board .notice-line + .notice-line, .partner-principles > div, .partner-principles > div + div { padding-inline: 0; border-right: 0; border-bottom: 1px solid var(--border); }
-  .notice-board .notice-line:last-child, .partner-principles > div:last-child { border-bottom: 0; }
+  .partner-principles { grid-template-columns: 1fr; }
+  .partner-principles > div, .partner-principles > div + div { padding-inline: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .partner-principles > div:last-child { border-bottom: 0; }
   .public-contact { align-items: flex-start; flex-direction: column; }
 }
 
@@ -386,7 +366,6 @@ body[data-page="candidatura"] [data-entry-connect] { min-width: 15rem; }
   .wizard-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; justify-content: flex-start; }
   .wizard-actions .button { width: auto; }
   .wizard-actions .button--light { width: 100%; }
-  .notice-board-heading { align-items: flex-start; flex-direction: column; gap: 1rem; }
   .partner-empty { grid-template-columns: 1fr; }
   .partner-empty-mark { width: 4.3rem; height: 4.3rem; }
   .partner-empty-mark img { width: 3.7rem; height: 3.7rem; }
@@ -525,9 +504,7 @@ body[data-page="home"] .member-invite h2 { font-size: clamp(2.25rem, 5vw, 4.6rem
 body[data-page="home"] .step-list, body[data-page="home"] .history-list { margin-top: 2.5rem; }
 body[data-page="home"] .media-feed { margin-top: 2.75rem; }
 
-body[data-page="notices"] .public-hero h1,
 body[data-page="partners"] .public-hero h1 { font-size: clamp(2.5rem, 5.5vw, 5rem); }
-body[data-page="notices"] .public-hero-mark,
 body[data-page="partners"] .public-hero-mark { min-height: 9rem; }
 .public-hero-mark strong { margin-top: 0.9rem; }
 .public-hero-mark p { margin-bottom: 0; }

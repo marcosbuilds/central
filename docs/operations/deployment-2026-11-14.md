@@ -20,7 +20,7 @@ the table of contents, the current-page indicator, and page-specific context.
 | Surface | Check | Result |
 | --- | --- | --- |
 | Netlify site | Production publication for `peacegg.com.br` | **Not run — local-only scope** |
-| Local public routes | Homepage, studies, Civil, A Peace, process, proof, management, notices, partners | 200 and visually inspected |
+| Local public routes | Homepage, studies, Civil, A Peace, process, proof, management, partners | 200 and visually inspected |
 | Static assets | Covers and reader page images | Loaded after the normal image request completes |
 | Netlify branding | Production pages | Not applicable until a deploy is requested |
 | Original PDF files | Public package and rendered reader DOM | Not published or linked |
@@ -46,7 +46,6 @@ Verified public routes:
 - `/meu-processo/`
 - `/prova/`
 - `/gerencia/provas/`
-- `/avisos/`
 - `/parceiros/`
 
 Reader-specific checks:

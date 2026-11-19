@@ -130,7 +130,7 @@ the process page reads only records bound to the authenticated Discord ID.
 The route boundary is explicit:
 
 - Public static pages: `/`, `/estudos/`, both study detail pages and readers,
-  `/avisos/`, `/parceiros/`, `/clipes/`, `/termos/`, `/meu-processo/`,
+  `/parceiros/`, `/clipes/`, `/termos/`, `/meu-processo/`,
   `/entrar/`, `/candidatura/`, and `/acessar/`.
 - Public pages with private data/actions: `/meu-processo/` and `/prova/`.
   Their APIs require the authenticated Discord identity and return only the
@@ -200,7 +200,6 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/entrar/` | serves the public entry UI |
 | Netlify `/candidatura/` | serves the documented candidature and setagem UI states |
 | Netlify `/acessar/` | serves the member Peace ID + code login UI |
-| Netlify `/avisos/` | serves the dedicated public notices interface |
 | Netlify `/parceiros/` | serves the dedicated public partners interface |
 | Netlify `/clipes/` | serves the public clip library; GET is public, interactions require the Peace role |
 | Netlify `/termos/` | serves the public Terms of Use, privacy, and data-collection document |
@@ -211,7 +210,7 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/estudos/peace/leitor/` | serves the Peace convivencia reader and rendered pages |
 | Netlify `/meu-processo/` | serves the candidate-owned Discord-linked process shell |
 | Netlify `/estudos/a-peace` | redirects to `/estudos/peace/leitor/` as a readable alias |
-| Netlify `/entrar`, `/candidatura`, `/acessar`, `/avisos`, `/parceiros`, `/termos`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
+| Netlify `/entrar`, `/candidatura`, `/acessar`, `/parceiros`, `/termos`, `/estudos`, `/meu-processo`, `/clipes` | normalize to their trailing-slash routes |
 | Netlify `/area` | normalizes to the gated `/area/` shell |
 | Netlify `/area/` | serves the gated member-area UI shell; its content is revealed only after the Discord session, live Peace role, and candidate process are confirmed |
 | Netlify `/investigacao/aprovacao/` | serves the private evaluator page; the token is useless without the matching authenticated Discord account |
@@ -558,7 +557,7 @@ The public route tests exercise the Netlify artifact contract, the ACL API
 allowlist, CORS behavior, health response, media filtering, and the fixed
 status proxy rule without contacting Discord or a production provider. A
 production smoke check should verify the Netlify homepage, `/discord`,
-`/entrar/`, `/candidatura/`, `/acessar/`, `/avisos/`, `/parceiros/`, `/termos/`, `/area/`,
+  `/entrar/`, `/candidatura/`, `/acessar/`, `/parceiros/`, `/termos/`, `/area/`,
 `/api/status`, and `/api/media`, followed by the direct ACL `/healthz`,
 `/api/status`, and `/api/media` routes. Custom-domain TLS
 remains controlled by Netlify after DNS propagation. The current redesign is

@@ -10,7 +10,12 @@
     var items = Array.prototype.slice.call(scope.querySelectorAll("[data-study-item]"));
     var count = scope.querySelector("[data-study-count]");
     var empty = scope.querySelector("[data-study-empty]");
-    if (!input || !items.length || input.dataset.studyReady === "true") return;
+    if (!input || !items.length) return;
+
+    if (input.dataset.studyReady === "true") {
+      if (typeof input.__peaceStudyRender === "function") input.__peaceStudyRender();
+      return;
+    }
 
     input.dataset.studyReady = "true";
     var initialQuery = new URL(window.location.href).searchParams.get("q") || "";
@@ -45,6 +50,8 @@
       else url.searchParams.delete("q");
       window.history.replaceState({}, document.title, url.pathname + (url.search ? "?" + url.searchParams.toString() : "") + url.hash);
     }
+
+    input.__peaceStudyRender = render;
 
     input.addEventListener("input", render);
     window.addEventListener("popstate", function () {

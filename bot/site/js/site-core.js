@@ -2,7 +2,7 @@
   "use strict";
 
   var body = document.body;
-  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "notices", "partners", "clips", "process", "exam", "terms"];
+  var publicContextPages = ["studies", "study-civil", "study-peace", "reader", "partners", "clips", "process", "exam", "terms"];
   var routeLabels = {
     "/": "Início",
     "/area/": "Área de membros",
@@ -11,7 +11,6 @@
     "/estudos/peace/": "Manual da Peace",
     "/estudos/civil/leitor/": "Leitor Civil",
     "/estudos/peace/leitor/": "Leitor Peace",
-    "/avisos/": "Avisos",
     "/parceiros/": "Parceiros",
     "/clipes/": "Clipes",
     "/termos/": "Termos e privacidade",
@@ -22,7 +21,6 @@
   var contextTitles = {
     studies: "Área de estudo / Biblioteca",
     clips: "Clipes",
-    notices: "Avisos",
     partners: "Parceiros",
     process: "Meu processo",
     exam: "Prova Civil",
@@ -170,7 +168,6 @@
     if (href === "/#sobre" || href === "#sobre") return "peace";
     if (href === "/estudos/" || href.indexOf("/estudos/civil/") === 0 || href.indexOf("/estudos/peace/") === 0) return "study";
     if (href === "/meu-processo/") return "process";
-    if (href === "/avisos/") return "notice";
     if (href === "/parceiros/") return "partner";
     return null;
   }

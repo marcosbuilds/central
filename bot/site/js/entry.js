@@ -7,6 +7,18 @@
   var startLink = document.querySelector("[data-entry-start]");
   var sessionState = document.querySelector("[data-entry-session-state]");
   var params = new URLSearchParams(window.location.search);
+  var defaultStartLabel = (startLink && startLink.querySelector("[data-entry-start-label]") || {}).textContent || "Começar entrada";
+
+  function setStartBusy(busy) {
+    if (!startLink) return;
+    startLink.classList.toggle("is-loading", busy);
+    startLink.setAttribute("aria-disabled", busy ? "true" : "false");
+    startLink.setAttribute("aria-busy", busy ? "true" : "false");
+    if (busy) startLink.setAttribute("tabindex", "-1");
+    else startLink.removeAttribute("tabindex");
+    var label = startLink.querySelector("[data-entry-start-label]");
+    if (label) label.textContent = busy ? "Conectando Discord…" : defaultStartLabel;
+  }
 
   function showSessionState(message, tone) {
     if (!sessionState) return;
@@ -16,6 +28,7 @@
     if (copy) copy.textContent = message;
   }
 
+  setStartBusy(true);
   site.getDiscordSession().then(function (session) {
     if (!session) return;
     var server = session.server || {};
@@ -46,5 +59,5 @@
     if (params.get("from") === "candidature") {
       showSessionState("Você voltou da candidatura. Seu rascunho continua salvo nesta sessão.", "pending");
     }
-  });
+  }).finally(function () { setStartBusy(false); });
 })(window);

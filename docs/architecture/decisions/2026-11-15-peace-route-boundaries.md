@@ -13,7 +13,7 @@ mutation repeats the server-side check.
 
 | Surface | Routes | Required authority |
 | --- | --- | --- |
-| Public content and entry | `/`, `/estudos/`, `/estudos/civil/`, `/estudos/peace/`, both readers, `/avisos/`, `/parceiros/`, `/clipes/`, `/entrar/`, `/candidatura/`, `/acessar/` | None to read the page; Discord identity only where an action or private response needs it |
+| Public content and entry | `/`, `/estudos/`, `/estudos/civil/`, `/estudos/peace/`, both readers, `/parceiros/`, `/clipes/`, `/entrar/`, `/candidatura/`, `/acessar/` | None to read the page; Discord identity only where an action or private response needs it |
 | Candidate-owned data | `/meu-processo/`, `/prova/` and their APIs | Authenticated Discord identity; records are filtered by Discord ID |
 | Peace workspace | `/area/` and `/api/peace/process` | Authenticated Discord identity, live Peace role, complete profile and process response |
 | Management | `/gerencia/provas/` and assignment mutations | Authenticated Discord identity with the configured Gerência role |
@@ -29,7 +29,6 @@ fragments. Its destinations are:
 
 - `/area/` — overview and the authenticated Peace shell;
 - `/estudos/` — public study library;
-- `/avisos/` — public announcements with a notification bell and toast;
 - `/parceiros/` — public partner directory;
 - `/clipes/` — public clip feed with search, source-safe playback, and Peace-only likes/comments;
 - `/meu-processo/` — candidate-owned process and exam history.
@@ -60,16 +59,17 @@ incomplete assignment response returns to the gate/unavailable state without
 briefly exposing the form.
 
 Public data pages keep their own loading, empty, stale/unavailable, and retry
-states. Notices use a local seen-key ledger so a newly returned public item can
-produce an accessible toast without claiming a real-time guarantee. Clips
-search the bounded public source by title, provider, caption, or author; the
-server rechecks Peace membership before persisting likes or comments.
+states. Authenticated member notices use a local seen-key ledger so a newly
+returned item can produce an accessible toast without claiming a real-time
+guarantee. Clips search the bounded public source by title, provider, caption
+or author; the server rechecks Peace membership before persisting likes or
+comments.
 
 ## Verification
 
 - Route/static contract: `python -m pytest tests/peace/test_public_site.py -q`.
 - JavaScript syntax: `node --check` for each module under `bot/site/js/`.
-- Local browser: inspect `/`, `/area/`, `/estudos/`, `/avisos/`, `/parceiros/`,
+- Local browser: inspect `/`, `/area/`, `/estudos/`, `/parceiros/`,
   `/clipes/`, and `/meu-processo/` at compact and desktop widths.
 - Public-boundary review: no credentials, cookies, private URLs, local paths,
   or generated databases in the tracked diff.

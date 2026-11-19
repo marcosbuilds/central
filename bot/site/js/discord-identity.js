@@ -109,7 +109,7 @@
 
   function setConnectionState(state) {
     document.body.dataset.discordState = state;
-    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]");
+    var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-start]");
     controls.forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       if (state === "connected") node.hidden = true;
@@ -117,8 +117,17 @@
         node.hidden = false;
         node.classList.toggle("is-loading", state === "loading");
         node.setAttribute("aria-disabled", state === "loading" ? "true" : "false");
+        node.setAttribute("aria-busy", state === "loading" ? "true" : "false");
         if (state === "loading") node.setAttribute("tabindex", "-1");
         else node.removeAttribute("tabindex");
+        if (state === "loading" && node.dataset.discordBusyBound !== "true") {
+          node.dataset.discordBusyBound = "true";
+          node.addEventListener("click", function (event) {
+            if (document.body.dataset.discordState !== "loading") return;
+            event.preventDefault();
+            event.stopPropagation();
+          }, true);
+        }
       }
     });
   }
@@ -316,7 +325,7 @@
   }
 
   function hideConnectedDuplicates(connected, state) {
-    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
+    document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect], [data-entry-start]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
       node.hidden = connected || state === "retry";
       if (state === "loading") {

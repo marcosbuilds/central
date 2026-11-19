@@ -306,18 +306,6 @@ h2 em, h1 em { color: var(--accent); font-style: normal; }
 .media-feed-status { min-height: 1rem; margin-top: 1.3rem; }
 @keyframes skeleton-pulse { 50% { border-color: rgba(185, 202, 211, 0.3); } }
 
-.notices { background: transparent; }
-.notice-frame { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(16rem, 0.95fr); gap: clamp(2.5rem, 8vw, 7rem); padding: clamp(2.2rem, 6vw, 5.4rem); border: 1px solid var(--border); background: radial-gradient(circle at 88% 10%, rgba(91, 120, 137, 0.16), transparent 21rem), linear-gradient(145deg, #101b22, #080b0e 68%); }
-.notice-copy h2 { max-width: 42rem; margin: 0 0 1.4rem; font-size: clamp(2.7rem, 5.5vw, 5.5rem); letter-spacing: -0.065em; line-height: 0.93; }
-.notice-copy > p:not(.eyebrow) { max-width: 35rem; margin: 0 0 2rem; color: var(--muted); line-height: 1.75; }
-.notice-ledger { align-self: end; border-left: 1px solid var(--border); padding-left: clamp(1.25rem, 4vw, 3rem); }
-.notice-line { display: grid; grid-template-columns: 5.7rem 1fr; gap: 0.7rem 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
-.notice-line:first-child { border-top: 1px solid var(--border); }
-.notice-line span { color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; }
-.notice-line strong, .notice-line small { grid-column: 2; }
-.notice-line strong { color: var(--text); font-size: 0.88rem; font-weight: 600; }
-.notice-line small { color: var(--quiet); font-size: 0.7rem; }
-
 .partners { border-top: 1px solid rgba(185, 202, 211, 0.08); background: transparent; }
 .partners-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem 1rem; margin-top: 4.5rem; padding: 1.3rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--muted); font-size: 0.84rem; }
 .partners-empty strong { color: var(--text); font-weight: 600; }

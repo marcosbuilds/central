@@ -85,6 +85,48 @@
 .clips-search-submit svg { width: 1.05rem; height: 1.05rem; }
 .clips-search-submit:hover, .clips-search-submit:focus-visible { background: rgba(185, 202, 211, 0.1); color: var(--text); outline: none; }
 
+.clips-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1rem 0 1.35rem;
+  padding: 0.28rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: rgba(185, 202, 211, 0.035);
+}
+.clips-filter {
+  min-height: 2.35rem;
+  padding: 0.5rem 0.78rem;
+  border: 1px solid transparent;
+  border-radius: 0.62rem;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 180ms var(--ease-fast), border-color 180ms var(--ease-fast), color 180ms var(--ease-fast), transform 180ms var(--ease-fast);
+}
+.clips-filter:hover,
+.clips-filter:focus-visible {
+  border-color: var(--border);
+  background: rgba(185, 202, 211, 0.08);
+  color: var(--text);
+  outline: none;
+}
+.clips-filter:active { transform: translateY(1px); }
+.clips-filter.is-active,
+.clips-filter[aria-pressed="true"] {
+  border-color: rgba(196, 219, 221, 0.3);
+  background: linear-gradient(135deg, rgba(196, 219, 221, 0.19), rgba(139, 211, 173, 0.11));
+  color: var(--text);
+  box-shadow: 0 0.35rem 0.9rem rgba(0, 0, 0, 0.12);
+}
+
 .clips-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
 .clip-card,
 .clip-skeleton { min-width: 0; overflow: hidden; border: 1px solid var(--container-border); border-radius: 0.9rem; background: rgba(14, 20, 25, 0.66); box-shadow: 0 1.2rem 2.5rem rgba(0, 0, 0, 0.12); }
@@ -154,6 +196,9 @@
   .public-context-back { max-width: 54%; font-size: 0.66rem; }
   .public-context-title { font-size: 0.68rem; }
   .clips-grid { grid-template-columns: 1fr; }
+  .clips-filter-row { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .clips-filter-row::-webkit-scrollbar { display: none; }
+  .clips-filter { flex: 0 0 auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

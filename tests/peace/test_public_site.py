@@ -1925,6 +1925,40 @@ def test_public_candidature_scan_card_targets_configured_channel_and_candidate_a
     assert custom_ids == {f"peace_set_approve_{request_id}", f"peace_set_reject_{request_id}"}
 
 
+def test_public_scan_request_id_recovers_legacy_card_from_candidate_mention(tmp_path):
+    bot = make_bot(tmp_path)
+    first_id, _ = bot.database.save_pending_set_request(
+        discord_user_id=12345678901234567,
+        in_game_username="Different saved nickname",
+        rg_in_game="",
+        telefone_in_game="",
+        source="site:candidatura",
+        recruiter_user_id=None,
+    )
+    pending = bot.database.pending_set_requests()
+
+    assert bot.public_scan_request_id(
+        "Set pendente de aprovação\nMembro: @membro",
+        pending,
+        mention_ids=["12345678901234567"],
+    ) == str(first_id)
+
+
+def test_public_scan_request_id_keeps_ambiguous_legacy_cards_read_only(tmp_path):
+    bot = make_bot(tmp_path)
+    for discord_user_id in (12345678901234567, 22345678901234567):
+        bot.database.save_pending_set_request(
+            discord_user_id=discord_user_id,
+            in_game_username="Anywhere",
+            rg_in_game="",
+            telefone_in_game="",
+            source="site:candidatura",
+            recruiter_user_id=None,
+        )
+
+    assert bot.public_scan_request_id("Apelido in-game: Anywhere", bot.database.pending_set_requests()) is None
+
+
 def test_public_candidature_requires_verified_visitor_and_discord_session(tmp_path):
     bot = make_bot(tmp_path)
     bot.settings.set_vagas_abertas = True
@@ -2090,8 +2124,9 @@ def test_public_site_files_are_complete():
     assert headers.startswith("/*\n  Content-Security-Policy:")
     assert "*/" not in headers
     assert (member_root / "index.html").is_file()
-    for route in ("entrar", "candidatura", "acessar", "avisos", "parceiros", "termos"):
+    for route in ("entrar", "candidatura", "acessar", "parceiros", "termos"):
         assert (site_root / route / "index.html").is_file()
+    assert not (site_root / "avisos").exists()
     for route in ("estudos", "estudos/civil", "estudos/peace", "meu-processo"):
         assert (site_root / route / "index.html").is_file()
     for route in ("estudos/civil/leitor", "estudos/peace/leitor"):
@@ -2177,7 +2212,6 @@ def test_public_site_files_are_complete():
         "estudos/civil/leitor/index.html",
         "estudos/peace/leitor/index.html",
         "meu-processo/index.html",
-        "avisos/index.html",
         "parceiros/index.html",
         "clipes/index.html",
     )
@@ -2421,10 +2455,8 @@ def test_public_site_files_are_complete():
     assert "responsive.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert "clips.css?v=20261117-03" in (site_root / "styles.css").read_text(encoding="utf-8")
     assert "peace-polish.css?v=20261116-06" in (site_root / "styles.css").read_text(encoding="utf-8")
-    notices_html = (site_root / "avisos" / "index.html").read_text(encoding="utf-8")
-    assert 'data-notices-bell' in notices_html
-    assert 'data-notices-badge' in notices_html
-    assert 'is-new' in (site_root / "js" / "notices.js").read_text(encoding="utf-8")
+    assert 'data-page="notices"' not in "\n".join(path.read_text(encoding="utf-8") for path in site_root.rglob("*.html"))
+    assert not (site_root / "js" / "notices.js").exists()
     assert 'public-context-bar' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
     assert 'window.history.back()' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
     reader_script = (site_root / "js" / "reader.js").read_text(encoding="utf-8")
@@ -2587,7 +2619,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
     assert "/api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!" in redirect_lines
     assert "/api/exams/assignments/:assignment_id/reject https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/reject 200!" in redirect_lines
-    for route in ("/entrar", "/candidatura", "/area", "/acessar", "/avisos", "/parceiros", "/termos"):
+    for route in ("/entrar", "/candidatura", "/area", "/acessar", "/parceiros", "/termos"):
         assert f"{route} {route}/ 301!" not in redirects
 
 
@@ -2673,7 +2705,6 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/entrar", 301, "/entrar/"),
             ("/candidatura", 301, "/candidatura/"),
             ("/acessar", 301, "/acessar/"),
-            ("/avisos", 301, "/avisos/"),
             ("/parceiros", 301, "/parceiros/"),
             ("/termos", 301, "/termos/"),
             ("/clipes", 301, "/clipes/"),
@@ -2688,7 +2719,8 @@ def test_local_site_server_handles_static_and_entry_routes():
             ("/entrar/", 200, None),
             ("/candidatura/", 200, None),
             ("/acessar/", 200, None),
-            ("/avisos/", 200, None),
+            ("/avisos", 404, None),
+            ("/avisos/", 404, None),
             ("/parceiros/", 200, None),
             ("/termos/", 200, None),
             ("/clipes/", 200, None),

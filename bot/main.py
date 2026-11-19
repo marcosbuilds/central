@@ -5753,6 +5753,45 @@ class PeaceBot(commands.Bot):
             return "pending"
         return "other"
 
+    @staticmethod
+    def public_scan_request_id(
+        text: object,
+        pending_requests: list[object],
+        *,
+        mention_ids: object = (),
+    ) -> str | None:
+        """Recover an actionable set request from legacy cards without a footer marker.
+
+        Older cards in the scan channel predate ``set_request:<id>`` in the
+        embed footer. Prefer the candidate Discord mention from the original
+        embed, then match only one pending database request by its in-game
+        username. Ambiguous matches stay read-only instead of guessing an
+        approval target.
+        """
+        normalized_mentions = {
+            str(value).strip()
+            for value in (mention_ids if isinstance(mention_ids, (list, tuple, set, frozenset)) else ())
+            if re.fullmatch(r"[1-9][0-9]{1,24}", str(value).strip())
+        }
+        mention_matches = [
+            request
+            for request in pending_requests
+            if str(request["discord_user_id"] or "").strip() in normalized_mentions
+        ]
+        if len(mention_matches) == 1:
+            return str(mention_matches[0]["id"])
+
+        normalized = str(text or "").casefold()
+        matches: list[str] = []
+        for request in pending_requests:
+            username = str(request["in_game_username"] or "").strip()
+            if not username:
+                continue
+            pattern = rf"(?<!\w){re.escape(username.casefold())}(?!\w)"
+            if re.search(pattern, normalized):
+                matches.append(str(request["id"]))
+        return matches[0] if len(matches) == 1 else None
+
     async def public_api_scan_only(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
@@ -5781,6 +5820,10 @@ class PeaceBot(commands.Bot):
                 return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "O canal scan-only não está disponível agora."}, status=503)
         items: list[dict[str, object]] = []
         try:
+            pending_requests = self.database.pending_set_requests()
+        except (sqlite3.Error, OSError, AttributeError):
+            pending_requests = []
+        try:
             async for message in history(limit=80):
                 summary = self.public_message_summary(message, kind="scan")
                 embeds = getattr(message, "embeds", ()) or ()
@@ -5796,6 +5839,24 @@ class PeaceBot(commands.Bot):
                 request_match = re.search(r"set_request:([1-9][0-9]{0,11})", footer_text)
                 if request_match:
                     summary["request_id"] = request_match.group(1)
+                elif summary.get("status") == "pending":
+                    raw_parts = [str(getattr(message, "content", "") or "")]
+                    for embed in embeds:
+                        raw_parts.extend(
+                            (
+                                str(getattr(embed, "title", "") or ""),
+                                str(getattr(embed, "description", "") or ""),
+                            )
+                        )
+                    raw_scan_text = "\n".join(part for part in raw_parts if part)
+                    mention_ids = re.findall(r"<@!?(\d+)>", raw_scan_text)
+                    inferred_request_id = self.public_scan_request_id(
+                        summary.get("text"),
+                        pending_requests,
+                        mention_ids=mention_ids,
+                    )
+                    if inferred_request_id is not None:
+                        summary["request_id"] = inferred_request_id
                 items.append(summary)
         except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError, AttributeError, TypeError):
             log.info("Não consegui ler o scan-only para a área de membros")

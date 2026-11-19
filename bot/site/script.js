@@ -9,7 +9,6 @@
     home: ["js/public-media.js"],
     studies: ["js/studies.js"],
     clips: ["js/clips.js"],
-    notices: ["js/notices.js"],
     partners: ["js/partners.js"],
     candidatura: ["js/candidature.js"],
     entry: ["js/entry.js"],
