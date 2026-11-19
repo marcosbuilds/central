@@ -43,6 +43,7 @@ tools/
 shared-test/
 _source/
 apps/
+.taste-skill/
 
 # OS/editor noise
 Thumbs.db

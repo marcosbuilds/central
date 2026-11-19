@@ -1,0 +1,497 @@
+/* Focused visual pass for the Peace public flows. The generated artwork stays
+   behind the copy and the interaction hierarchy remains legible at compact
+   widths. */
+
+body[data-page="candidatura"],
+body[data-page="process"],
+body[data-page="exam"],
+body[data-page="manager"] {
+  background-color: var(--canvas-deep);
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: cover;
+  background-attachment: scroll;
+}
+
+body[data-page="candidatura"] {
+  background-image: radial-gradient(circle at 18% 12%, rgba(137, 196, 190, 0.12), transparent 32rem), linear-gradient(135deg, #050709 0%, #0a1719 52%, #050709 100%);
+}
+
+body[data-page="process"] {
+  background-image: radial-gradient(circle at 78% 16%, rgba(164, 196, 219, 0.1), transparent 32rem), linear-gradient(135deg, #050709 0%, #101a20 52%, #050709 100%);
+}
+
+body[data-page="exam"],
+body[data-page="manager"] {
+  background-image: radial-gradient(circle at 72% 20%, rgba(177, 207, 214, 0.1), transparent 30rem), linear-gradient(135deg, #050709 0%, #0c171b 52%, #050709 100%);
+}
+
+body[data-page="candidatura"] .flow-page,
+body[data-page="process"] .flow-page,
+body[data-page="exam"] .flow-page,
+body[data-page="manager"] .manager-page {
+  background: transparent;
+}
+
+body[data-page="member"] {
+  background: var(--canvas-deep);
+}
+
+body[data-page="member"] .member-page {
+  min-height: 100dvh;
+  background-image: radial-gradient(circle at 20% 12%, rgba(137, 196, 190, 0.09), transparent 34rem), linear-gradient(135deg, #050709 0%, #0a1418 52%, #050709 100%);
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: cover;
+  background-attachment: scroll;
+}
+
+/* Verification is a three-step guide, not one panoramic screenshot. */
+.verification-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+
+.verification-step-card {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: auto 1fr;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0.65rem;
+  border: 1px solid rgba(185, 202, 211, 0.15);
+  border-radius: 0.85rem;
+  background: rgba(9, 14, 18, 0.62);
+}
+
+.verification-step-card img {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border-radius: 0.55rem;
+  background: #06090d;
+}
+
+.verification-step-card--channel img {
+  aspect-ratio: 15.5 / 1;
+  object-fit: cover;
+}
+
+.verification-step-card--panel img {
+  aspect-ratio: 2.3 / 1;
+  object-fit: cover;
+}
+
+.verification-step-card--action img {
+  aspect-ratio: 5 / 1;
+  object-fit: contain;
+  padding: 0.55rem;
+}
+
+.verification-step-card figcaption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.verification-step-card figcaption > span:first-child {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.verification-step-card figcaption strong,
+.verification-step-card figcaption small {
+  display: block;
+}
+
+.verification-step-card figcaption strong {
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.verification-step-card figcaption small {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.63rem;
+  line-height: 1.5;
+}
+
+body[data-page="candidatura"] .verification-state {
+  margin: 1.35rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 0.65rem;
+  background: rgba(185, 202, 211, 0.07);
+}
+
+body[data-page="candidatura"] .entry-guide {
+  margin-top: 1.35rem;
+  border-top: 0;
+}
+
+body[data-page="candidatura"] .entry-guide summary {
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(185, 202, 211, 0.13);
+  border-radius: 0.65rem;
+  background: rgba(9, 14, 18, 0.44);
+}
+
+body[data-page="candidatura"] .entry-guide summary::after {
+  display: none;
+  content: none;
+}
+
+body[data-page="candidatura"] .entry-guide[open] summary {
+  border-radius: 0.65rem 0.65rem 0 0;
+}
+
+body[data-page="candidatura"] .entry-guide .connection-guide {
+  padding: 0.35rem 0.75rem 0;
+  border: 1px solid rgba(185, 202, 211, 0.13);
+  border-top: 0;
+  border-radius: 0 0 0.65rem 0.65rem;
+  background: rgba(9, 14, 18, 0.3);
+}
+
+.disclosure-arrow {
+  display: inline-grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-left: auto;
+  border: 1px solid rgba(185, 202, 211, 0.2);
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 180ms var(--ease-fast), background 180ms var(--ease-fast);
+}
+
+details[open] > summary .disclosure-arrow {
+  background: rgba(185, 202, 211, 0.08);
+  transform: rotate(180deg);
+}
+
+.process-details > summary {
+  min-height: 4.5rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(185, 202, 211, 0.13);
+  border-radius: 0.75rem;
+  background: rgba(9, 14, 18, 0.42);
+}
+
+.process-details > summary::after {
+  display: none;
+  content: none;
+}
+
+.process-details[open] > summary {
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.process-details > .process-flow,
+.process-details > .process-boundary {
+  padding-inline: 0.9rem;
+}
+
+/* Exam progress and review are visual anchors instead of another stack of
+   separator rules. */
+.exam-progress {
+  margin-top: 1.35rem;
+  padding: 0.9rem 0 0;
+}
+
+.exam-progress-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.exam-progress-heading > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.exam-progress-heading .eyebrow {
+  margin: 0;
+}
+
+.exam-progress-heading strong,
+.exam-progress-heading > span:last-child {
+  color: var(--text);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.64rem;
+}
+
+.exam-progress-heading > span:last-child {
+  color: var(--accent);
+}
+
+.exam-progress-track {
+  height: 0.35rem;
+  margin-top: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(185, 202, 211, 0.12);
+}
+
+.exam-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  transition: width 180ms var(--ease-fast);
+}
+
+.exam-question-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.8rem;
+}
+
+.exam-question-jump-item {
+  display: inline-grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(185, 202, 211, 0.18);
+  border-radius: 0.55rem;
+  background: rgba(9, 14, 18, 0.54);
+  color: var(--quiet);
+  cursor: pointer;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.58rem;
+  transition: border-color 160ms var(--ease-fast), background 160ms var(--ease-fast), color 160ms var(--ease-fast);
+}
+
+.exam-question-jump-item:hover,
+.exam-question-jump-item:focus-visible,
+.exam-question-jump-item.is-current {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: none;
+}
+
+.exam-question-jump-item.is-answered {
+  background: rgba(123, 201, 166, 0.12);
+  color: var(--success);
+}
+
+.exam-question-jump-item.is-current {
+  box-shadow: 0 0 0 2px rgba(185, 202, 211, 0.1);
+}
+
+.exam-question-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+
+.exam-question-position {
+  color: var(--quiet);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.exam-review {
+  margin-top: 1.8rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(123, 201, 166, 0.25);
+}
+
+.exam-review-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.exam-review-heading .eyebrow {
+  margin: 0;
+}
+
+.exam-review-heading h3 {
+  margin: 0.3rem 0 0;
+  color: var(--text);
+  font-size: clamp(1.25rem, 3vw, 2rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.exam-review-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.exam-review-item {
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(185, 202, 211, 0.14);
+  border-radius: 0.7rem;
+  background: rgba(5, 8, 10, 0.38);
+}
+
+.exam-review-item.is-correct {
+  border-color: rgba(123, 201, 166, 0.28);
+}
+
+.exam-review-item.is-wrong {
+  border-color: rgba(217, 133, 142, 0.3);
+}
+
+.exam-review-item-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.exam-review-number {
+  color: var(--quiet);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.57rem;
+}
+
+.exam-review-item-heading strong {
+  color: var(--success);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.exam-review-item.is-wrong .exam-review-item-heading strong {
+  color: var(--danger);
+}
+
+.exam-review-item h4 {
+  margin: 0.45rem 0 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.exam-review-answer,
+.exam-review-correct {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.exam-review-correct {
+  color: var(--accent);
+}
+
+/* Keep the manager form quiet: the select is the only type selector and the
+   action panel owns the hierarchy. */
+.manager-assignment-panel {
+  border-color: rgba(185, 202, 211, 0.16);
+  background: rgba(9, 14, 18, 0.62);
+}
+
+.manager-assignment-panel .manager-form-actions {
+  padding-top: 0.35rem;
+  border-top: 0;
+}
+
+.manager-history {
+  padding-top: 0.35rem;
+}
+
+body[data-page="member"] .member-sidebar-profile-copy small {
+  display: none;
+}
+
+body[data-page="member"] .member-sidebar-toggle,
+body[data-page="member"] .member-notification-trigger {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+body[data-page="member"] .member-notification-panel {
+  border: 0;
+  border-radius: 0.85rem;
+  background: rgba(4, 7, 9, 0.96);
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.34);
+}
+
+@media (max-width: 720px) {
+  body[data-page="candidatura"],
+  body[data-page="process"],
+  body[data-page="exam"],
+  body[data-page="manager"],
+  body[data-page="member"] .member-page {
+    background-attachment: scroll;
+    background-position: 62% top;
+  }
+
+  body[data-page="candidatura"] .verification-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .verification-step-card--channel img {
+    max-height: 3.5rem;
+  }
+
+  .verification-step-card--panel img {
+    aspect-ratio: 1.9 / 1;
+    object-fit: contain;
+  }
+
+  .verification-step-card--action img {
+    max-height: 4.5rem;
+  }
+
+  .exam-review-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 430px) {
+  .verification-step-card {
+    padding: 0.55rem;
+  }
+
+  .verification-step-card--panel img {
+    aspect-ratio: 1.7 / 1;
+  }
+
+  .exam-question-navigation .button {
+    min-width: 0;
+    padding-inline: 0.65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page="candidatura"],
+  body[data-page="process"],
+  body[data-page="exam"],
+  body[data-page="manager"],
+  body[data-page="member"] .member-page {
+    background-attachment: scroll;
+  }
+
+  .disclosure-arrow,
+  .exam-progress-track span,
+  .exam-question-jump-item {
+    transition: none;
+  }
+}

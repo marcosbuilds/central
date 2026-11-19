@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR" data-page="exam">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Prova teórica Civil da Peace, vinculada ao Discord e a uma única tentativa.">
+    <title>Prova teórica Civil — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261116-06">
+    <script defer src="/script.js?v=20261116-06"></script>
+  </head>
+  <body data-page="exam">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page study-page exam-page">
+      <main id="conteudo" class="exam-main exam-main--compact" tabindex="-1">
+        <section class="exam-panel" data-exam-auth aria-labelledby="exam-auth-title">
+          <p class="eyebrow">Identidade necessária</p><h2 id="exam-auth-title">Conecte o Discord para continuar.</h2><p>O site não usa username digitado para autorizar a prova. Você pode ser candidato mesmo sem ser membro da Peace.</p><a class="button button--light" href="/api/auth/discord/start?return_to=%2Fprova%2F" data-discord-connect><span data-discord-connect-label>Conectar com Discord</span> <span class="button-icon" aria-hidden="true">↗</span></a><p class="form-status" data-exam-message role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="exam-panel" data-exam-assignment hidden aria-labelledby="assignment-title">
+          <div class="exam-panel-heading"><div><p class="eyebrow">Atribuição encontrada</p><h2 id="assignment-title">A sua prova está pronta.</h2></div><span class="status-tag status-tag--planned" data-exam-status>Aguardando início</span></div>
+          <dl class="exam-meta-grid"><div><dt>Tipo</dt><dd data-exam-version>—</dd></div><div><dt>Nota mínima</dt><dd data-exam-passing>—</dd></div><div><dt>Tempo total</dt><dd data-exam-duration>—</dd></div><div><dt>Tempo sugerido por questão</dt><dd data-exam-per-question>—</dd></div></dl>
+          <div class="exam-warning"><strong>Antes de iniciar</strong><p>Você terá uma única tentativa. O tempo começa ao abrir a prova e é dividido igualmente entre as questões. Depois do envio não há refazer.</p></div>
+          <button class="button button--light" type="button" data-exam-start>Iniciar prova <span class="button-icon" aria-hidden="true">→</span></button>
+        </section>
+
+        <section class="exam-panel exam-panel--questions" data-exam-form-panel hidden aria-labelledby="questions-title">
+          <div class="exam-panel-heading"><div><p class="eyebrow">Tentativa única</p><h2 id="questions-title">Responda com atenção.</h2></div><div class="exam-clock" data-exam-clock aria-live="polite">Prazo: —</div></div>
+          <div class="exam-progress" data-exam-progress aria-label="Progresso da prova">
+            <div class="exam-progress-heading"><div><span class="eyebrow">Progresso</span><strong data-exam-progress-label>0 de 10 respondidas</strong></div><span data-exam-progress-percent>0%</span></div>
+            <div class="exam-progress-track" data-exam-progress-track role="progressbar" aria-label="Porcentagem respondida" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-exam-progress-fill></span></div>
+            <div class="exam-question-jump" data-exam-question-jump aria-label="Ir para uma questão"></div>
+          </div>
+          <p class="exam-question-note">As perguntas foram ordenadas para esta tentativa. Você pode navegar pelo índice, revisar respostas e só então enviar.</p>
+          <form data-exam-form novalidate><div class="exam-questions" data-exam-questions></div><div class="exam-question-navigation"><button class="button button--outline" type="button" data-exam-prev disabled><span aria-hidden="true">←</span> Anterior</button><span class="exam-question-position" data-exam-question-position>Questão 1</span><button class="button button--outline" type="button" data-exam-next>Próxima <span aria-hidden="true">→</span></button></div><div class="exam-submit-bar"><p class="form-status" data-exam-submit-message role="status" aria-live="polite"></p><button class="button button--light button--large" type="submit" data-exam-submit>Enviar resultado definitivamente <span class="button-icon" aria-hidden="true">→</span></button></div></form>
+        </section>
+
+        <section class="exam-result" data-exam-result hidden aria-labelledby="result-title">
+          <p class="eyebrow">Resultado registrado</p><h2 id="result-title">Sua nota foi enviada.</h2><div class="exam-score" data-exam-score>—</div><p data-exam-result-copy></p>
+          <section class="exam-review" data-exam-review hidden aria-labelledby="exam-review-title"><div class="exam-review-heading"><div><p class="eyebrow">Revisão da tentativa</p><h3 id="exam-review-title">Gabarito da sua prova</h3></div><span class="status-tag status-tag--planned" data-exam-review-summary>Carregando…</span></div><div class="exam-review-list" data-exam-review-list></div></section>
+          <div class="exam-result-actions"><a class="button button--outline" href="/meu-processo/">Ver meu processo <span class="button-icon" aria-hidden="true">↗</span></a><a class="flow-secondary-action" href="/estudos/civil/leitor/">Revisar material <span class="button-icon" aria-hidden="true">↗</span></a></div>
+        </section>
+      </main>
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Processo com identidade e registro.</p><a class="footer-link" href="/meu-processo/">Meu processo <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

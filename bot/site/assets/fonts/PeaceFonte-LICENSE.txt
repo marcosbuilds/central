@@ -1,0 +1,13 @@
+PeaceFonte-Regular
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+The font may be used, studied, modified, embedded, and redistributed with
+software, provided that the font and any modified version remain under the
+SIL Open Font License and the license terms are included with the font.
+The font is not sold by itself. This notice does not grant rights to use the
+Peace name or mark as an endorsement of a modified version.
+
+Full license text: https://scripts.sil.org/OFL
+
+Source package note: Peace_Fonte/LEIA-ME.txt, supplied with PeaceFonte Rev1.

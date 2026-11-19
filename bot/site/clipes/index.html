@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR" data-page="clips">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Clipes publicados pela comunidade Peace, com busca e reprodução leve.">
+    <title>Clipes — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261117-03">
+    <script defer src="/script.js?v=20261117-03"></script>
+  </head>
+  <body data-page="clips">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page public-context-page">
+      <main id="conteudo" class="flow-main flow-main--public clips-main" tabindex="-1">
+        <section class="clips-feed" aria-label="Feed de clipes">
+          <form class="clips-search" data-clips-search role="search">
+            <label class="sr-only" for="clips-query">Buscar clipes</label>
+            <div class="clips-search-row">
+              <input id="clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar por vídeo ou autor">
+            </div>
+                    <div class="clips-filter-row" role="group" aria-label="Filtrar clipes"><button type="button" class="clips-filter is-active" data-clips-filter="all" aria-pressed="true">Tudo</button><button type="button" class="clips-filter" data-clips-filter="mine" aria-pressed="false">Meus clipes</button><button type="button" class="clips-filter" data-clips-filter="engagement" aria-pressed="false">Mais vistos</button><button type="button" class="clips-filter" data-clips-filter="least_engagement" aria-pressed="false">Menos vistos</button><button type="button" class="clips-filter" data-clips-filter="recent" aria-pressed="false">Mais recentes</button><button type="button" class="clips-filter" data-clips-filter="oldest" aria-pressed="false">Mais antigos</button></div>
+          </form>
+          <div class="clips-feed-heading">
+            <p data-clips-status role="status" aria-live="polite">Preparando a busca…</p>
+          </div>
+
+          <div class="clips-grid" data-clips-list role="list" aria-busy="true" aria-label="Clipes publicados"></div>
+          <p class="clips-empty" data-clips-empty hidden role="status"></p>
+          <button class="clips-retry text-button" data-clips-retry type="button" hidden>Repetir busca</button>
+        </section>
+      </main>
+
+      <div class="site-toast clips-toast" data-clips-toast role="status" aria-live="polite" hidden></div>
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>PEACE</small></span></a><p>Clipes públicos, conversa responsável.</p><a class="footer-link" href="/estudos/">Estudos <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>

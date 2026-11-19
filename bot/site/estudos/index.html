@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR" data-page="studies">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050607">
+    <meta name="description" content="Biblioteca pública de materiais de estudo da Peace.">
+    <title>Biblioteca de estudos — Peace</title>
+    <link rel="icon" href="/assets/peace-bird.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=20261116-06">
+    <script defer src="/script.js?v=20261116-06"></script>
+  </head>
+  <body data-page="studies">
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <div class="site-shell flow-page study-page study-library-page">
+      <main id="conteudo" class="study-main study-library-main" tabindex="-1">
+        <section class="study-library-toolbar" aria-label="Ferramentas da biblioteca">
+          <label class="study-library-search" for="study-search">
+            <span class="sr-only">Buscar na biblioteca</span>
+            <input id="study-search" data-study-search type="search" name="q" autocomplete="off" placeholder="Título ou tema…" aria-controls="study-library-list">
+          </label>
+          <span class="study-library-count" data-study-count aria-live="polite">2 materiais</span>
+        </section>
+
+        <section id="biblioteca" class="study-library" aria-label="Materiais disponíveis">
+          <div id="study-library-list" class="study-library-grid" data-study-library role="list">
+            <article class="study-library-item" data-study-item data-study-search="apostila civil investigação patrulhamento conduta radiocomunicação prova" role="listitem">
+              <a class="study-library-link" href="/estudos/civil/leitor/" aria-label="Ler a Apostila Civil">
+                <div class="material-cover material-cover--library" data-material-cover aria-busy="true">
+                  <img class="material-cover-image" src="/assets/studies/civil/civil-cover-01.png" alt="Capa da Apostila Civil" width="1240" height="1754" fetchpriority="high">
+                </div>
+              </a>
+              <div class="study-library-meta">
+                <span class="study-library-number">01</span>
+                <p><strong>Apostila Civil</strong><span>18 páginas · leitura visual</span></p>
+              </div>
+            </article>
+
+            <article class="study-library-item" data-study-item data-study-search="manual peace convivência paz respeito participação responsabilidade comunidade" role="listitem">
+              <a class="study-library-link" href="/estudos/peace/leitor/" aria-label="Ler o Manual da Peace">
+                <div class="material-cover material-cover--library" data-material-cover aria-busy="true">
+                  <img class="material-cover-image" src="/assets/studies/peace/a-peace-cover-1.png" alt="Capa do manual A Peace" width="1240" height="1754" loading="lazy">
+                </div>
+              </a>
+              <div class="study-library-meta">
+                <span class="study-library-number">02</span>
+                <p><strong>Manual da Peace</strong><span>8 páginas · leitura visual</span></p>
+              </div>
+            </article>
+          </div>
+
+          <p class="study-library-empty" data-study-empty role="status" hidden>Nenhum material corresponde à busca. Tente outro título ou tema.</p>
+        </section>
+
+      </main>
+
+      <footer class="site-footer flow-footer"><a class="brand brand--footer" href="/" aria-label="Peace — voltar ao início"><span class="brand-mark"><img src="/assets/peace-bird.png" alt="" width="1254" height="1254"></span><span class="brand-lockup"><strong>PEACE</strong><small>IS BACK</small></span></a><p>Uma biblioteca pública, sem ruído.</p><a class="footer-link" href="/meu-processo/">Meu processo <span aria-hidden="true">↗</span></a></footer>
+    </div>
+  </body>
+</html>
