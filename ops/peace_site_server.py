@@ -42,6 +42,8 @@ ACL_API_ROUTES = {
     "/api/partners",
     "/api/scan-only",
     "/api/investigations",
+    "/api/peace/members",
+    "/api/peace/warnings",
     "/api/investigation-approvals",
     "/api/exams/process",
     "/api/peace/process",
@@ -55,6 +57,7 @@ EXAM_MANAGER_REJECT_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/rej
 PARTNER_ROUTE = re.compile(r"^/api/partners/[0-9]{1,12}$")
 SCAN_DECISION_ROUTE = re.compile(r"^/api/scan-only/[1-9][0-9]{0,11}/(?:approve|reject)$")
 INVESTIGATION_CASE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}$")
+INVESTIGATION_EVIDENCE_DELETE_ROUTE = re.compile(r"^/api/investigations/evidence/[1-9][0-9]{0,11}$")
 INVESTIGATION_EVIDENCE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/evidence$")
 INVESTIGATION_APPROVAL_LINKS_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/approval-links$")
 INVESTIGATION_APPROVAL_ROUTE = re.compile(r"^/api/investigation-approvals/[A-Za-z0-9_-]{32,128}$")
@@ -171,7 +174,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             self._redirect("/estudos/peace/leitor/", 301)
             return
 
-        if route in ACL_API_ROUTES or EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) or INVESTIGATION_CASE_ROUTE.fullmatch(route) or INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
+        if route in ACL_API_ROUTES or EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) or INVESTIGATION_CASE_ROUTE.fullmatch(route) or INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) or INVESTIGATION_EVIDENCE_DELETE_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) or INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self._proxy_api("GET")
             return
 
@@ -183,12 +186,12 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         route = self.path.split("?", 1)[0]
-        if route not in ACL_API_ROUTES and not PARTNER_ROUTE.fullmatch(route) and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) and not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
+        if route not in ACL_API_ROUTES and not PARTNER_ROUTE.fullmatch(route) and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) and not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_DELETE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
 
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Accept, Content-Type")
         self.end_headers()
 
@@ -213,6 +216,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/exams/start",
             "/api/exams/submit",
             "/api/exams/assignments",
+            "/api/peace/warnings",
         } and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REJECT_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
@@ -224,6 +228,13 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         self._proxy_api("PATCH")
+
+    def do_DELETE(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
+        route = self.path.split("?", 1)[0]
+        if not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_DELETE_ROUTE.fullmatch(route):
+            self.send_error(404)
+            return
+        self._proxy_api("DELETE")
 
     def _redirect(self, location: str, status: int) -> None:
         self.send_response(status)
@@ -251,14 +262,14 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             )
             if frontend_origin:
                 headers["Origin"] = frontend_origin
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route.startswith("/api/scan-only/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route.startswith("/api/scan-only/") or route in {"/api/peace/process", "/api/peace/members", "/api/peace/warnings", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),
                     frontend_origin,
                 )
             )
-        if method in {"POST", "PATCH"}:
+        if method in {"POST", "PATCH", "DELETE"}:
             length = int(self.headers.get("Content-Length", "0") or 0)
             body = self.rfile.read(length)
             headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
@@ -303,7 +314,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
                 for value in set_cookies
                 if re.match(r"^\s*(?:peace_member_session|peace_member_challenge)=", value, flags=re.IGNORECASE)
             ]
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/peace/members", "/api/peace/warnings", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
             set_cookies = [
                 value
                 for value in set_cookies

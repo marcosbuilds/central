@@ -87,3 +87,4 @@ is kept beside the font in `bot/site/assets/fonts/PeaceFonte-LICENSE.txt`.
 - Validate dimensions, PNG format, alpha behavior, and rendered appearance
   before opening a Pull Request.
 - Update the consuming README or document in the same change.
+- `bot/site/assets/civil-police-verification.png` — badge visual used to identify members whose Civil exam is approved in the Peace member directory. Source: user-provided attachment in the task; public-purpose asset.

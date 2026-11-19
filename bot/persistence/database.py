@@ -322,7 +322,9 @@ CREATE TABLE IF NOT EXISTS investigation_cases (
     assigned_to_discord_user_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    resolved_at TEXT
+    resolved_at TEXT,
+    deleted_at TEXT,
+    deleted_by_discord_user_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_cases_status
@@ -342,11 +344,26 @@ CREATE TABLE IF NOT EXISTS investigation_evidence (
     note TEXT NOT NULL,
     collected_by_discord_user_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT,
+    deleted_by_discord_user_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_investigation_evidence_case
     ON investigation_evidence(case_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS member_warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_discord_user_id TEXT NOT NULL,
+    actor_discord_user_id TEXT NOT NULL,
+    acts_json TEXT NOT NULL,
+    total_weight INTEGER NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_warnings_subject
+    ON member_warnings(subject_discord_user_id, id DESC);
 
 CREATE TABLE IF NOT EXISTS investigation_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -616,6 +633,16 @@ class PeaceDatabase:
             profile_columns = {row["name"] for row in connection.execute("PRAGMA table_info(candidate_profiles)")}
             if profile_columns and "avatar_hash" not in profile_columns:
                 connection.execute("ALTER TABLE candidate_profiles ADD COLUMN avatar_hash TEXT")
+            investigation_case_columns = {row["name"] for row in connection.execute("PRAGMA table_info(investigation_cases)")}
+            if investigation_case_columns and "deleted_at" not in investigation_case_columns:
+                connection.execute("ALTER TABLE investigation_cases ADD COLUMN deleted_at TEXT")
+            if investigation_case_columns and "deleted_by_discord_user_id" not in investigation_case_columns:
+                connection.execute("ALTER TABLE investigation_cases ADD COLUMN deleted_by_discord_user_id TEXT")
+            investigation_evidence_columns = {row["name"] for row in connection.execute("PRAGMA table_info(investigation_evidence)")}
+            if investigation_evidence_columns and "deleted_at" not in investigation_evidence_columns:
+                connection.execute("ALTER TABLE investigation_evidence ADD COLUMN deleted_at TEXT")
+            if investigation_evidence_columns and "deleted_by_discord_user_id" not in investigation_evidence_columns:
+                connection.execute("ALTER TABLE investigation_evidence ADD COLUMN deleted_by_discord_user_id TEXT")
             exam_assignment_columns = {row["name"] for row in connection.execute("PRAGMA table_info(exam_assignments)")}
             if exam_assignment_columns and "duration_hours" not in exam_assignment_columns:
                 connection.execute(
@@ -1175,6 +1202,14 @@ class PeaceDatabase:
                 (str(discord_user_id),),
             ).fetchone()
 
+    def all_members(self, *, limit: int = 500) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(connection.execute(
+                "SELECT * FROM members ORDER BY display_name COLLATE NOCASE, discord_user_id LIMIT ?",
+                (max(1, min(1000, int(limit))),),
+            ).fetchall())
+
     def create_public_partner(
         self,
         *,
@@ -1486,6 +1521,7 @@ class PeaceDatabase:
                 connection.execute(
                     """
                     SELECT * FROM investigation_cases
+                    WHERE deleted_at IS NULL
                     ORDER BY CASE status
                         WHEN 'open' THEN 0
                         WHEN 'under_review' THEN 1
@@ -1502,7 +1538,7 @@ class PeaceDatabase:
         self.initialize()
         with self.connect() as connection:
             return connection.execute(
-                "SELECT * FROM investigation_cases WHERE id = ?",
+                "SELECT * FROM investigation_cases WHERE id = ? AND deleted_at IS NULL",
                 (int(case_id),),
             ).fetchone()
 
@@ -1513,7 +1549,7 @@ class PeaceDatabase:
                 connection.execute(
                     """
                     SELECT * FROM investigation_evidence
-                    WHERE case_id = ?
+                    WHERE case_id = ? AND deleted_at IS NULL
                     ORDER BY id DESC
                     LIMIT ?
                     """,
@@ -1572,7 +1608,7 @@ class PeaceDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             case = connection.execute(
-                "SELECT * FROM investigation_cases WHERE id = ?",
+                "SELECT * FROM investigation_cases WHERE id = ? AND deleted_at IS NULL",
                 (int(case_id),),
             ).fetchone()
             if case is None or str(case["status"]) not in {"open", "under_review"}:
@@ -1592,7 +1628,7 @@ class PeaceDatabase:
                 """
                 UPDATE investigation_cases
                 SET status = 'pending_approval', updated_at = ?, resolved_at = NULL
-                WHERE id = ?
+                WHERE id = ? AND deleted_at IS NULL
                 """,
                 (timestamp, int(case_id)),
             )
@@ -1917,7 +1953,7 @@ class PeaceDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             case = connection.execute(
-                "SELECT id, status FROM investigation_cases WHERE id = ?",
+                "SELECT id, status FROM investigation_cases WHERE id = ? AND deleted_at IS NULL",
                 (int(case_id),),
             ).fetchone()
             if case is None or str(case["status"]) not in {"open", "under_review"}:
@@ -1946,7 +1982,7 @@ class PeaceDatabase:
             )
             evidence_id = int(cursor.lastrowid)
             connection.execute(
-                "UPDATE investigation_cases SET updated_at = ? WHERE id = ?",
+                "UPDATE investigation_cases SET updated_at = ? WHERE id = ? AND deleted_at IS NULL",
                 (timestamp, int(case_id)),
             )
             connection.execute(
@@ -1969,6 +2005,156 @@ class PeaceDatabase:
             connection.commit()
         return row
 
+    def delete_investigation_evidence(
+        self,
+        *,
+        evidence_id: int,
+        actor_discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        """Hide one evidence item while retaining its audit trail."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            item = connection.execute(
+                "SELECT * FROM investigation_evidence WHERE id = ? AND deleted_at IS NULL",
+                (int(evidence_id),),
+            ).fetchone()
+            if item is None:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE investigation_evidence
+                SET deleted_at = ?, deleted_by_discord_user_id = ?, updated_at = ?
+                WHERE id = ? AND deleted_at IS NULL
+                """,
+                (timestamp, str(actor_discord_user_id), timestamp, int(evidence_id)),
+            )
+            connection.execute(
+                "UPDATE investigation_cases SET updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (timestamp, int(item["case_id"])),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'evidence_deleted', ?, ?)
+                """,
+                (
+                    int(item["case_id"]),
+                    str(actor_discord_user_id),
+                    json.dumps({"evidence_id": int(evidence_id)}, separators=(",", ":")),
+                    timestamp,
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM investigation_evidence WHERE id = ?",
+                (int(evidence_id),),
+            ).fetchone()
+            connection.commit()
+        return updated
+
+    def delete_investigation_case(
+        self,
+        *,
+        case_id: int,
+        actor_discord_user_id: int | str,
+    ) -> sqlite3.Row | None:
+        """Soft-delete a case so Discord/database audit records remain queryable."""
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ? AND deleted_at IS NULL",
+                (int(case_id),),
+            ).fetchone()
+            if existing is None:
+                connection.rollback()
+                return None
+            connection.execute(
+                """
+                UPDATE investigation_cases
+                SET status = 'deleted', deleted_at = ?, deleted_by_discord_user_id = ?,
+                    updated_at = ?, resolved_at = COALESCE(resolved_at, ?)
+                WHERE id = ? AND deleted_at IS NULL
+                """,
+                (timestamp, str(actor_discord_user_id), timestamp, timestamp, int(case_id)),
+            )
+            connection.execute(
+                """
+                INSERT INTO investigation_events (
+                    case_id, actor_discord_user_id, event_type, metadata_json, created_at
+                ) VALUES (?, ?, 'case_deleted', ?, ?)
+                """,
+                (
+                    int(case_id),
+                    str(actor_discord_user_id),
+                    json.dumps({"status": "deleted"}, separators=(",", ":")),
+                    timestamp,
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM investigation_cases WHERE id = ?",
+                (int(case_id),),
+            ).fetchone()
+            connection.commit()
+        return updated
+
+    def create_member_warning(
+        self,
+        *,
+        subject_discord_user_id: int | str,
+        actor_discord_user_id: int | str,
+        acts: list[dict[str, object]],
+        total_weight: int,
+        note: str = "",
+    ) -> sqlite3.Row:
+        self.initialize()
+        timestamp = now_iso()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO member_warnings (
+                    subject_discord_user_id, actor_discord_user_id, acts_json,
+                    total_weight, note, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(subject_discord_user_id),
+                    str(actor_discord_user_id),
+                    json.dumps(acts, ensure_ascii=False, separators=(",", ":")),
+                    int(total_weight),
+                    str(note)[:2000],
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM member_warnings WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        return row
+
+    def member_warnings(self, discord_user_id: int | str, *, limit: int = 50) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(connection.execute(
+                "SELECT * FROM member_warnings WHERE subject_discord_user_id = ? ORDER BY id DESC LIMIT ?",
+                (str(discord_user_id), max(1, min(200, int(limit)))),
+            ).fetchall())
+
+    def member_warning_totals(self, discord_user_id: int | str) -> tuple[int, int]:
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total, COALESCE(SUM(total_weight), 0) AS weight FROM member_warnings WHERE subject_discord_user_id = ?",
+                (str(discord_user_id),),
+            ).fetchone()
+        return int(row["total"] or 0), int(row["weight"] or 0)
+
     def update_investigation_case_status(
         self,
         *,
@@ -1985,7 +2171,7 @@ class PeaceDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM investigation_cases WHERE id = ?",
+                "SELECT * FROM investigation_cases WHERE id = ? AND deleted_at IS NULL",
                 (int(case_id),),
             ).fetchone()
             if existing is None:
@@ -2007,7 +2193,7 @@ class PeaceDatabase:
                 """
                 UPDATE investigation_cases
                 SET status = ?, updated_at = ?, resolved_at = ?
-                WHERE id = ?
+                WHERE id = ? AND deleted_at IS NULL
                 """,
                 (
                     normalized_status,

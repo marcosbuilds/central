@@ -50,6 +50,12 @@
     try { return sessionStorage.getItem(accessStorageKey) || ""; } catch (error) { return ""; }
   }
 
+  function readAssignmentId() {
+    var url = new URL(window.location.href);
+    var assignment = url.searchParams.get("assignment");
+    return assignment && /^[1-9][0-9]{0,18}$/.test(assignment) ? assignment : "";
+  }
+
   function formatDate(value) {
     try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); } catch (error) { return value || "—"; }
   }
@@ -331,10 +337,11 @@
   if (startButton) {
     startButton.addEventListener("click", function () {
       var accessToken = readAccessToken();
-      if (!accessToken) { showMessage("O link individual da prova não está nesta sessão.", "error"); return; }
+      var assignmentId = assignmentState && assignmentState.id ? String(assignmentState.id) : readAssignmentId();
+      if (!accessToken && !assignmentId) { showMessage("A atribuição da prova não está nesta sessão.", "error"); return; }
       startButton.disabled = true;
       startButton.textContent = "Abrindo prova…";
-      request("/api/exams/start", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ access_token: accessToken }) })
+      request("/api/exams/start", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(accessToken ? { access_token: accessToken } : { assignment_id: Number(assignmentId) }) })
         .then(openAttempt)
         .catch(function (error) {
           startButton.disabled = false;
@@ -391,13 +398,14 @@
 
   cleanOAuthStatus();
   var accessToken = readAccessToken();
+  var assignmentId = readAssignmentId();
   request("/api/auth/discord/session")
     .then(function () {
-      if (!accessToken) {
+      if (!accessToken && !assignmentId) {
         showConnectedAwaitingAssignment();
         return null;
       }
-      return request("/api/exams/access", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ access_token: accessToken }) });
+      return request("/api/exams/access", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify(accessToken ? { access_token: accessToken } : { assignment_id: Number(assignmentId) }) });
     })
     .then(function (payload) { if (payload && payload.assignment) renderAssignment(payload.assignment); })
     .catch(function (error) {

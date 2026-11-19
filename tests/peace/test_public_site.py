@@ -1,6 +1,7 @@
 import asyncio
 import http.client
 import json
+from pathlib import Path
 import re
 import sqlite3
 import threading
@@ -616,7 +617,7 @@ def test_public_api_supports_only_status_preflight(tmp_path):
     assert status == 204
     assert body == ""
     assert headers["Access-Control-Allow-Origin"] == "https://www.peacegg.com.br"
-    assert headers["Access-Control-Allow-Methods"] == "GET, POST, PATCH, OPTIONS"
+    assert headers["Access-Control-Allow-Methods"] == "GET, POST, PATCH, DELETE, OPTIONS"
 
 
 def test_authentication_responses_are_private_and_uncacheable(tmp_path):
@@ -1442,6 +1443,32 @@ def test_investigation_expiration_rejects_round_and_completion_requires_approval
     assert updated_case["status"] == "rejected"
     assert bot.database.investigation_approval_links(case["id"])[0]["status"] == "expired"
     assert any(event["event_type"] == "approval_expired" for event in bot.database.investigation_events(case["id"]))
+
+
+def test_deleted_investigation_case_is_hidden_but_keeps_audit_events(tmp_path):
+    bot = make_bot(tmp_path)
+    case = bot.database.create_investigation_case(
+        title="Caso removido",
+        subject_discord_user_id=None,
+        summary="Resumo suficiente para validar a remoção lógica.",
+        created_by_discord_user_id="22345678901234567",
+        assigned_to_discord_user_id=None,
+    )
+
+    deleted = bot.database.delete_investigation_case(
+        case_id=int(case["id"]),
+        actor_discord_user_id="32345678901234567",
+    )
+
+    assert deleted is not None
+    assert deleted["status"] == "deleted"
+    assert bot.database.investigation_case(case["id"]) is None
+    assert bot.database.update_investigation_case_status(
+        case_id=int(case["id"]),
+        status="under_review",
+        actor_discord_user_id="32345678901234567",
+    ) is None
+    assert any(event["event_type"] == "case_deleted" for event in bot.database.investigation_events(case["id"]))
 
 
 def test_investigation_evaluator_payload_does_not_expose_private_reviewers_or_audit(tmp_path):
@@ -2568,7 +2595,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "investigativa" not in script
     assert "grant" not in script.lower()
     assert "gsap" not in script.lower()
-    assert member_html.count("<h1") == 10  # gate, overview, library, partners, clips, process, management, scan, investigation and notices
+    assert member_html.count("<h1") == 11  # gate, overview, library, partners, clips, process, members, management, scan, investigation and notices
     assert 'data-member-block="announcements" aria-live' not in member_html
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
@@ -2622,6 +2649,8 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects
+    assert "/api/peace/members https://peace-tools-8be02694.aclclouds.online/api/peace/members 200!" in redirects
+    assert "/api/peace/warnings https://peace-tools-8be02694.aclclouds.online/api/peace/warnings 200!" in redirects
     assert "/api/exams/assignments/:assignment_id/review https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/review 200!" in redirect_lines
     assert "/api/exams/assignments/:assignment_id/reject https://peace-tools-8be02694.aclclouds.online/api/exams/assignments/:assignment_id/reject 200!" in redirect_lines
     for route in ("/entrar", "/candidatura", "/area", "/acessar", "/parceiros", "/termos"):
@@ -2650,6 +2679,14 @@ def test_local_proxy_exposes_the_protected_scan_only_route():
     assert "/api/scan-only" in ACL_API_ROUTES
 
 
+def test_local_proxy_exposes_investigation_delete_routes():
+    from ops.peace_site_server import INVESTIGATION_CASE_ROUTE, INVESTIGATION_EVIDENCE_DELETE_ROUTE
+
+    assert INVESTIGATION_CASE_ROUTE.fullmatch("/api/investigations/42")
+    assert INVESTIGATION_EVIDENCE_DELETE_ROUTE.fullmatch("/api/investigations/evidence/42")
+    assert not INVESTIGATION_EVIDENCE_DELETE_ROUTE.fullmatch("/api/investigations/evidence/not-an-id")
+
+
 def test_local_proxy_forwards_only_the_member_session_and_bearer():
     from ops.peace_site_server import filtered_member_proxy_headers
 
@@ -2665,6 +2702,13 @@ def test_local_proxy_forwards_only_the_member_session_and_bearer():
         "Cookie": f"peace_member_session={session}; peace_member_challenge={challenge}",
         "Authorization": f"Bearer {bearer}",
     }
+
+
+def test_local_proxy_keeps_the_new_peace_routes_in_the_oauth_cookie_boundary():
+    source = Path("ops/peace_site_server.py").read_text(encoding="utf-8")
+
+    assert '"/api/peace/members"' in source
+    assert '"/api/peace/warnings"' in source
 
 
 def test_local_proxy_rejects_redirects_before_they_can_carry_credentials():

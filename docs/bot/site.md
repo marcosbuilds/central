@@ -233,6 +233,8 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | Netlify `/api/auth/discord/logout` | revokes the current Discord session |
 | Netlify `/api/exams/process` | returns only the authenticated candidate's assignments and score for the public process page |
 | Netlify `/api/peace/process` | returns the member-area process only after the authenticated Discord account has a live Peace role |
+| Netlify `/api/peace/members` | returns the bounded Peace member directory for an authenticated member-area session |
+| Netlify `/api/peace/warnings` | lists warnings for the current member or records a manager-selected warning with its weighted internal-law acts |
 | Netlify `/api/exams/access` | validates the individualized assignment link against the authenticated Discord ID |
 | Netlify `/api/exams/start` | materializes the fixed Civil question set with per-attempt ordering |
 | Netlify `/api/exams/submit` | grades once on the server and delivers the result to the assigning manager |
@@ -259,6 +261,8 @@ ACL process and must not be copied into the ACL deployment as a served site.
 | ACLClouds `/api/auth/discord/*` | serves the Discord OAuth session contract |
 | ACLClouds `/api/exams/*` | serves candidate process and Gerência-only exam operations |
 | ACLClouds `/api/peace/process` | rechecks the live Peace role before returning member-area process data; 401, 403, or 503 remain distinct |
+| ACLClouds `/api/peace/members` | rechecks the live Peace role and returns the bounded member directory; search is limited to the returned guild members |
+| ACLClouds `/api/peace/warnings` | exposes the manager warning catalog and records weighted acts only for a live Gerência member |
 | ACLClouds `/api/investigations*` | serves the investigator-only case, evidence, lifecycle, and private approval contracts; the ACL stores only approval-token hashes |
 | ACLClouds `/`, `/discord`, `/styles.css`, `/script.js`, `/assets/*` | returns 404; the ACL does not serve the frontend |
 
@@ -286,6 +290,8 @@ notices panel on demand:
 - `/clipes/` — the clip view inside the member area, with the public library as its direct route;
 - `/termos/` — the public Terms of Use, privacy, and data-collection document;
 - `/meu-processo/` — candidate-owned process view;
+- `/area/?view=members` — the Peace member directory, with search by ID/name/username,
+  avatar, highest role, score, behavioral score, warnings, and Civil verification;
 - `/area/?view=manager` — shown only for the manager capability and still
   guarded by the server. `/gerencia/provas/` remains a compatibility redirect.
 - `/area/?view=scan` — the existing scan-only review surface for Staff,
@@ -335,6 +341,18 @@ action. Its visible list refreshes while the view is active and pauses when the
 tab is hidden. The legacy route only redirects there, so it cannot drift into a
 second form or navigation model.
 
+The member directory is rendered directly on the member-area canvas. Its
+directory panel and member rows do not add a visible surface, card fill, or
+shadow; the only grouping cue is the accessible disclosure row and a subtle
+separator. Search is client-side over the server-provided bounded directory.
+
+Gerência warnings are created through a central dialog. Managers can select one
+or more catalogued internal-law acts, from basic in-game mistakes through
+disrespect, disobedience, and severe Discord conduct. Each act contributes its
+published weight to the subject's separate behavioral score, and the action is
+recorded in the existing configured log channel. The directory exposes that
+score and the warning history without changing the operational Peace score.
+
 ### Investigator approval workflow
 
 The investigative surface is site-owned and intentionally separate from the
@@ -369,6 +387,14 @@ only an approved case may be archived/concluded. The browser hides controls for
 convenience, but every role, token, transition, acknowledgement, expiry, and
 case ownership check is enforced by the ACL API. This prevents a copied link,
 stale role, replayed decision, or direct PATCH request from bypassing the flow.
+
+Only the configured Lead Investigator capability may create a new case, remove
+evidence, or delete a case. A manager without that capability cannot perform
+those actions; holding both capabilities is sufficient. Case and evidence
+removal is a logical deletion: the item disappears from active views, while the
+database event and actor remain available to the audit trail. Case deletion
+requires the generated `EXCLUIR-{case_id}` code in a confirmation dialog, and
+the successful action is sent to the configured log channel.
 
 ## Configuration boundary
 

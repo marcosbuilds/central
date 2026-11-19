@@ -82,6 +82,20 @@ PUBLIC_EXAM_TYPE_CONFIG = {
     },
 }
 PUBLIC_EXAM_TYPE_ALIASES = {"tier_i": "theoretical_civil"}
+PUBLIC_MEMBER_WARNING_ACTS = {
+    "L-01": {"label": "Falha leve de procedimento in-game", "weight": 1, "category": "In-game"},
+    "L-02": {"label": "Atraso ou desatenção operacional", "weight": 2, "category": "In-game"},
+    "L-03": {"label": "Desobediência a orientação da Gerência", "weight": 4, "category": "Hierarquia"},
+    "L-04": {"label": "Desacato em serviço", "weight": 6, "category": "Hierarquia"},
+    "L-05": {"label": "Abuso de autoridade ou favorecimento", "weight": 8, "category": "In-game"},
+    "L-06": {"label": "Quebra de procedimento grave", "weight": 10, "category": "In-game"},
+    "L-07": {"label": "Desrespeito ou provocação no Discord", "weight": 3, "category": "Discord"},
+    "L-08": {"label": "Humilhação, escárnio ou constrangimento", "weight": 7, "category": "Discord"},
+    "L-09": {"label": "Assédio, ameaça ou perseguição", "weight": 12, "category": "Discord"},
+    "L-10": {"label": "Discriminação ou discurso de ódio", "weight": 15, "category": "Discord"},
+    "L-11": {"label": "Fraude, falsificação ou ocultação deliberada", "weight": 18, "category": "Extremo"},
+    "L-12": {"label": "Conduta extrema contra a comunidade", "weight": 25, "category": "Extremo"},
+}
 PUBLIC_API_RATE_LIMITS = {
     "/api/status": (120, 60),
     "/api/media": (12, 60),
@@ -90,6 +104,8 @@ PUBLIC_API_RATE_LIMITS = {
     "/api/partners": (30, 60),
     "/api/scan-only": (60, 60),
     "/api/investigations": (60, 60),
+    "/api/peace/members": (30, 60),
+    "/api/peace/warnings": (30, 60),
     "/api/investigation-approvals": (30, 60),
     "/api/entry/start": (12, 60),
     "/api/entry/status": (60, 60),
@@ -5819,6 +5835,7 @@ class PeaceBot(commands.Bot):
             except (AttributeError, TypeError, discord.DiscordException):
                 return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "O canal scan-only não está disponível agora."}, status=503)
         items: list[dict[str, object]] = []
+        matched_request_ids: set[str] = set()
         try:
             pending_requests = self.database.pending_set_requests()
         except (sqlite3.Error, OSError, AttributeError):
@@ -5857,10 +5874,66 @@ class PeaceBot(commands.Bot):
                     )
                     if inferred_request_id is not None:
                         summary["request_id"] = inferred_request_id
+                request_id = str(summary.get("request_id", "") or "").strip()
+                if request_id:
+                    request_row = next(
+                        (row for row in pending_requests if str(row["id"]) == request_id),
+                        None,
+                    )
+                    if request_row is not None:
+                        matched_request_ids.add(request_id)
+                        requester = await self.public_discord_member_by_id(request_row["discord_user_id"])
+                        summary["title"] = "Set pendente de aprovação" if summary.get("status") == "pending" else summary.get("title")
+                        summary["set_request"] = {
+                            "id": request_id,
+                            "status": str(request_row["status"] or "pending"),
+                            "in_game_username": str(request_row["in_game_username"] or ""),
+                            "discord_user_id": str(request_row["discord_user_id"] or ""),
+                        }
+                        summary["requester"] = {
+                            "discord_id": str(request_row["discord_user_id"] or ""),
+                            "username": str(getattr(requester, "name", "") or "membro")[:80],
+                            "display_name": str(getattr(requester, "display_name", "") or getattr(requester, "name", "") or "membro")[:80],
+                            "avatar_url": self.public_avatar_url(requester),
+                        }
                 items.append(summary)
         except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError, AttributeError, TypeError):
             log.info("Não consegui ler o scan-only para a área de membros")
             return web.json_response({"ok": False, "code": "SCAN_CHANNEL_UNAVAILABLE", "message": "Não consegui carregar o scan-only agora."}, status=503)
+        for request_row in pending_requests:
+            request_id = str(request_row["id"])
+            if request_id in matched_request_ids:
+                continue
+            requester = await self.public_discord_member_by_id(request_row["discord_user_id"])
+            username = str(getattr(requester, "name", "") or "membro")[:80]
+            display_name = str(getattr(requester, "display_name", "") or username)[:80]
+            items.append(
+                {
+                    "id": f"set-request-{request_id}",
+                    "kind": "scan",
+                    "title": "Set pendente de aprovação",
+                    "text": f"Solicitação de setagem para {str(request_row['in_game_username'] or 'usuário')[:80]}.",
+                    "author": display_name,
+                    "avatar_url": self.public_avatar_url(requester),
+                    "published_at": str(request_row["created_at"] or ""),
+                    "image_url": None,
+                    "url": None,
+                    "status": "pending",
+                    "request_id": request_id,
+                    "set_request": {
+                        "id": request_id,
+                        "status": str(request_row["status"] or "pending"),
+                        "in_game_username": str(request_row["in_game_username"] or ""),
+                        "discord_user_id": str(request_row["discord_user_id"] or ""),
+                    },
+                    "requester": {
+                        "discord_id": str(request_row["discord_user_id"] or ""),
+                        "username": username,
+                        "display_name": display_name,
+                        "avatar_url": self.public_avatar_url(requester),
+                    },
+                }
+            )
         response = web.json_response({"ok": True, "messages": items, "source": {"state": "ready" if items else "empty", "available": True, "channel": str(getattr(channel, "name", "")) or None}})
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -5985,10 +6058,15 @@ class PeaceBot(commands.Bot):
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
-        session, _member, denied = await self.public_investigator_context(request)
+        session, member, denied = await self.public_investigator_context(request)
         if denied is not None:
             return denied
         assert session is not None
+        if request.method == "POST" and (member is None or not self.public_member_capabilities(member).get("lead_investigator", False)):
+            return web.json_response(
+                {"ok": False, "code": "LEAD_INVESTIGATOR_REQUIRED", "message": "Somente Investigador Chefe pode iniciar um novo caso."},
+                status=403,
+            )
         if request.method == "GET":
             try:
                 rows = self.database.investigation_cases(limit=100)
@@ -6043,6 +6121,17 @@ class PeaceBot(commands.Bot):
                 {"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui registrar o caso agora."},
                 status=503,
             )
+        subject = await self.public_discord_member_by_id(subject_id) if subject_id else None
+        await self.send_log(
+            "Caso investigativo registrado",
+            fields=(
+                ("Caso", f"#{int(row['id'])} · {redact(title, limit=160)}"),
+                ("Envolvido", f"<@{subject_id}> (`{subject_id}`)" if subject_id else "não informado"),
+                ("Resumo", redact(summary, limit=1000)),
+            ),
+            actor=member,
+            subject=subject,
+        )
         return web.json_response({"ok": True, "case": case}, status=201)
 
     @staticmethod
@@ -6221,13 +6310,44 @@ class PeaceBot(commands.Bot):
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
-        session, _member, denied = await self.public_investigator_context(request)
+        session, member, denied = await self.public_investigator_context(request)
         if denied is not None:
             return denied
         assert session is not None
         case_id = self.public_investigation_case_id(request.match_info.get("case_id"))
         if case_id is None:
             return web.json_response({"ok": False, "code": "INVALID_INVESTIGATION_CASE", "message": "O caso informado é inválido."}, status=400)
+        if request.method == "DELETE":
+            if member is None or not self.public_member_capabilities(member).get("lead_investigator", False):
+                return web.json_response(
+                    {"ok": False, "code": "LEAD_INVESTIGATOR_REQUIRED", "message": "Somente Investigador Chefe pode excluir um caso."},
+                    status=403,
+                )
+            try:
+                payload = await request.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            confirmation = str(payload.get("confirmation_code", "") or "").strip().upper()
+            expected = f"EXCLUIR-{case_id}"
+            if confirmation != expected:
+                return web.json_response(
+                    {"ok": False, "code": "DELETE_CONFIRMATION_REQUIRED", "message": f"Digite o código {expected} para confirmar."},
+                    status=400,
+                )
+            existing = self.database.investigation_case(case_id)
+            if existing is None or existing["deleted_at"] is not None:
+                return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+            row = self.database.delete_investigation_case(case_id=case_id, actor_discord_user_id=session["discord_user_id"])
+            if row is None:
+                return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+            await self.send_log(
+                "Caso investigativo excluído",
+                fields=(("Caso", f"#{case_id} · {redact(str(existing['title']), limit=160)}"), ("Confirmação", expected)),
+                actor=member,
+            )
+            return web.json_response({"ok": True, "case": self.public_investigation_case_payload(self.database, row)})
         if request.method == "GET":
             row = self.database.investigation_case(case_id)
             if row is None:
@@ -6320,6 +6440,16 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "INVESTIGATION_UNAVAILABLE", "message": "Não consegui registrar a evidência agora."}, status=503)
         if row is None:
             return web.json_response({"ok": False, "code": "INVESTIGATION_NOT_FOUND", "message": "Caso não encontrado."}, status=404)
+        await self.send_log(
+            "Evidência investigativa registrada",
+            fields=(
+                ("Caso", f"#{case_id}"),
+                ("Evidência", f"#{int(row['id'])} · {redact(title, limit=160)}"),
+                ("Classificação", str(classification)),
+                ("Observação", redact(note, limit=900)),
+            ),
+            actor=_member,
+        )
         return web.json_response(
             {
                 "ok": True,
@@ -6336,6 +6466,44 @@ class PeaceBot(commands.Bot):
             },
             status=201,
         )
+
+    async def public_api_investigation_evidence_delete(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, member, denied = await self.public_lead_investigator_context(request)
+        if denied is not None:
+            return denied
+        assert session is not None and member is not None
+        raw_id = str(request.match_info.get("evidence_id", "") or "").strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", raw_id):
+            return web.json_response({"ok": False, "code": "INVALID_EVIDENCE", "message": "A evidência informada é inválida."}, status=400)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        confirmation = str(payload.get("confirmation_code", "") or "").strip().upper()
+        expected = f"EXCLUIR-EVIDENCIA-{raw_id}"
+        if confirmation != expected:
+            return web.json_response({"ok": False, "code": "DELETE_CONFIRMATION_REQUIRED", "message": f"Digite o código {expected} para confirmar."}, status=400)
+        item = self.database.delete_investigation_evidence(
+            evidence_id=int(raw_id),
+            actor_discord_user_id=session["discord_user_id"],
+        )
+        if item is None:
+            return web.json_response({"ok": False, "code": "EVIDENCE_NOT_FOUND", "message": "Evidência não encontrada."}, status=404)
+        await self.send_log(
+            "Evidência investigativa retirada",
+            fields=(
+                ("Caso", f"#{int(item['case_id'])}"),
+                ("Evidência", f"#{raw_id} · {redact(str(item['title']), limit=160)}"),
+                ("Confirmação", expected),
+            ),
+            actor=member,
+        )
+        return web.json_response({"ok": True, "evidence_id": int(raw_id), "case_id": int(item["case_id"])})
 
     @staticmethod
     def public_discord_oauth_token(request: web.Request) -> str | None:
@@ -6873,6 +7041,7 @@ class PeaceBot(commands.Bot):
             "is_manager": bool(is_manager),
             "is_staff": bool(capabilities["staff"]),
             "is_investigator": bool(capabilities["investigator"]),
+            "is_lead_investigator": bool(capabilities["lead_investigator"]),
             "is_scan_only": bool(capabilities["scan_only"]),
             "scan_only_url": scan_only_url,
             "can_edit_partners": bool(capabilities["partners_edit"]),
@@ -6935,6 +7104,175 @@ class PeaceBot(commands.Bot):
             denied_code="INVESTIGATOR_REQUIRED",
             denied_message="Somente Investigador pode acessar a área investigativa.",
         )
+
+    async def public_lead_investigator_context(
+        self,
+        request: web.Request,
+    ) -> tuple[dict[str, object] | None, discord.Member | None, web.Response | None]:
+        return await self.public_capability_context(
+            request,
+            "lead_investigator",
+            denied_code="LEAD_INVESTIGATOR_REQUIRED",
+            denied_message="Somente Investigador Chefe pode executar esta ação.",
+        )
+
+    @staticmethod
+    def public_warning_catalog() -> list[dict[str, object]]:
+        return [
+            {"code": code, **details}
+            for code, details in PUBLIC_MEMBER_WARNING_ACTS.items()
+        ]
+
+    def public_warning_payload(self, row: object) -> dict[str, object]:
+        try:
+            acts = json.loads(str(row["acts_json"] or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            acts = []
+        if not isinstance(acts, list):
+            acts = []
+        return {
+            "id": int(row["id"]),
+            "subject_discord_user_id": str(row["subject_discord_user_id"]),
+            "acts": acts,
+            "total_weight": int(row["total_weight"] or 0),
+            "note": str(row["note"] or ""),
+            "created_at": str(row["created_at"]),
+        }
+
+    async def public_peace_member_directory(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        member, state = await self.public_discord_member_state(session["discord_user_id"])
+        if state == "unavailable":
+            return web.json_response(
+                {"ok": False, "code": "DISCORD_MEMBER_UNAVAILABLE", "message": "Não foi possível confirmar seu cargo agora."},
+                status=503,
+            )
+        if member is None or not self.public_member_has_peace_role(member):
+            return web.json_response(
+                {"ok": False, "code": "PEACE_ROLE_REQUIRED", "message": "Somente membros Peace podem consultar os membros."},
+                status=403,
+            )
+        query = str(request.query.get("q", "") or "").strip().casefold()[:80]
+        try:
+            members, _fetched = await self.members_for_tag_sync()
+            rows = {str(row["discord_user_id"]): row for row in self.database.all_members(limit=500)}
+        except (sqlite3.Error, OSError, discord.DiscordException, asyncio.TimeoutError):
+            log.warning("Não consegui consultar o diretório Peace", exc_info=True)
+            return web.json_response(
+                {"ok": False, "code": "MEMBERS_UNAVAILABLE", "message": "Não consegui carregar os membros agora."},
+                status=503,
+            )
+        results: list[dict[str, object]] = []
+        for candidate in members:
+            if not self.public_member_has_peace_role(candidate):
+                continue
+            discord_id = str(getattr(candidate, "id", ""))
+            record = rows.get(discord_id)
+            username = str(getattr(candidate, "name", "") or getattr(candidate, "display_name", "") or "membro")[:80]
+            display_name = str(getattr(candidate, "display_name", None) or getattr(candidate, "global_name", None) or username)[:80]
+            role_objects = list(getattr(candidate, "roles", ()) or ())
+            role_names = [str(getattr(role, "name", ""))[:80] for role in role_objects if getattr(role, "name", None)]
+            highest = max(role_objects, key=lambda role: int(getattr(role, "position", 0)), default=None)
+            profile = self.database.candidate_profile(discord_id)
+            warning_count, warning_weight = self.database.member_warning_totals(discord_id)
+            searchable = " ".join((discord_id, username, display_name, " ".join(role_names))).casefold()
+            if query and query not in searchable:
+                continue
+            civil_verified = bool(profile is not None and profile["passed"] is not None and bool(profile["passed"]))
+            results.append(
+                {
+                    "discord_id": discord_id,
+                    "username": username,
+                    "display_name": display_name,
+                    "avatar_url": self.public_avatar_url(candidate),
+                    "peace_id": int(record["peace_id"]) if record is not None else None,
+                    "roles": role_names[:20],
+                    "highest_role": str(getattr(highest, "name", "") or "Membro Peace")[:80],
+                    "score": int(profile["score"]) if profile is not None and profile["score"] is not None else None,
+                    "score_scale": int(profile["score_scale"]) if profile is not None else 100,
+                    "civil_verified": civil_verified,
+                    "civil_verification_asset": "/assets/civil-police-verification.png" if civil_verified else None,
+                    "warning_count": warning_count,
+                    "warning_weight": warning_weight,
+                    "behavior_score": max(0, 100 - warning_weight),
+                    "warnings": [self.public_warning_payload(item) for item in self.database.member_warnings(discord_id, limit=20)],
+                }
+            )
+        results.sort(key=lambda item: (str(item["display_name"]).casefold(), str(item["discord_id"])))
+        response = web.json_response({"ok": True, "members": results, "count": len(results), "query": query})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    async def public_peace_warning(self, request: web.Request) -> web.Response:
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        session, actor, denied = await self.public_capability_context(
+            request,
+            "management",
+            denied_code="MANAGER_REQUIRED",
+            denied_message="Somente Gerência pode registrar uma advertência.",
+        )
+        if denied is not None:
+            return denied
+        assert session is not None and actor is not None
+        if request.method == "GET":
+            subject_id = str(request.query.get("discord_user_id", "") or "").strip()
+            if not subject_id:
+                return web.json_response({"ok": True, "catalog": self.public_warning_catalog()})
+            if not re.fullmatch(r"[0-9]{15,25}", subject_id):
+                return web.json_response({"ok": False, "code": "INVALID_MEMBER_ID", "message": "Informe um Discord ID válido."}, status=400)
+            return web.json_response({"ok": True, "warnings": [self.public_warning_payload(item) for item in self.database.member_warnings(subject_id)]})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise TypeError
+        except (TypeError, json.JSONDecodeError):
+            return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da advertência inválidos."}, status=400)
+        subject_id = str(payload.get("discord_user_id", "") or "").strip()
+        raw_codes = payload.get("acts")
+        note = str(payload.get("note", "") or "").strip()
+        if not re.fullmatch(r"[0-9]{15,25}", subject_id) or not isinstance(raw_codes, list) or not raw_codes:
+            return web.json_response({"ok": False, "code": "INVALID_WARNING", "message": "Escolha ao menos um ato e um membro válido."}, status=400)
+        acts: list[dict[str, object]] = []
+        for code in dict.fromkeys(str(value).strip().upper() for value in raw_codes):
+            details = PUBLIC_MEMBER_WARNING_ACTS.get(code)
+            if details is None:
+                return web.json_response({"ok": False, "code": "INVALID_WARNING_ACT", "message": "Um dos atos selecionados não existe."}, status=400)
+            acts.append({"code": code, **details})
+        total_weight = sum(int(item["weight"]) for item in acts)
+        try:
+            row = self.database.create_member_warning(
+                subject_discord_user_id=subject_id,
+                actor_discord_user_id=session["discord_user_id"],
+                acts=acts,
+                total_weight=total_weight,
+                note=note,
+            )
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui registrar advertência", exc_info=True)
+            return web.json_response({"ok": False, "code": "WARNING_UNAVAILABLE", "message": "Não consegui registrar a advertência agora."}, status=503)
+        subject = await self.public_discord_member_by_id(subject_id)
+        await self.send_log(
+            "Advertência registrada",
+            fields=(
+                ("Membro", f"<@{subject_id}> (`{subject_id}`)"),
+                ("Atos", "\n".join(f"{item['code']} · {item['label']} (+{item['weight']})" for item in acts)),
+                ("Peso aplicado", str(total_weight)),
+                ("Observação", redact(note or "não informada", limit=800)),
+            ),
+            actor=actor,
+            subject=subject,
+        )
+        return web.json_response({"ok": True, "warning": self.public_warning_payload(row)}, status=201)
 
     async def public_staff_context(
         self,
@@ -7060,6 +7398,8 @@ class PeaceBot(commands.Bot):
                 "items": partner_items,
                 "message": None if partner_items else "Nenhum parceiro publicado agora.",
             }
+            if peace_member is not None and self.public_member_capabilities(peace_member).get("management", False):
+                response_payload["warning_catalog"] = self.public_warning_catalog()
         return web.json_response(response_payload)
 
     async def public_peace_process(self, request: web.Request) -> web.Response:
@@ -7083,9 +7423,10 @@ class PeaceBot(commands.Bot):
         except (TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
         access_token = self.public_exam_token(payload.get("access_token"))
-        if access_token is None:
-            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
-        assignment = self.database.exam_assignment_by_access_token(access_token)
+        assignment_id = self.public_exam_assignment_id(payload.get("assignment_id"))
+        if access_token is None and assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "Informe um link ou uma atribuição válida."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token) if access_token is not None else self.database.exam_assignment(assignment_id)
         if assignment is None:
             return web.json_response({"ok": False, "code": "EXAM_LINK_NOT_FOUND", "message": "Esse link não existe ou já não está disponível."}, status=404)
         if str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
@@ -7113,9 +7454,10 @@ class PeaceBot(commands.Bot):
         except (TypeError, json.JSONDecodeError):
             return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados da prova inválidos."}, status=400)
         access_token = self.public_exam_token(payload.get("access_token"))
-        if access_token is None:
-            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "O link da prova é inválido."}, status=400)
-        assignment = self.database.exam_assignment_by_access_token(access_token)
+        assignment_id = self.public_exam_assignment_id(payload.get("assignment_id"))
+        if access_token is None and assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_EXAM_LINK", "message": "Informe um link ou uma atribuição válida."}, status=400)
+        assignment = self.database.exam_assignment_by_access_token(access_token) if access_token is not None else self.database.exam_assignment(assignment_id)
         if assignment is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "O link não pertence à conta conectada."}, status=403)
         assignment_id = int(assignment["id"])
@@ -7507,6 +7849,7 @@ class PeaceBot(commands.Bot):
                     "/api/notices",
                     "/api/partners",
                     "/api/investigations",
+                    "/api/peace/warnings",
                 }
                 or route.startswith("/api/investigations/")
                 or route.startswith("/api/investigation-approvals/")
@@ -7557,7 +7900,7 @@ class PeaceBot(commands.Bot):
                 response.headers["Vary"] = ", ".join(sorted(vary, key=str.casefold))
         if origin in PUBLIC_API_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
             vary = {
                 value.strip()
@@ -7668,7 +8011,9 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/investigations", self.public_api_investigations)
         app.router.add_get("/api/investigations/{case_id}", self.public_api_investigation_case)
         app.router.add_patch("/api/investigations/{case_id}", self.public_api_investigation_case)
+        app.router.add_delete("/api/investigations/{case_id}", self.public_api_investigation_case)
         app.router.add_post("/api/investigations/{case_id}/evidence", self.public_api_investigation_evidence)
+        app.router.add_delete("/api/investigations/evidence/{evidence_id}", self.public_api_investigation_evidence_delete)
         app.router.add_post("/api/investigations/{case_id}/approval-links", self.public_api_investigation_approval_links)
         app.router.add_get("/api/investigation-approvals/{token}", self.public_api_investigation_approval)
         app.router.add_post("/api/investigation-approvals/{token}", self.public_api_investigation_approval)
@@ -7689,6 +8034,9 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/auth/discord/logout", self.public_discord_auth_logout)
         app.router.add_get("/api/exams/process", self.public_exam_process)
         app.router.add_get("/api/peace/process", self.public_peace_process)
+        app.router.add_get("/api/peace/members", self.public_peace_member_directory)
+        app.router.add_get("/api/peace/warnings", self.public_peace_warning)
+        app.router.add_post("/api/peace/warnings", self.public_peace_warning)
         app.router.add_post("/api/exams/access", self.public_exam_access)
         app.router.add_post("/api/exams/start", self.public_exam_start)
         app.router.add_post("/api/exams/submit", self.public_exam_submit)
@@ -7706,6 +8054,7 @@ class PeaceBot(commands.Bot):
             "/api/investigations",
             "/api/investigations/{case_id}",
             "/api/investigations/{case_id}/evidence",
+            "/api/investigations/evidence/{evidence_id}",
             "/api/investigations/{case_id}/approval-links",
             "/api/investigation-approvals/{token}",
             "/api/entry/start",
@@ -7724,6 +8073,8 @@ class PeaceBot(commands.Bot):
             "/api/auth/discord/logout",
             "/api/exams/process",
             "/api/peace/process",
+            "/api/peace/members",
+            "/api/peace/warnings",
             "/api/exams/access",
             "/api/exams/start",
             "/api/exams/submit",

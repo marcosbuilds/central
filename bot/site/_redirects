@@ -39,10 +39,13 @@
 /api/investigations https://peace-tools-8be02694.aclclouds.online/api/investigations 200!
 /api/investigations/:case_id https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id 200!
 /api/investigations/:case_id/evidence https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id/evidence 200!
+/api/investigations/evidence/:evidence_id https://peace-tools-8be02694.aclclouds.online/api/investigations/evidence/:evidence_id 200!
 /api/investigations/:case_id/approval-links https://peace-tools-8be02694.aclclouds.online/api/investigations/:case_id/approval-links 200!
 /api/investigation-approvals/:token https://peace-tools-8be02694.aclclouds.online/api/investigation-approvals/:token 200!
 /api/exams/process https://peace-tools-8be02694.aclclouds.online/api/exams/process 200!
 /api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!
+/api/peace/members https://peace-tools-8be02694.aclclouds.online/api/peace/members 200!
+/api/peace/warnings https://peace-tools-8be02694.aclclouds.online/api/peace/warnings 200!
 /api/exams/access https://peace-tools-8be02694.aclclouds.online/api/exams/access 200!
 /api/exams/start https://peace-tools-8be02694.aclclouds.online/api/exams/start 200!
 /api/exams/submit https://peace-tools-8be02694.aclclouds.online/api/exams/submit 200!
