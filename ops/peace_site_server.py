@@ -53,6 +53,7 @@ ACL_API_ROUTES = {
     "/api/exams/assignments",
 }
 EXAM_MANAGER_REVIEW_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/review$")
+EXAM_MANAGER_APPROVE_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/approve$")
 EXAM_MANAGER_REJECT_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/reject$")
 PARTNER_ROUTE = re.compile(r"^/api/partners/[0-9]{1,12}$")
 SCAN_DECISION_ROUTE = re.compile(r"^/api/scan-only/[1-9][0-9]{0,11}/(?:approve|reject)$")
@@ -217,7 +218,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/exams/submit",
             "/api/exams/assignments",
             "/api/peace/warnings",
-        } and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REJECT_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
+        } and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_APPROVE_ROUTE.fullmatch(route) and not EXAM_MANAGER_REJECT_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
         self._proxy_api("POST")

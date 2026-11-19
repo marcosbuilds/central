@@ -51,6 +51,8 @@
   }
 
   function statusLabel(assignment) {
+    if (assignment.status === "pending_approval") return "Resultado enviado · aguarda aprovação";
+    if (assignment.status === "approved") return "Aprovado";
     if (assignment.status === "submitted") return assignment.passed ? "Aprovado" : "Não aprovado";
     if (assignment.status === "in_progress") return "Em andamento";
     if (assignment.status === "expired") return "Prazo encerrado";
@@ -111,10 +113,10 @@
 
   function updateSteps(assignments) {
     var hasAssignment = assignments.length > 0;
-    var hasResult = assignments.some(function (item) { return item.status === "submitted"; });
+    var hasResult = assignments.some(function (item) { return ["submitted", "pending_approval", "approved", "rejected"].includes(item.status); });
     setText(stepNodes.identity, "Identidade confirmada");
     setText(stepNodes.exam, hasAssignment ? "Atribuição registrada" : "Aguardando atribuição");
-    setText(stepNodes.result, hasResult ? "Resultado disponível" : "Aguardando envio");
+     setText(stepNodes.result, hasResult ? "Resultado enviado" : "Aguardando envio");
   }
 
   function renderProcess(data) {

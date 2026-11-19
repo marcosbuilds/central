@@ -145,6 +145,8 @@
     var activeModalPreviousFocus = null;
     var investigationLoading = false;
     var investigationCases = [];
+    var investigationApprovalLinks = {};
+    var viewCache = { partners: false, manager: false, scan: false, investigation: false, members: false };
     var selectedInvestigationCaseId = null;
     var membersList = workspace && workspace.querySelector("[data-member-members-list]");
     var membersCount = workspace && workspace.querySelector("[data-member-members-count]");
@@ -346,14 +348,19 @@
       });
     }
 
-    function loadPartners() {
+    function loadPartners(force) {
       if (!partnerList || partnersLoading) return;
+      if (!force && viewCache.partners) {
+        renderPartners(currentProcess || {});
+        return;
+      }
       partnersLoading = true;
       partnerList.replaceChildren(memberState("Consultando parceiros publicados…", "loading"));
       request("/api/partners")
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar as parcerias.");
           currentProcess = Object.assign({}, currentProcess || {}, payload);
+          viewCache.partners = true;
           renderPartners(currentProcess);
         })
         .catch(function (error) {
@@ -372,6 +379,8 @@
       } catch (error) { return ""; }
     }
     function statusLabel(item) {
+      if (item.status === "pending_approval") return "Resultado enviado · aguarda aprovação";
+      if (item.status === "approved") return "Aprovado";
       if (item.status === "submitted") return item.passed ? "Aprovado" : "Não aprovado";
       if (item.status === "in_progress") return "Em andamento";
       if (item.status === "expired") return "Prazo encerrado";
@@ -667,6 +676,24 @@
     }
 
     function resetReusableSurface() {
+      if (managerPollingTimer) {
+        window.clearTimeout(managerPollingTimer);
+        managerPollingTimer = null;
+      }
+      notificationsLoading = false;
+      notificationsLoaded = false;
+      managerAssignmentsLoading = false;
+      managerAssignments = [];
+      scanLoading = false;
+      scanMessages = [];
+      investigationLoading = false;
+      investigationCases = [];
+      investigationApprovalLinks = {};
+      membersLoading = false;
+      peaceMembers = [];
+      partnersLoading = false;
+      partnerItems = [];
+      viewCache = { partners: false, manager: false, scan: false, investigation: false, members: false };
       currentProcess = null;
       if (memberName) memberName.textContent = "membro";
       if (memberUsername) memberUsername.textContent = "@discord";
@@ -1037,6 +1064,13 @@
           }
           approvalSection.appendChild(approvalRow);
         });
+        var privateLinks = Array.isArray(caseRecord.private_approval_links) ? caseRecord.private_approval_links : [];
+        if (privateLinks.length) {
+          var privateLinksBlock = document.createElement("div");
+          privateLinksBlock.className = "member-generated-links";
+          renderGeneratedApprovalLinks(privateLinksBlock, privateLinks, "Links privados — copie e envie individualmente");
+          approvalSection.appendChild(privateLinksBlock);
+        }
         content.appendChild(approvalSection);
       }
 
@@ -1061,7 +1095,12 @@
 
     function renderInvestigations(cases) {
       if (!investigationList) return;
-      investigationCases = Array.isArray(cases) ? cases : [];
+      investigationCases = (Array.isArray(cases) ? cases : []).map(function (caseRecord) {
+        var links = investigationApprovalLinks[String(caseRecord.id || "")];
+        return links && links.length
+          ? Object.assign({}, caseRecord, { private_approval_links: links })
+          : caseRecord;
+      });
       var query = investigationSearch ? investigationSearch.value.trim().toLowerCase() : "";
       var visibleCases = investigationCases.filter(function (caseRecord) {
         return !query || [caseRecord.id, caseRecord.title, caseRecord.summary, caseRecord.status].join(" ").toLowerCase().indexOf(query) >= 0;
@@ -1075,8 +1114,12 @@
       visibleCases.forEach(function (caseRecord) { investigationList.appendChild(createInvestigationCase(caseRecord)); });
     }
 
-    function loadInvestigations() {
+    function loadInvestigations(force) {
       if (!investigationList || investigationLoading || !currentCapabilities().investigator) return;
+      if (!force && viewCache.investigation) {
+        renderInvestigations(investigationCases);
+        return;
+      }
       investigationLoading = true;
       investigationList.textContent = "";
        var loadingState = document.createElement("div");
@@ -1086,6 +1129,7 @@
       request("/api/investigations")
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar os casos.");
+          viewCache.investigation = true;
           renderInvestigations(payload.cases);
         })
         .catch(function (error) {
@@ -1187,8 +1231,12 @@
       });
     }
 
-    function loadScanMessages() {
+    function loadScanMessages(force) {
       if (!scanList || scanLoading || !currentCapabilities().scanOnly) return;
+      if (!force && viewCache.scan) {
+        renderScanMessages();
+        return;
+      }
       scanLoading = true;
       scanList.textContent = "";
        var loadingState = document.createElement("div");
@@ -1199,6 +1247,7 @@
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar o scan-only.");
           scanMessages = Array.isArray(payload.messages) ? payload.messages : [];
+          viewCache.scan = true;
           renderScanMessages();
         })
         .catch(function (error) {
@@ -1275,14 +1324,19 @@
       });
     }
 
-    function loadMembers() {
+    function loadMembers(force) {
       if (!membersList || membersLoading || !currentProcess) return;
+      if (!force && viewCache.members) {
+        renderPeaceMembers();
+        return;
+      }
       membersLoading = true;
       membersList.replaceChildren(memberState("Consultando membros…", "loading"));
       request("/api/peace/members")
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar os membros.");
           peaceMembers = Array.isArray(payload.members) ? payload.members : [];
+          viewCache.members = true;
           renderPeaceMembers();
         })
         .catch(function (error) { membersList.replaceChildren(memberState(error.message || "Não consegui carregar os membros agora.", "error")); })
@@ -1420,8 +1474,8 @@
       assignmentsBlock.className = "member-data-block member-data-block--wide";
       assignmentsBlock.id = "member-results";
       assignmentsBlock.innerHTML = "<div class=\"member-data-heading member-overview-process-heading\"><h2 id=\"member-results-title\">Processo e provas</h2><a class=\"text-link\" data-member-view-link=\"process\" href=\"/area/?view=process\">Ver detalhes ↗</a></div>";
-      var pendingCount = assignments.filter(function (assignment) { return assignment.status === "assigned" || assignment.status === "in_progress"; }).length;
-      var submittedCount = assignments.filter(function (assignment) { return assignment.status === "submitted"; }).length;
+      var pendingCount = assignments.filter(function (assignment) { return ["assigned", "in_progress", "pending_approval"].includes(assignment.status); }).length;
+      var submittedCount = assignments.filter(function (assignment) { return ["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status); }).length;
       var summary = document.createElement("p");
       summary.className = "member-overview-process-summary";
       summary.textContent = assignments.length
@@ -1491,7 +1545,7 @@
     }
 
     function loadCandidateReview(assignment, container) {
-      if (!assignment || assignment.status !== "submitted" || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
+      if (!assignment || !["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status) || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
       container.dataset.loading = "true";
       container.setAttribute("aria-busy", "true");
       container.setAttribute("aria-live", "polite");
@@ -1556,7 +1610,7 @@
         meta.appendChild(cell);
       });
       content.appendChild(meta);
-      if (assignment.status === "submitted") {
+      if (["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status)) {
         var review = document.createElement("div");
         review.className = "member-review-list";
         content.appendChild(review);
@@ -1578,8 +1632,8 @@
         setProcessStatus("Aguardando atribuição", "planned");
         processAssignments.appendChild(memberState("A Gerência ainda não criou uma atribuição para esta conta.", "empty"));
       } else {
-        var hasResult = assignments.some(function (item) { return item.status === "submitted"; });
-        setProcessStatus(hasResult ? "Resultado disponível" : "Em andamento", hasResult ? "ready" : "planned");
+        var hasResult = assignments.some(function (item) { return ["submitted", "pending_approval", "approved", "rejected"].includes(item.status); });
+        setProcessStatus(hasResult ? "Resultado enviado" : "Em andamento", hasResult ? "pending" : "planned");
         assignments.forEach(function (assignment) {
           processAssignments.appendChild(createCandidateAssignmentDisclosure(assignment));
         });
@@ -1599,18 +1653,55 @@
       if (assignments.length || setRequests.length) {
         var next = document.createElement("p");
         next.className = "member-block-state";
-        next.textContent = assignments.length ? (assignments.some(function (item) { return item.status === "submitted"; }) ? "Confira o resultado e as respostas abrindo uma atribuição." : "Abra a prova pelo link enviado pela Gerência quando estiver pronta.") : "Acompanhe a decisão da equipe nesta mesma página.";
+        next.textContent = assignments.length ? (assignments.some(function (item) { return ["submitted", "pending_approval", "approved", "rejected"].includes(item.status); }) ? "Seu resultado foi enviado; quando a nota mínima for atingida, aguarde a aprovação manual do responsável." : "Abra a prova pelo link enviado pela Gerência quando estiver pronta.") : "Acompanhe a decisão da equipe nesta mesma página.";
         processSummary.appendChild(next);
       }
     }
 
-    function copyValue(value, statusNode) {
+    function copyValue(value, statusNode, successMessage) {
       var copyPromise = typeof site.copyText === "function"
         ? site.copyText(String(value))
         : navigator.clipboard && navigator.clipboard.writeText
           ? navigator.clipboard.writeText(String(value)).then(function () { return true; })
           : Promise.reject(new Error("clipboard unavailable"));
-      copyPromise.then(function () { if (statusNode) statusNode.textContent = "ID copiado"; }).catch(function () { if (statusNode) statusNode.textContent = "Não foi possível copiar"; });
+       copyPromise.then(function () { if (statusNode) statusNode.textContent = successMessage || "Copiado"; }).catch(function () { if (statusNode) statusNode.textContent = "Não foi possível copiar"; });
+    }
+
+    function renderGeneratedApprovalLinks(container, links, headingText) {
+      if (!container) return;
+      container.textContent = "";
+      if (!Array.isArray(links) || !links.length) return;
+      var heading = document.createElement("strong");
+      heading.textContent = headingText || "Links privados";
+      container.appendChild(heading);
+      links.forEach(function (linkItem, index) {
+        var url = String(linkItem && linkItem.url || "");
+        if (!url) return;
+        var row = document.createElement("div");
+        row.className = "member-generated-link-row";
+        var field = document.createElement("input");
+        field.type = "text";
+        field.readOnly = true;
+        field.value = url;
+        field.className = "member-generated-link-value";
+        field.setAttribute("aria-label", "Link privado do avaliador " + (index + 1));
+        field.addEventListener("focus", function () { field.select(); });
+        var link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Avaliador " + (index + 1);
+        var copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "button button--outline member-generated-link-copy";
+        copy.textContent = "Copiar link";
+        var copyStatus = document.createElement("span");
+        copyStatus.className = "sr-only";
+        copyStatus.setAttribute("role", "status");
+        copy.addEventListener("click", function () { copyValue(url, copyStatus, "Link copiado"); });
+        row.append(field, link, copy, copyStatus);
+        container.appendChild(row);
+      });
     }
 
     function renderManagerReview(container, payload) {
@@ -1619,7 +1710,7 @@
     }
 
     function loadManagerReview(assignment, container) {
-      if (!assignment || assignment.status !== "submitted" || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
+      if (!assignment || !["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status) || !container || container.dataset.loaded === "true" || container.dataset.loading === "true") return;
       container.dataset.loading = "true";
       container.setAttribute("aria-busy", "true");
       container.setAttribute("aria-live", "polite");
@@ -1699,7 +1790,7 @@
         identityCopy.appendChild(candidateIdNote);
         identity.appendChild(avatar);
         identity.appendChild(identityCopy);
-        if (assignment.status === "assigned" || assignment.status === "in_progress") {
+        if (["assigned", "in_progress", "pending_approval"].includes(assignment.status)) {
           var rejectButton = document.createElement("button");
           rejectButton.type = "button";
           rejectButton.className = "button button--danger button--small manager-candidate-reject";
@@ -1714,7 +1805,8 @@
               .then(function (payload) {
                 if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui reprovar esta atribuição.");
                 managerAssignments = managerAssignments.map(function (item) { return Number(item.id) === Number(assignment.id) ? payload.assignment : item; });
-                refreshVisibleManagerAssignments();
+                viewCache.manager = false;
+                return loadManagerAssignments(true, true);
               })
               .catch(function (error) {
                 rejectButton.disabled = false;
@@ -1723,6 +1815,31 @@
               });
           });
           identity.appendChild(rejectButton);
+        }
+        if (assignment.status === "pending_approval") {
+          var approveButton = document.createElement("button");
+          approveButton.type = "button";
+          approveButton.className = "button button--light button--small manager-candidate-approve";
+          approveButton.textContent = "Aprovar candidato";
+          approveButton.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!window.confirm("Aprovar este candidato manualmente?")) return;
+            approveButton.disabled = true;
+            approveButton.textContent = "Aprovando…";
+            request("/api/exams/assignments/" + encodeURIComponent(assignment.id) + "/approve", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}" })
+              .then(function (payload) {
+                if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui aprovar esta atribuição.");
+                viewCache.manager = false;
+                return loadManagerAssignments(true, true);
+              })
+              .catch(function (error) {
+                approveButton.disabled = false;
+                approveButton.textContent = "Aprovar candidato";
+                if (managerStale) { managerStale.hidden = false; managerStale.textContent = error.message || "Não consegui aprovar esta atribuição agora."; }
+              });
+          });
+          identity.appendChild(approveButton);
         }
         content.appendChild(identity);
         var meta = document.createElement("div");
@@ -1739,7 +1856,7 @@
           meta.appendChild(cell);
         });
         content.appendChild(meta);
-        if (assignment.status === "submitted") {
+        if (["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status)) {
           var review = document.createElement("div");
           review.className = "member-review-list";
           content.appendChild(review);
@@ -1774,33 +1891,44 @@
       if (currentView !== "manager" || document.hidden) return;
       managerPollingTimer = window.setTimeout(function () {
         managerPollingTimer = null;
-        loadManagerAssignments(true);
+        loadManagerAssignments(true, true);
       }, 15000);
     }
 
-    function loadManagerAssignments(silent) {
+    function loadManagerAssignments(silent, force) {
       if (!managerList || managerAssignmentsLoading) return;
+      if (!force && viewCache.manager) {
+        refreshVisibleManagerAssignments();
+        scheduleManagerPolling();
+        return;
+      }
       managerAssignmentsLoading = true;
-      if (!silent) {
+      var hasCachedAssignments = managerAssignments.length > 0;
+      if (!silent && !hasCachedAssignments) {
         managerList.textContent = "";
          var loading = document.createElement("div");
          loading.className = "member-block-state member-block-state--loading";
          loading.innerHTML = '<span class="peace-spinner" aria-hidden="true"></span><span>Consultando atribuições da Gerência…</span>';
         managerList.appendChild(loading);
+      } else if (hasCachedAssignments && managerStale) {
+        managerStale.hidden = false;
+        managerStale.textContent = "Atualizando… os dados atuais continuam disponíveis.";
       }
       request("/api/exams/assignments")
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui consultar as atribuições.");
           managerAssignments = Array.isArray(payload.assignments) ? payload.assignments : [];
+          viewCache.manager = true;
           if (managerStale) managerStale.hidden = true;
           refreshVisibleManagerAssignments();
         })
         .catch(function (error) {
-          if (silent && managerAssignments.length) {
+          if (managerAssignments.length) {
             if (managerStale) {
               managerStale.hidden = false;
               managerStale.textContent = "Atualização temporariamente indisponível. Os dados exibidos são da última consulta.";
             }
+            refreshVisibleManagerAssignments();
             return;
           }
           managerList.textContent = "";
@@ -1911,6 +2039,15 @@
           else showUnavailable();
         })
         .finally(function () { loading = false; });
+    }
+
+    function refreshCurrentView() {
+      if (currentView === "manager") { viewCache.manager = false; loadManagerAssignments(false, true); return; }
+      if (currentView === "scan") { viewCache.scan = false; loadScanMessages(true); return; }
+      if (currentView === "investigation") { viewCache.investigation = false; loadInvestigations(true); return; }
+      if (currentView === "members") { viewCache.members = false; loadMembers(true); return; }
+      if (currentView === "partners") { viewCache.partners = false; loadPartners(true); return; }
+      load();
     }
 
     if (retry) retry.addEventListener("click", load);
@@ -2063,8 +2200,9 @@
           managerFormStatus.textContent = "Atribuição criada. Envie este link ao candidato.";
           managerFormStatus.dataset.state = "success";
         }
+        viewCache.manager = false;
         managerAssignmentsLoading = false;
-        loadManagerAssignments();
+        loadManagerAssignments(true, true);
       }).catch(function (error) {
         if (managerFormStatus) {
           managerFormStatus.textContent = error.message || "Não consegui gerar a atribuição agora.";
@@ -2090,7 +2228,8 @@
         .then(function (payload) {
           if (!payload || payload.ok !== true) throw site.friendlyError(payload, 201, "Não consegui registrar a advertência.");
           if (warningFormStatus) { warningFormStatus.textContent = "Advertência registrada e enviada aos logs."; warningFormStatus.dataset.state = "success"; }
-          loadMembers();
+          viewCache.members = false;
+          loadMembers(true);
           window.setTimeout(function () { closeMemberModal(warningModal, true); }, 350);
         })
         .catch(function (error) { if (warningFormStatus) { warningFormStatus.textContent = error.message || "Não consegui registrar a advertência agora."; warningFormStatus.dataset.state = "error"; } })
@@ -2144,7 +2283,8 @@
           investigationFormStatus.textContent = "Caso registrado.";
           investigationFormStatus.dataset.state = "success";
         }
-        loadInvestigations();
+        viewCache.investigation = false;
+        loadInvestigations(true);
         window.setTimeout(function () { closeMemberModal(investigationModal, true); }, 350);
       }).catch(function (error) {
         if (investigationFormStatus) {
@@ -2184,7 +2324,8 @@
           body: JSON.stringify({ status: "archived" })
         }).then(function (response) {
           if (!response || response.ok !== true) throw site.friendlyError(response, 200, "Não consegui concluir o caso.");
-          loadInvestigations();
+          viewCache.investigation = false;
+          loadInvestigations(true);
         }).catch(function (error) {
           archiveButton.disabled = false;
           archiveButton.textContent = "Concluir caso";
@@ -2201,7 +2342,8 @@
           body: JSON.stringify({ status: "under_review" })
         }).then(function (response) {
           if (!response || response.ok !== true) throw site.friendlyError(response, 200, "Não consegui reabrir o caso.");
-          loadInvestigations();
+          viewCache.investigation = false;
+          loadInvestigations(true);
         }).catch(function (error) {
           reopenButton.disabled = false;
           reopenButton.textContent = "Reabrir análise";
@@ -2237,7 +2379,8 @@
           confirmFormStatus.dataset.state = "success";
         }
         pendingConfirmation = null;
-        loadInvestigations();
+        viewCache.investigation = false;
+        loadInvestigations(true);
         window.setTimeout(function () { closeMemberModal(confirmModal, true); }, 350);
       }).catch(function (error) {
         if (confirmFormStatus) {
@@ -2282,7 +2425,8 @@
           evidenceFormStatus.textContent = "Evidência adicionada.";
           evidenceFormStatus.dataset.state = "success";
         }
-        loadInvestigations();
+        viewCache.investigation = false;
+        loadInvestigations(true);
         window.setTimeout(function () { closeMemberModal(evidenceModal, true); }, 350);
       }).catch(function (error) {
         if (evidenceFormStatus) {
@@ -2320,39 +2464,20 @@
         body: JSON.stringify(payload)
       }).then(function (response) {
         if (!response || response.ok !== true || !Array.isArray(response.links)) throw site.friendlyError(response, 201, "Não consegui gerar os links privados.");
+        var generatedLinks = response.links.filter(function (linkItem) { return linkItem && linkItem.url; }).map(function (linkItem) {
+          return { evaluator_discord_user_id: linkItem.evaluator_discord_user_id, expires_at: linkItem.expires_at, url: String(linkItem.url) };
+        });
+        investigationApprovalLinks[String(caseId)] = generatedLinks;
         if (approvalGenerated) {
-          approvalGenerated.textContent = "";
-          var heading = document.createElement("strong");
-          heading.textContent = "Links gerados — copie e envie individualmente";
-          approvalGenerated.appendChild(heading);
-          response.links.forEach(function (linkItem, index) {
-            var row = document.createElement("div");
-            row.className = "member-generated-link-row";
-            var link = document.createElement("a");
-            link.href = linkItem.url;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.textContent = "Avaliador " + (index + 1);
-            var copy = document.createElement("button");
-            copy.type = "button";
-            copy.className = "button button--outline member-generated-link-copy";
-            copy.textContent = "Copiar link";
-            var copyStatus = document.createElement("span");
-            copyStatus.className = "sr-only";
-            copyStatus.setAttribute("role", "status");
-            copy.addEventListener("click", function () { copyValue(linkItem.url, copyStatus); });
-            row.appendChild(link);
-            row.appendChild(copy);
-            row.appendChild(copyStatus);
-            approvalGenerated.appendChild(row);
-          });
+          renderGeneratedApprovalLinks(approvalGenerated, generatedLinks, "Links gerados — copie e envie individualmente");
           approvalGenerated.hidden = false;
         }
         if (approvalFormStatus) {
           approvalFormStatus.textContent = "Links criados. Eles expiram em 7 dias e só abrem para a conta autorizada.";
           approvalFormStatus.dataset.state = "success";
         }
-        loadInvestigations();
+        viewCache.investigation = false;
+        loadInvestigations(true);
       }).catch(function (error) {
         if (approvalFormStatus) {
           approvalFormStatus.textContent = error.message || "Não consegui gerar os links agora.";
@@ -2388,7 +2513,10 @@
         method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: "{}"
       }).then(function (payload) {
         if (!payload || payload.ok !== true) throw site.friendlyError(payload, 200, "Não consegui registrar a decisão.");
-        loadScanMessages();
+        viewCache.scan = false;
+        scanMessages = scanMessages.filter(function (item) { return String(item.request_id || "") !== String(button.dataset.requestId || ""); });
+        renderScanMessages();
+        loadScanMessages(true);
       }).catch(function (error) {
         siblings.forEach(function (candidate) { candidate.disabled = false; });
         button.textContent = action === "approve" ? "Aprovar" : "Reprovar";
@@ -2534,7 +2662,11 @@
       if (toolbarRefresh.disabled) return;
       toolbarRefresh.disabled = true;
       toolbarRefresh.setAttribute("aria-busy", "true");
-      window.location.reload();
+      refreshCurrentView();
+      window.setTimeout(function () {
+        toolbarRefresh.disabled = false;
+        toolbarRefresh.removeAttribute("aria-busy");
+      }, 700);
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");

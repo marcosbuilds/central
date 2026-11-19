@@ -10,8 +10,10 @@
     var connect = document.querySelector("[data-login-discord]");
     var params = new URLSearchParams(window.location.search);
     var oauthStatus = params.get("oauth");
-    var requestedReturn = params.get("return_to");
+    var requestedReturnParam = params.get("return_to");
+    var requestedReturn = requestedReturnParam;
     if (!requestedReturn || requestedReturn.charAt(0) !== "/" || requestedReturn.indexOf("//") === 0) requestedReturn = "/acessar/";
+    var shouldHonorReturn = Boolean(requestedReturnParam && requestedReturn !== "/acessar/");
     if (oauthStatus) {
       params.delete("oauth");
       window.history.replaceState({}, document.title, window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash);
@@ -32,9 +34,9 @@
       var server = session.server || {};
       show(server.is_peace_member === true ? "Discord confirmado. Abrindo a área de membros…" : "Discord confirmado. Abrindo seu próximo passo…", "success");
       window.setTimeout(function () {
-        var destination = server.is_peace_member === true
-          ? "/area/"
-          : requestedReturn === "/area/"
+        var destination = shouldHonorReturn
+          ? requestedReturn
+          : server.is_peace_member === true
             ? "/area/"
             : "/meu-processo/";
         window.location.replace(destination);

@@ -192,6 +192,84 @@ def test_exam_attempt_and_submission_are_single_use(tmp_path):
     assert database.candidate_profile("12345678901234567")["score"] == 100
 
 
+def test_passing_exam_waits_for_manual_manager_approval(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    assignment, _ = database.create_exam_assignment(
+        candidate_discord_user_id="12345678901234567",
+        candidate_username="candidate",
+        manager_discord_user_id="22345678901234567",
+        question_bank_version="civil-test",
+        passing_score=70,
+        deadline_at="2030-01-01T00:00:00+00:00",
+    )
+    question_order, option_order = materialize_exam(seed=6)
+    database.start_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        question_order=question_order,
+        option_order=option_order,
+        now="2029-01-01T00:00:00+00:00",
+    )
+
+    status, submitted, _ = database.submit_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        answers=_perfect_answers(question_order, option_order),
+        score=70,
+        correct_count=7,
+        passed=True,
+        now="2029-01-01T00:02:00+00:00",
+    )
+
+    assert status == "submitted"
+    assert submitted["status"] == "pending_approval"
+    assert database.candidate_profile("12345678901234567")["passed"] == 0
+    assert database.approve_exam_assignment(assignment["id"], "99999999999999999") is None
+
+    approved = database.approve_exam_assignment(
+        assignment["id"],
+        "22345678901234567",
+        now="2029-01-01T00:03:00+00:00",
+    )
+    assert approved["status"] == "approved"
+    assert database.candidate_profile("12345678901234567")["passed"] == 1
+
+
+def test_exam_below_passing_score_is_rejected_without_approval_button_state(tmp_path):
+    database = PeaceDatabase(tmp_path / "peace.sqlite3")
+    assignment, _ = database.create_exam_assignment(
+        candidate_discord_user_id="12345678901234567",
+        candidate_username="candidate",
+        manager_discord_user_id="22345678901234567",
+        question_bank_version="civil-test",
+        passing_score=70,
+        deadline_at="2030-01-01T00:00:00+00:00",
+    )
+    question_order, option_order = materialize_exam(seed=7)
+    database.start_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        question_order=question_order,
+        option_order=option_order,
+        now="2029-01-01T00:00:00+00:00",
+    )
+
+    status, submitted, _ = database.submit_exam_attempt(
+        assignment_id=assignment["id"],
+        candidate_discord_user_id="12345678901234567",
+        answers=_perfect_answers(question_order, option_order),
+        score=69,
+        correct_count=6,
+        passed=False,
+        now="2029-01-01T00:02:00+00:00",
+    )
+
+    assert status == "submitted"
+    assert submitted["status"] == "rejected"
+    assert database.approve_exam_assignment(assignment["id"], "22345678901234567")["status"] == "rejected"
+    assert database.candidate_profile("12345678901234567")["passed"] == 0
+
+
 def test_exam_cannot_start_after_deadline(tmp_path):
     database = PeaceDatabase(tmp_path / "peace.sqlite3")
     assignment, _ = database.create_exam_assignment(

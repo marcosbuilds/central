@@ -5808,6 +5808,52 @@ class PeaceBot(commands.Bot):
                 matches.append(str(request["id"]))
         return matches[0] if len(matches) == 1 else None
 
+    async def remove_public_scan_request_card(self, request_row: object) -> bool:
+        """Remove a processed set card, including legacy cards without a footer."""
+        channel_id = getattr(self.settings, "scan_channel_id", None) or PUBLIC_SCAN_CHANNEL_ID
+        channel = await self.resolve_text_channel(channel_id) if channel_id is not None else None
+        history = getattr(channel, "history", None) if channel is not None else None
+        if not callable(history):
+            return False
+        request_id = str(request_row["id"])
+        username = str(request_row["in_game_username"] or "")
+        async for message in history(limit=100):
+            embeds = getattr(message, "embeds", ()) or ()
+            footer_text = " ".join(str(getattr(getattr(embed, "footer", None), "text", "") or "") for embed in embeds)
+            matched = f"set_request:{request_id}" in footer_text
+            if not matched:
+                parts = [str(getattr(message, "content", "") or "")]
+                for embed in embeds:
+                    parts.extend((str(getattr(embed, "title", "") or ""), str(getattr(embed, "description", "") or "")))
+                raw_text = "\n".join(part for part in parts if part)
+                mention_ids = re.findall(r"<@!?(\d+)>", raw_text)
+                matched = self.public_scan_request_id(
+                    raw_text,
+                    [request_row],
+                    mention_ids=mention_ids,
+                ) == request_id
+                if not matched and username:
+                    matched = bool(re.search(rf"(?<!\w){re.escape(username.casefold())}(?!\w)", raw_text.casefold()))
+            if not matched:
+                continue
+            try:
+                await message.delete(reason="Remover cartão de set processado pelo scan-only web")
+            except TypeError:
+                try:
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+                except (discord.Forbidden, discord.HTTPException, OSError):
+                    log.info("Não consegui remover cartão scan-only do pedido %s", request_id)
+                    return False
+            except discord.NotFound:
+                pass
+            except (discord.Forbidden, discord.HTTPException, OSError):
+                log.info("Não consegui remover cartão scan-only do pedido %s", request_id)
+                return False
+            return True
+        return False
+
     async def public_api_scan_only(self, request: web.Request) -> web.Response:
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
@@ -5876,11 +5922,10 @@ class PeaceBot(commands.Bot):
                         summary["request_id"] = inferred_request_id
                 request_id = str(summary.get("request_id", "") or "").strip()
                 if request_id:
-                    request_row = next(
-                        (row for row in pending_requests if str(row["id"]) == request_id),
-                        None,
-                    )
+                    request_row = self.database.set_request(request_id)
                     if request_row is not None:
+                        if str(request_row["status"] or "") != "pending":
+                            continue
                         matched_request_ids.add(request_id)
                         requester = await self.public_discord_member_by_id(request_row["discord_user_id"])
                         summary["title"] = "Set pendente de aprovação" if summary.get("status") == "pending" else summary.get("title")
@@ -5978,8 +6023,10 @@ class PeaceBot(commands.Bot):
                 return web.json_response({"ok": False, "code": "SET_REJECTION_FAILED", "message": "Não consegui registrar a recusa agora."}, status=409)
         else:
             return web.json_response({"ok": False, "code": "INVALID_SET_DECISION", "message": "Decisão inválida."}, status=400)
+        removed = await self.remove_public_scan_request_card(set_request)
+        log.info("scan_set_card_sync request=%s action=%s removed=%s", request_id, action, removed)
         log.info("scan_set_decision actor=%s request=%s action=%s", member.id, request_id, action)
-        return web.json_response({"ok": True, "decision": action, "request": {"id": request_id, "status": updated["status"]}})
+        return web.json_response({"ok": True, "decision": action, "request": {"id": request_id, "status": updated["status"]}, "card_removed": removed})
 
     @staticmethod
     def public_investigation_case_id(value: object) -> int | None:
@@ -7366,8 +7413,8 @@ class PeaceBot(commands.Bot):
                 "score_scale": int(profile["score_scale"]) if profile is not None else 100,
                 "passed": bool(profile["passed"]) if profile is not None and profile["passed"] is not None else None,
                 "last_submitted_at": profile["last_submitted_at"] if profile is not None else None,
-                "completed_exam_count": sum(1 for row in assignments if str(row["status"]) == "submitted"),
-                "pending_exam_count": sum(1 for row in assignments if str(row["status"]) in {"assigned", "in_progress"}),
+                "completed_exam_count": sum(1 for row in assignments if str(row["status"]) in {"approved", "rejected", "submitted"}),
+                "pending_exam_count": sum(1 for row in assignments if str(row["status"]) in {"assigned", "in_progress", "pending_approval"}),
             },
             "server": membership,
             "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
@@ -7431,7 +7478,7 @@ class PeaceBot(commands.Bot):
             return web.json_response({"ok": False, "code": "EXAM_LINK_NOT_FOUND", "message": "Esse link não existe ou já não está disponível."}, status=404)
         if str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "Este link foi atribuído a outra conta Discord."}, status=403)
-        if assignment["status"] in {"revoked", "rejected", "expired"}:
+        if assignment["status"] in {"revoked", "expired"}:
             return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Este prazo ou atribuição não está mais disponível."}, status=410)
         return web.json_response({"ok": True, "assignment": self.public_exam_assignment_payload(assignment)})
 
@@ -7461,9 +7508,9 @@ class PeaceBot(commands.Bot):
         if assignment is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_IDENTITY_MISMATCH", "message": "O link não pertence à conta conectada."}, status=403)
         assignment_id = int(assignment["id"])
-        if assignment["status"] == "submitted":
+        if assignment["status"] in {"submitted", "pending_approval", "approved", "rejected"}:
             return web.json_response({"ok": False, "code": "EXAM_ALREADY_SUBMITTED", "message": "Esta prova já foi enviada e não pode ser refeita.", "assignment": self.public_exam_assignment_payload(assignment)}, status=409)
-        if assignment["status"] in {"revoked", "rejected", "expired"}:
+        if assignment["status"] in {"revoked", "expired"}:
             return web.json_response({"ok": False, "code": "EXAM_UNAVAILABLE", "message": "Esta atribuição não está mais disponível."}, status=410)
         question_order, option_order = materialize_exam()
         assignment, attempt = self.database.start_exam_attempt(
@@ -7516,7 +7563,12 @@ class PeaceBot(commands.Bot):
         embed.add_field(name="Candidato", value=str(assignment["candidate_username_snapshot"]), inline=True)
         embed.add_field(name="Discord ID", value=f"`{assignment['candidate_discord_user_id']}`", inline=True)
         embed.add_field(name="Nota", value=f"**{int(assignment['score'])}/{100}**", inline=True)
-        embed.add_field(name="Situação", value="Aprovado" if bool(assignment["passed"]) else "Não aprovado", inline=True)
+        situation = {
+            "pending_approval": "Atingiu a nota mínima · aguarda aprovação manual",
+            "approved": "Aprovado manualmente",
+            "rejected": "Reprovado",
+        }.get(str(assignment["status"]), "Resultado enviado")
+        embed.add_field(name="Situação", value=situation, inline=True)
         embed.add_field(name="Atribuição", value=f"`#{assignment_id}`", inline=True)
         try:
             await manager.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
@@ -7591,6 +7643,7 @@ class PeaceBot(commands.Bot):
                     "correct_count": int(saved_assignment["correct_count"]),
                     "total_questions": len(question_order),
                     "passed": bool(saved_assignment["passed"]),
+                    "status": str(saved_assignment["status"]),
                     "submitted_at": str(saved_assignment["submitted_at"]),
                     "review": public_exam_review_payload(question_order, option_order, answers, answer_key),
                 },
@@ -7628,7 +7681,7 @@ class PeaceBot(commands.Bot):
         attempt = self.database.exam_attempt_for_candidate(assignment_id, session["discord_user_id"])
         if assignment is None or attempt is None or str(assignment["candidate_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "Não encontrei uma tentativa vinculada à sua conta."}, status=404)
-        if assignment["status"] != "submitted" or attempt["status"] != "submitted":
+        if assignment["status"] not in {"submitted", "pending_approval", "approved", "rejected"} or attempt["status"] != "submitted":
             return web.json_response({"ok": False, "code": "EXAM_REVIEW_NOT_READY", "message": "O gabarito só aparece depois do envio definitivo."}, status=409)
         try:
             question_order = [str(item) for item in json.loads(str(attempt["question_order_json"]))]
@@ -7752,7 +7805,7 @@ class PeaceBot(commands.Bot):
         if assignment is None or str(assignment["manager_discord_user_id"]) != str(session["discord_user_id"]):
             return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "A atribuição não pertence à sua gerência."}, status=404)
         attempt = self.database.exam_attempt_for_candidate(assignment_id, assignment["candidate_discord_user_id"])
-        if attempt is None or assignment["status"] != "submitted" or attempt["status"] != "submitted":
+        if attempt is None or assignment["status"] not in {"submitted", "pending_approval", "approved", "rejected"} or attempt["status"] != "submitted":
             return web.json_response({"ok": False, "code": "EXAM_REVIEW_NOT_READY", "message": "A revisão só aparece depois do envio definitivo."}, status=409)
         answer_key = self.public_exam_answer_key()
         if answer_key is None:
@@ -7786,8 +7839,49 @@ class PeaceBot(commands.Bot):
             "review": review,
         })
 
+    async def public_exam_approve_assignment(self, request: web.Request) -> web.Response:
+        """Approve an owned passing result only after manager review."""
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, session = await self.public_discord_session_context(request)
+        if session is None:
+            return web.json_response(
+                {"ok": False, "code": "OAUTH_SESSION_INVALID", "message": "Conecte sua conta Discord para continuar."},
+                status=401,
+            )
+        manager = await self.public_manager_member(session["discord_user_id"])
+        if manager is None:
+            return web.json_response(
+                {"ok": False, "code": "MANAGER_REQUIRED", "message": "Somente Gerência pode aprovar uma atribuição."},
+                status=403,
+            )
+        assignment_id = self.public_exam_assignment_id(request.match_info.get("assignment_id"))
+        if assignment_id is None:
+            return web.json_response({"ok": False, "code": "INVALID_ASSIGNMENT", "message": "A atribuição informada é inválida."}, status=400)
+        try:
+            assignment = self.database.approve_exam_assignment(assignment_id, session["discord_user_id"])
+        except (sqlite3.Error, OSError):
+            log.warning("Não consegui aprovar atribuição de prova", exc_info=True)
+            return web.json_response({"ok": False, "code": "EXAM_ASSIGNMENT_UNAVAILABLE", "message": "Não consegui atualizar esta atribuição agora."}, status=503)
+        if assignment is None:
+            return web.json_response({"ok": False, "code": "EXAM_NOT_FOUND", "message": "A atribuição não pertence à sua Gerência ou não existe."}, status=404)
+        if str(assignment["status"]) != "approved":
+            return web.json_response({"ok": False, "code": "EXAM_NOT_APPROVABLE", "message": "Somente resultado aprovado na nota mínima pode ser aprovado manualmente."}, status=409)
+        await self.send_log(
+            "Resultado de prova aprovado manualmente",
+            actor=manager,
+            subject=await self.public_discord_member_by_id(assignment["candidate_discord_user_id"]),
+            fields=(
+                ("Candidato", f"<@{assignment['candidate_discord_user_id']}> (`{assignment['candidate_discord_user_id']}`)"),
+                ("Atribuição", f"`#{assignment_id}`"),
+                ("Nota", f"{int(assignment['score'] or 0)}/100"),
+            ),
+        )
+        return web.json_response({"ok": True, "assignment": await self.public_exam_manager_assignment_live_payload(assignment)})
+
     async def public_exam_reject_assignment(self, request: web.Request) -> web.Response:
-        """Reject an owned, not-yet-submitted assignment immediately."""
+        """Reject an owned assignment before or after candidate submission."""
         rate_limited = self.public_api_rate_limit(request)
         if rate_limited is not None:
             return rate_limited
@@ -8043,6 +8137,7 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/exams/review", self.public_exam_review)
         app.router.add_get("/api/exams/assignments", self.public_exam_assignments)
         app.router.add_post("/api/exams/assignments", self.public_exam_assignments)
+        app.router.add_post("/api/exams/assignments/{assignment_id}/approve", self.public_exam_approve_assignment)
         app.router.add_post("/api/exams/assignments/{assignment_id}/reject", self.public_exam_reject_assignment)
         app.router.add_get("/api/exams/assignments/{assignment_id}/review", self.public_exam_manager_review)
         for route in (
@@ -8080,6 +8175,8 @@ class PeaceBot(commands.Bot):
             "/api/exams/submit",
             "/api/exams/review",
             "/api/exams/assignments",
+            "/api/exams/assignments/{assignment_id}/approve",
+            "/api/exams/assignments/{assignment_id}/reject",
             "/api/exams/assignments/{assignment_id}/review",
         ):
             app.router.add_route("OPTIONS", route, self.public_api_options)

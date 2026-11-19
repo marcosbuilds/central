@@ -1418,7 +1418,7 @@ class PeaceDatabase:
         *,
         now: str | None = None,
     ) -> sqlite3.Row | None:
-        """Reject one owned, not-yet-submitted assignment."""
+        """Reject one owned assignment before or after candidate submission."""
         self.initialize()
         current_time = now or now_iso()
         with self.connect() as connection:
@@ -1433,15 +1433,15 @@ class PeaceDatabase:
             if assignment is None:
                 connection.rollback()
                 return None
-            if str(assignment["status"]) not in {"assigned", "in_progress"}:
+            if str(assignment["status"]) not in {"assigned", "in_progress", "pending_approval"}:
                 connection.commit()
                 return assignment
             connection.execute(
                 """
                 UPDATE exam_assignments
-                SET status = 'rejected', revoked_at = ?
+                SET status = 'rejected', revoked_at = ?, passed = 0
                 WHERE id = ? AND manager_discord_user_id = ?
-                  AND status IN ('assigned', 'in_progress')
+                  AND status IN ('assigned', 'in_progress', 'pending_approval')
                 """,
                 (current_time, int(assignment_id), str(manager_discord_user_id)),
             )
@@ -1451,6 +1451,98 @@ class PeaceDatabase:
                 VALUES (?, ?, 'rejected', '{}', ?)
                 """,
                 (int(assignment_id), str(manager_discord_user_id), current_time),
+            )
+            updated = connection.execute(
+                "SELECT * FROM exam_assignments WHERE id = ?",
+                (int(assignment_id),),
+            ).fetchone()
+            connection.commit()
+        return updated
+
+    def approve_exam_assignment(
+        self,
+        assignment_id: int | str,
+        manager_discord_user_id: int | str,
+        *,
+        now: str | None = None,
+    ) -> sqlite3.Row | None:
+        """Approve a submitted, passing assignment under a manager transaction."""
+        self.initialize()
+        current_time = now or now_iso()
+        manager_id = str(manager_discord_user_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            assignment = connection.execute(
+                """
+                SELECT * FROM exam_assignments
+                WHERE id = ? AND manager_discord_user_id = ?
+                """,
+                (int(assignment_id), manager_id),
+            ).fetchone()
+            if assignment is None:
+                connection.rollback()
+                return None
+            if str(assignment["status"]) != "pending_approval" or not bool(assignment["passed"]):
+                connection.commit()
+                return assignment
+            connection.execute(
+                """
+                UPDATE exam_assignments
+                SET status = 'approved'
+                WHERE id = ? AND manager_discord_user_id = ? AND status = 'pending_approval'
+                """,
+                (int(assignment_id), manager_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO exam_events (assignment_id, actor_discord_user_id, event_type, metadata_json, created_at)
+                VALUES (?, ?, 'approved', ?, ?)
+                """,
+                (
+                    int(assignment_id),
+                    manager_id,
+                    json.dumps({"score": int(assignment["score"] or 0), "manual": True}, ensure_ascii=True, separators=(",", ":")),
+                    current_time,
+                ),
+            )
+            overall = connection.execute(
+                """
+                SELECT AVG(score) AS average_score,
+                       SUM(CASE WHEN status IN ('approved', 'submitted') AND passed = 1 THEN 1 ELSE 0 END) AS approved_count,
+                       SUM(CASE WHEN status IN ('pending_approval', 'rejected') OR (status = 'submitted' AND passed = 0) THEN 1 ELSE 0 END) AS blocking_count
+                FROM exam_assignments
+                WHERE candidate_discord_user_id = ?
+                  AND score IS NOT NULL
+                  AND status IN ('approved', 'pending_approval', 'rejected', 'submitted')
+                """,
+                (str(assignment["candidate_discord_user_id"]),),
+            ).fetchone()
+            overall_score = int(round(float(overall["average_score"] or assignment["score"] or 0)))
+            overall_passed = int(bool((overall["approved_count"] or 0) > 0 and (overall["blocking_count"] or 0) == 0))
+            connection.execute(
+                """
+                INSERT INTO candidate_profiles (
+                    discord_user_id, username, score, score_scale, passed,
+                    last_assignment_id, last_submitted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, 100, ?, ?, ?, ?, ?)
+                ON CONFLICT(discord_user_id) DO UPDATE SET
+                    score=excluded.score,
+                    score_scale=excluded.score_scale,
+                    passed=excluded.passed,
+                    last_assignment_id=excluded.last_assignment_id,
+                    last_submitted_at=excluded.last_submitted_at,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    str(assignment["candidate_discord_user_id"]),
+                    str(assignment["candidate_username_snapshot"]),
+                    overall_score,
+                    overall_passed,
+                    int(assignment_id),
+                    assignment["submitted_at"] or current_time,
+                    current_time,
+                    current_time,
+                ),
             )
             updated = connection.execute(
                 "SELECT * FROM exam_assignments WHERE id = ?",
@@ -2399,26 +2491,29 @@ class PeaceDatabase:
                     int(attempt["id"]),
                 ),
             )
+            final_status = "pending_approval" if passed else "rejected"
             connection.execute(
                 """
                 UPDATE exam_assignments
-                SET status = 'submitted', submitted_at = ?, score = ?, correct_count = ?, passed = ?
+                SET status = ?, submitted_at = ?, score = ?, correct_count = ?, passed = ?
                 WHERE id = ? AND status = 'in_progress'
                 """,
-                (current_time, int(score), int(correct_count), int(bool(passed)), int(assignment_id)),
+                (final_status, current_time, int(score), int(correct_count), int(bool(passed)), int(assignment_id)),
             )
             overall = connection.execute(
                 """
                 SELECT AVG(score) AS average_score,
-                       COUNT(*) AS submitted_count,
-                       MIN(CASE WHEN passed = 1 THEN 1 ELSE 0 END) AS all_passed
+                       SUM(CASE WHEN status IN ('approved', 'submitted') AND passed = 1 THEN 1 ELSE 0 END) AS approved_count,
+                       SUM(CASE WHEN status IN ('pending_approval', 'rejected') OR (status = 'submitted' AND passed = 0) THEN 1 ELSE 0 END) AS blocking_count
                 FROM exam_assignments
-                WHERE candidate_discord_user_id = ? AND status = 'submitted'
+                WHERE candidate_discord_user_id = ?
+                  AND score IS NOT NULL
+                  AND status IN ('approved', 'pending_approval', 'rejected', 'submitted')
                 """,
                 (candidate_id,),
             ).fetchone()
             overall_score = int(round(float(overall["average_score"] or score)))
-            overall_passed = int(bool(overall["all_passed"])) if overall is not None else int(bool(passed))
+            overall_passed = int(bool((overall["approved_count"] or 0) > 0 and (overall["blocking_count"] or 0) == 0)) if overall is not None else 0
             connection.execute(
                 """
                 INSERT INTO candidate_profiles (
@@ -2432,7 +2527,7 @@ class PeaceDatabase:
                     last_assignment_id=excluded.last_assignment_id,
                     last_submitted_at=excluded.last_submitted_at,
                     updated_at=excluded.updated_at
-                """,
+                    """,
                 (
                     candidate_id,
                     str(assignment["candidate_username_snapshot"]),
@@ -2452,7 +2547,7 @@ class PeaceDatabase:
                 (
                     int(assignment_id),
                     candidate_id,
-                    json.dumps({"score": int(score), "passed": bool(passed)}, ensure_ascii=True, separators=(",", ":")),
+                    json.dumps({"score": int(score), "passed": bool(passed), "status": final_status}, ensure_ascii=True, separators=(",", ":")),
                     current_time,
                 ),
             )

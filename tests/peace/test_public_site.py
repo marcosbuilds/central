@@ -1412,6 +1412,43 @@ def test_investigation_approval_requires_ack_and_reaches_unanimous_approval(tmp_
     assert updated_case["status"] == "approved"
 
 
+def test_external_investigation_evaluator_needs_only_the_authorized_discord_id(tmp_path):
+    bot = make_bot(tmp_path)
+    case = bot.database.create_investigation_case(
+        title="Caso para avaliador externo",
+        subject_discord_user_id=None,
+        summary="Resumo suficiente para validar o avaliador fora da Peace.",
+        created_by_discord_user_id="22345678901234567",
+        assigned_to_discord_user_id=None,
+    )
+    links = bot.database.create_investigation_approval_links(
+        case_id=int(case["id"]),
+        expected_outcome="Espero uma decisão independente sobre a conclusão do caso.",
+        evaluator_discord_user_ids=["32345678901234567"],
+        created_by_discord_user_id="22345678901234567",
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+    session_token = bot.database.create_discord_oauth_session(
+        discord_user_id="32345678901234567",
+        username="external-evaluator",
+        global_name="External Evaluator",
+        display_name="External Evaluator",
+        avatar_hash=None,
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+    )
+
+    status, payload = run_configured_api(
+        bot,
+        "/api/investigation-approvals/" + links[0]["token"],
+        cookies={"peace_discord_session": session_token},
+    )
+
+    assert status == 200
+    assert payload["approval"]["evaluator_discord_user_id"] == "32345678901234567"
+    assert payload["case"]["title"] == "Caso para avaliador externo"
+    assert "approvals" not in payload["case"]
+
+
 def test_investigation_expiration_rejects_round_and_completion_requires_approval(tmp_path):
     bot = make_bot(tmp_path)
     case = bot.database.create_investigation_case(
@@ -1986,6 +2023,35 @@ def test_public_scan_request_id_keeps_ambiguous_legacy_cards_read_only(tmp_path)
     assert bot.public_scan_request_id("Apelido in-game: Anywhere", bot.database.pending_set_requests()) is None
 
 
+def test_public_scan_card_is_removed_after_web_decision_sync(tmp_path):
+    bot = make_bot(tmp_path)
+    request_id, _ = bot.database.save_pending_set_request(
+        discord_user_id=12345678901234567,
+        in_game_username="candidate",
+        rg_in_game="",
+        telefone_in_game="",
+        source="site:candidature",
+        recruiter_user_id=None,
+    )
+    request = bot.database.set_request(request_id)
+    message = SimpleNamespace(
+        content="",
+        embeds=[SimpleNamespace(footer=SimpleNamespace(text=f"set_request:{request_id}"))],
+        delete=AsyncMock(),
+    )
+
+    async def history(limit):
+        yield message
+
+    channel = SimpleNamespace(history=history)
+    bot.resolve_text_channel = AsyncMock(return_value=channel)
+
+    removed = asyncio.run(bot.remove_public_scan_request_card(request))
+
+    assert removed is True
+    message.delete.assert_awaited_once()
+
+
 def test_public_candidature_requires_verified_visitor_and_discord_session(tmp_path):
     bot = make_bot(tmp_path)
     bot.settings.set_vagas_abertas = True
@@ -2527,6 +2593,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     member_html = (site_root / "area" / "index.html").read_text(encoding="utf-8")
     script = (site_root / "script.js").read_text(encoding="utf-8")
     member_script = (site_root / "js" / "member-area.js").read_text(encoding="utf-8")
+    login_script = (site_root / "js" / "login.js").read_text(encoding="utf-8")
     stylesheet = (site_root / "styles.css").read_text(encoding="utf-8")
     studies_stylesheet = (site_root / "css" / "studies.css").read_text(encoding="utf-8")
     member_stylesheet = (site_root / "css" / "member.css").read_text(encoding="utf-8")
@@ -2600,7 +2667,7 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-block="media" aria-live' not in member_html
     assert "Intl.DateTimeFormat" in member_script
     assert "setConnection(\"\", \"ready\")" in member_script
-    assert 'requestedReturn === "/area/"' in (site_root / "js" / "login.js").read_text(encoding="utf-8")
+    assert 'encodeURIComponent(requestedReturn)' in login_script
     assert "getDiscordSession" not in member_script
     assert "is_peace_member" in member_script
     assert "is_verified" in (site_root / "js" / "entry.js").read_text(encoding="utf-8")
@@ -2609,6 +2676,10 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert "showUnavailable" in member_script
     assert "showWorkspaceLoading" in member_script
     assert "processIsReady" in member_script
+    assert "investigationApprovalLinks" in member_script
+    assert "renderGeneratedApprovalLinks" in member_script
+    assert "Atualização temporariamente indisponível. Os dados exibidos são da última consulta." in member_script
+    assert "shouldHonorReturn" in login_script
     assert "/api/peace/process" in member_script
     assert 'aria-busy="true"' in member_html
     assert ".member-welcome { grid-template-columns: auto minmax(0, 1fr);" in member_stylesheet

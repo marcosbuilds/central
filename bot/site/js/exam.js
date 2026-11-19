@@ -101,6 +101,9 @@
   }
 
   function statusLabel(assignment) {
+    if (assignment.status === "pending_approval") return "Resultado enviado · aguarda aprovação";
+    if (assignment.status === "approved") return "Aprovado manualmente";
+    if (assignment.status === "rejected") return "Reprovado";
     if (assignment.status === "submitted") return assignment.passed ? "Aprovado" : "Não aprovado";
     if (assignment.status === "in_progress") return "Em andamento";
     return "Aguardando início";
@@ -117,8 +120,8 @@
     setText(document.querySelector("[data-exam-duration]"), (assignment.duration_hours || 24) + "h");
     setText(document.querySelector("[data-exam-per-question]"), assignment.question_count ? formatMinutes((assignment.duration_hours || 24) * 60 / assignment.question_count) : "calculado ao abrir");
     setText(document.querySelector("[data-exam-status]"), statusLabel(assignment));
-    if (assignment.status === "submitted") {
-      showResult({ score: assignment.score, scale: 100, passing_score: assignment.passing_score, correct_count: assignment.correct_count, total_questions: assignment.total_questions, passed: assignment.passed, submitted_at: assignment.submitted_at });
+    if (["submitted", "pending_approval", "approved", "rejected"].includes(assignment.status)) {
+      showResult({ score: assignment.score, scale: 100, passing_score: assignment.passing_score, correct_count: assignment.correct_count, total_questions: assignment.total_questions, passed: assignment.passed, status: assignment.status, submitted_at: assignment.submitted_at });
       loadExistingResult(assignment.id).catch(function () { /* the score remains visible */ });
       return;
     }
@@ -311,9 +314,17 @@
     var deliveryCopy = deliveryStatus === "sent"
       ? " O resultado também foi enviado uma única vez ao gerente que criou a atribuição."
       : " O resultado foi registrado, mas a entrega ao gerente precisa ser revisada pela equipe.";
-    setText(document.querySelector("[data-exam-result-copy]"), result && result.passed
-      ? "Você atingiu a nota mínima de " + result.passing_score + "." + deliveryCopy
-      : "A nota mínima era " + (result ? result.passing_score : "a configurada pela equipe") + "." + deliveryCopy + " Esta prova não pode ser refeita.");
+    var status = result && result.status;
+    var resultCopy = status === "pending_approval"
+      ? "Você atingiu a nota mínima de " + result.passing_score + ". Seu resultado foi enviado e aguarda a aprovação manual do responsável."
+      : status === "approved"
+        ? "Sua aprovação foi confirmada manualmente pelo responsável."
+        : status === "rejected"
+          ? "A nota mínima era " + (result ? result.passing_score : "a configurada pela equipe") + ". Você foi reprovado automaticamente e a prova não pode ser refeita."
+          : result && result.passed
+            ? "Você atingiu a nota mínima de " + result.passing_score + "."
+            : "A nota mínima era " + (result ? result.passing_score : "a configurada pela equipe") + ". Esta prova não pode ser refeita.";
+    setText(document.querySelector("[data-exam-result-copy]"), resultCopy + deliveryCopy);
     renderReview(result && result.review);
   }
 
@@ -321,13 +332,13 @@
     return request("/api/exams/process").then(function (process) {
       var assignment = (process.assignments || []).find(function (item) { return Number(item.id) === Number(assignmentId); });
       if (!assignment) return;
-      showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, correct_count: assignment.correct_count }, "pending");
+       showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, status: assignment.status, correct_count: assignment.correct_count }, "pending");
       return request("/api/exams/review", {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ assignment_id: assignment.id })
       }).then(function (reviewPayload) {
-        showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, correct_count: assignment.correct_count, review: reviewPayload.review }, "pending");
+         showResult({ score: assignment.score, passing_score: assignment.passing_score, passed: assignment.passed, status: assignment.status, correct_count: assignment.correct_count, review: reviewPayload.review }, "pending");
       }).catch(function () {
         /* The score remains visible if a legacy attempt has no review payload. */
       });
@@ -388,7 +399,7 @@
       submitButton.disabled = true;
       showSubmitMessage("Conferindo sua tentativa…", "pending");
       request("/api/exams/submit", { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ assignment_id: assignmentState.id, answers: answers }) })
-        .then(function (payload) { showResult(payload.result, payload.manager_delivery); })
+         .then(function (payload) { showResult(payload.result, payload.manager_delivery); })
         .catch(function (error) {
           submitButton.disabled = false;
           showSubmitMessage(error.message || "Não consegui enviar a prova.", "error");
