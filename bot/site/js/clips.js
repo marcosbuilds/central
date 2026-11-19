@@ -17,6 +17,7 @@
   var loading = false;
   var activeFilter = "all";
   var currentItems = [];
+  var currentViewerId = String(global.PeaceSite && global.PeaceSite.body && global.PeaceSite.body.dataset.discordId || "");
   var videoObserver = null;
 
   function isActiveView() {
@@ -245,6 +246,7 @@
   function render(payload) {
     currentItems = Array.isArray(payload.clips) ? payload.clips.slice() : [];
     var items = currentItems.slice();
+    if (activeFilter === "mine") items = items.filter(function (item) { return currentViewerId && item && item.author && String(item.author.discord_id || "") === currentViewerId; });
     if (activeFilter === "engagement") items.sort(function (a, b) { return Number((b && b.engagement) || 0) - Number((a && a.engagement) || 0); });
     if (activeFilter === "least_engagement") items.sort(function (a, b) { return Number((a && a.engagement) || 0) - Number((b && b.engagement) || 0); });
     if (activeFilter === "recent") items.sort(function (a, b) { return new Date(b && b.created_at || 0).getTime() - new Date(a && a.created_at || 0).getTime(); });
@@ -333,6 +335,12 @@
     if (status) status.textContent = "Carregando clipes…";
     if (submit) submit.disabled = true;
     var query = input ? input.value.trim() : "";
+    if (!currentViewerId && typeof site.getDiscordSession === "function") {
+      site.getDiscordSession().then(function (session) {
+        currentViewerId = String(session && session.identity && session.identity.discord_id || "");
+        if (activeFilter === "mine" && currentItems.length) render({ clips: currentItems, total: currentItems.length, source: { state: "ready" } });
+      }).catch(function () {});
+    }
     requestClips(query)
       .then(function (payload) {
         if (!payload || payload.ok !== true) throw new Error("Não consegui carregar os clipes.");

@@ -4756,7 +4756,7 @@ class PeaceBot(commands.Bot):
         display_avatar = getattr(getattr(author, "display_avatar", None), "url", None)
         avatar = display_avatar or getattr(getattr(author, "avatar", None), "url", None)
         avatar_url = cls.public_media_url(avatar) or ""
-        return {"display_name": display_name or "Membro", "username": username, "avatar_url": avatar_url}
+        return {"display_name": display_name or "Membro", "username": username, "avatar_url": avatar_url, "discord_id": str(getattr(author, "id", "") or "")}
 
     @classmethod
     def public_media_thumbnail(cls, message: object) -> str:
@@ -5669,6 +5669,7 @@ class PeaceBot(commands.Bot):
             "title": str(row["title"] or "Parceiro Peace"),
             "description": str(row["description"] or ""),
             "text": str(row["description"] or ""),
+            "category": str(row["category"] or "") if "category" in row.keys() else "",
             "image_url": row["image_url"],
             "url": row["source_url"],
             "discord_user_id": row["discord_user_id"],
@@ -5678,7 +5679,7 @@ class PeaceBot(commands.Bot):
         }
 
     async def public_api_partners_database(self, request: web.Request) -> web.Response:
-        if request.method == "POST":
+        if request.method in {"POST", "PATCH"}:
             session, member, denied = await self.public_staff_context(request)
             if denied is not None:
                 return denied
@@ -5691,28 +5692,35 @@ class PeaceBot(commands.Bot):
                 return web.json_response({"ok": False, "code": "INVALID_PAYLOAD", "message": "Dados do parceiro inválidos."}, status=400)
             title = str(payload.get("title", "") or "").strip()
             description = str(payload.get("description", "") or "").strip()
+            category = str(payload.get("category", "") or "").strip()
             source_url = self.public_https_url(payload.get("url"), limit=500)
             image_url = self.public_https_url(payload.get("image_url"), limit=500)
-            discord_user_id = str(payload.get("discord_user_id", "") or "").strip()
             if not 2 <= len(title) <= 120 or not 5 <= len(description) <= 1200:
                 return web.json_response({"ok": False, "code": "INVALID_PARTNER", "message": "Informe nome e descrição dentro dos limites indicados."}, status=400)
-            if discord_user_id and not re.fullmatch(r"[0-9]{15,25}", discord_user_id):
-                return web.json_response({"ok": False, "code": "INVALID_PARTNER_DISCORD", "message": "O Discord ID precisa conter somente números."}, status=400)
             if payload.get("url") and source_url is None:
                 return web.json_response({"ok": False, "code": "INVALID_PARTNER_URL", "message": "O link do parceiro precisa ser HTTPS e válido."}, status=400)
             if payload.get("image_url") and image_url is None:
                 return web.json_response({"ok": False, "code": "INVALID_PARTNER_IMAGE", "message": "A imagem do parceiro precisa ser HTTPS e válida."}, status=400)
             author_name = str(getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", None) or "Peace")[:80]
+            if request.method == "PATCH":
+                raw_id = str(request.match_info.get("partner_id", "") or "")
+                if not re.fullmatch(r"[1-9][0-9]{0,11}", raw_id):
+                    return web.json_response({"ok": False, "code": "INVALID_PARTNER_ID", "message": "Parceria inválida."}, status=400)
+                row = self.database.update_public_partner(
+                    raw_id, title=title, description=description, category=category or None,
+                    image_url=image_url, source_url=source_url,
+                )
+                if row is None:
+                    return web.json_response({"ok": False, "code": "PARTNER_NOT_FOUND", "message": "Parceria não encontrada."}, status=404)
+                log.info("public_partner_updated actor=%s partner=%s", session["discord_user_id"], raw_id)
+                return web.json_response({"ok": True, "partner": self.public_partner_row_payload(row)})
             row = self.database.create_public_partner(
-                title=title,
-                description=description,
-                image_url=image_url,
-                source_url=source_url,
-                discord_user_id=discord_user_id or None,
-                created_by_discord_user_id=session["discord_user_id"],
-                author_name=author_name,
+                title=title, description=description, category=category or None,
+                image_url=image_url, source_url=source_url, discord_user_id=None,
+                created_by_discord_user_id=session["discord_user_id"], author_name=author_name,
                 author_avatar_url=self.public_avatar_url(member),
             )
+            log.info("public_partner_created actor=%s partner=%s", session["discord_user_id"], row["id"])
             return web.json_response({"ok": True, "partner": self.public_partner_row_payload(row)}, status=201)
         try:
             rows = self.database.public_partners(limit=24)
@@ -5784,6 +5792,10 @@ class PeaceBot(commands.Bot):
                 if not summary.get("text") and not summary.get("image_url"):
                     continue
                 summary["status"] = self.public_scan_status(message)
+                footer_text = " ".join(str(getattr(getattr(embed, "footer", None), "text", "") or "") for embed in embeds)
+                request_match = re.search(r"set_request:([1-9][0-9]{0,11})", footer_text)
+                if request_match:
+                    summary["request_id"] = request_match.group(1)
                 items.append(summary)
         except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError, OSError, AttributeError, TypeError):
             log.info("Não consegui ler o scan-only para a área de membros")
@@ -5791,6 +5803,49 @@ class PeaceBot(commands.Bot):
         response = web.json_response({"ok": True, "messages": items, "source": {"state": "ready" if items else "empty", "available": True, "channel": str(getattr(channel, "name", "")) or None}})
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    async def public_api_scan_decision(self, request: web.Request) -> web.Response:
+        """Apply the same guarded set mutation used by the Discord buttons.
+
+        The web control is only an additional operator surface: identity and
+        role checks remain server-side and the existing Discord mutation keeps
+        applying the role changes and audit log.
+        """
+        rate_limited = self.public_api_rate_limit(request)
+        if rate_limited is not None:
+            return rate_limited
+        _, member, denied = await self.public_capability_context(
+            request, "scan_only", denied_code="SCAN_ONLY_REQUIRED",
+            denied_message="Somente Staff ou Gerência pode decidir no scan-only.",
+        )
+        if denied is not None:
+            return denied
+        assert member is not None
+        request_id = str(request.match_info.get("request_id", "") or "")
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", request_id):
+            return web.json_response({"ok": False, "code": "INVALID_SET_REQUEST", "message": "Pedido de set inválido."}, status=400)
+        set_request = self.database.set_request(request_id)
+        if set_request is None:
+            return web.json_response({"ok": False, "code": "SET_REQUEST_NOT_FOUND", "message": "Pedido de set não encontrado."}, status=404)
+        if not self.can_approve_set_request(set_request, member):
+            return web.json_response({"ok": False, "code": "STAFF_REQUIRED", "message": "Somente Staff ou Management autorizado pode decidir este pedido."}, status=403)
+        if set_request["status"] != "pending":
+            return web.json_response({"ok": False, "code": "SET_REQUEST_ALREADY_PROCESSED", "message": "Este pedido já foi processado."}, status=409)
+        action = str(request.match_info.get("decision", "") or "").casefold()
+        if action == "approve":
+            result = await self.approve_set_request(set_request, member)
+            updated = self.database.set_request(request_id)
+            if updated is None or updated["status"] != "approved":
+                return web.json_response({"ok": False, "code": "SET_APPROVAL_FAILED", "message": result}, status=409)
+        elif action == "reject":
+            ok = await self.reject_set_request(set_request, member)
+            updated = self.database.set_request(request_id)
+            if not ok or updated is None or updated["status"] != "rejected":
+                return web.json_response({"ok": False, "code": "SET_REJECTION_FAILED", "message": "Não consegui registrar a recusa agora."}, status=409)
+        else:
+            return web.json_response({"ok": False, "code": "INVALID_SET_DECISION", "message": "Decisão inválida."}, status=400)
+        log.info("scan_set_decision actor=%s request=%s action=%s", member.id, request_id, action)
+        return web.json_response({"ok": True, "decision": action, "request": {"id": request_id, "status": updated["status"]}})
 
     @staticmethod
     def public_investigation_case_id(value: object) -> int | None:
@@ -6891,6 +6946,7 @@ class PeaceBot(commands.Bot):
         try:
             profile = self.database.candidate_profile(session["discord_user_id"])
             assignments = self.database.exam_assignments_for_candidate(session["discord_user_id"])
+            set_requests = self.database.set_requests_for_user(session["discord_user_id"])
         except (sqlite3.Error, OSError):
             log.warning("Não consegui consultar o processo de seleção", exc_info=True)
             return web.json_response(
@@ -6918,6 +6974,17 @@ class PeaceBot(commands.Bot):
             },
             "server": membership,
             "assignments": [self.public_exam_assignment_payload(row) for row in assignments],
+            "set_requests": [
+                {
+                    "id": int(row["id"]),
+                    "in_game_username": str(row["in_game_username"] or ""),
+                    "source": str(row["source"] or ""),
+                    "status": str(row["status"] or ""),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                for row in set_requests
+            ],
         }
         if require_peace:
             try:
@@ -7535,7 +7602,9 @@ class PeaceBot(commands.Bot):
         app.router.add_post("/api/notices", self.public_api_notices)
         app.router.add_get("/api/partners", self.public_api_partners)
         app.router.add_post("/api/partners", self.public_api_partners)
+        app.router.add_patch("/api/partners/{partner_id}", self.public_api_partners)
         app.router.add_get("/api/scan-only", self.public_api_scan_only)
+        app.router.add_post("/api/scan-only/{request_id}/{decision}", self.public_api_scan_decision)
         app.router.add_get("/api/investigations", self.public_api_investigations)
         app.router.add_post("/api/investigations", self.public_api_investigations)
         app.router.add_get("/api/investigations/{case_id}", self.public_api_investigation_case)

@@ -4,12 +4,13 @@
 
   var currentScript = document.currentScript;
   var baseUrl = new URL("./", currentScript ? currentScript.src : document.baseURI);
-  var assetVersion = "20261117-03";
+  var assetVersion = "20261119-01";
   var pageModules = {
     home: ["js/public-media.js"],
     studies: ["js/studies.js"],
     clips: ["js/clips.js"],
     notices: ["js/notices.js"],
+    partners: ["js/partners.js"],
     candidatura: ["js/candidature.js"],
     entry: ["js/entry.js"],
     login: ["js/login.js"],

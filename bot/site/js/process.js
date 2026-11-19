@@ -20,6 +20,9 @@
   var logoutButton = document.querySelector("[data-discord-logout]");
   var retryButton = document.querySelector("[data-process-retry]");
   var resultsPanel = document.querySelector("[data-process-results]");
+  var connectionPanel = document.querySelector("#conexao");
+  var processDetails = document.querySelector(".process-details");
+  var setRequestPanel = document.querySelector("[data-process-set]");
   var assignmentList = document.querySelector("[data-process-assignment-list]");
   var stepNodes = {
     identity: document.querySelector('[data-process-step="identity"]'),
@@ -90,6 +93,22 @@
     });
   }
 
+  function renderSetRequests(items) {
+    if (!setRequestPanel) return;
+    setRequestPanel.replaceChildren();
+    if (!Array.isArray(items) || !items.length) { setRequestPanel.hidden = true; return; }
+    setRequestPanel.hidden = false;
+    items.slice(0, 3).forEach(function (item) {
+      var row = document.createElement("article"); row.className = "process-set-row";
+      var heading = document.createElement("div"); heading.className = "process-set-row-heading";
+      var title = document.createElement("strong"); title.textContent = "Setagem · " + (item.in_game_username || "processo");
+      var tag = document.createElement("span"); tag.className = "status-tag status-tag--" + (item.status === "approved" ? "ready" : item.status === "rejected" ? "error" : "pending"); tag.textContent = item.status === "approved" ? "Aprovada" : item.status === "rejected" ? "Reprovada" : "Pendente";
+      heading.append(title, tag);
+      var copy = document.createElement("p"); copy.textContent = "Solicitada em " + formatDate(item.created_at) + (item.source ? " · origem " + item.source : "");
+      row.append(heading, copy); setRequestPanel.appendChild(row);
+    });
+  }
+
   function updateSteps(assignments) {
     var hasAssignment = assignments.length > 0;
     var hasResult = assignments.some(function (item) { return item.status === "submitted"; });
@@ -125,11 +144,16 @@
     }
     if (setLink) setLink.hidden = membership.state === "peace";
     if (connectLink) connectLink.hidden = true;
+    if (connectionPanel) connectionPanel.classList.add("is-process-ready");
+    if (processDetails) processDetails.hidden = true;
+    document.querySelectorAll(".process-identity-actions, [data-process-membership-note], .process-identity-list").forEach(function (node) { node.hidden = true; });
     if (scorePanel) scorePanel.hidden = false;
     if (scoreValueNode) setText(scoreValueNode, profile.score === null || profile.score === undefined ? "—" : profile.score + "/" + (profile.score_scale || 100));
     if (scoreCopyNode) setText(scoreCopyNode, profile.score === null || profile.score === undefined ? "Nenhuma avaliação concluída ainda." : "Média das avaliações concluídas.");
     if (logoutButton) logoutButton.hidden = false;
     renderAssignments(assignments);
+    renderSetRequests(data.set_requests);
+    if (resultsPanel && Array.isArray(data.set_requests) && data.set_requests.length) resultsPanel.hidden = false;
     updateSteps(assignments);
     showStatus("", "ready");
   }

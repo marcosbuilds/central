@@ -468,6 +468,7 @@ CREATE TABLE IF NOT EXISTS public_partners (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
+    category TEXT,
     image_url TEXT,
     source_url TEXT,
     discord_user_id TEXT,
@@ -570,6 +571,9 @@ class PeaceDatabase:
                 connection.execute("ALTER TABLE set_requests ADD COLUMN application_discovery TEXT")
             if "application_motivation" not in set_request_columns:
                 connection.execute("ALTER TABLE set_requests ADD COLUMN application_motivation TEXT")
+            partner_columns = {row["name"] for row in connection.execute("PRAGMA table_info(public_partners)")}
+            if "category" not in partner_columns:
+                connection.execute("ALTER TABLE public_partners ADD COLUMN category TEXT")
             pool_columns = {row["name"] for row in connection.execute("PRAGMA table_info(peace_id_pool)")}
             if "status" not in pool_columns:
                 connection.execute(
@@ -1176,6 +1180,7 @@ class PeaceDatabase:
         *,
         title: str,
         description: str,
+        category: str | None = None,
         image_url: str | None,
         source_url: str | None,
         discord_user_id: int | str | None,
@@ -1189,14 +1194,15 @@ class PeaceDatabase:
             cursor = connection.execute(
                 """
                 INSERT INTO public_partners (
-                    title, description, image_url, source_url, discord_user_id,
+                    title, description, category, image_url, source_url, discord_user_id,
                     created_by_discord_user_id, author_name, author_avatar_url,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(title)[:120],
                     str(description)[:1200],
+                    str(category)[:80] if category else None,
                     str(image_url) if image_url else None,
                     str(source_url) if source_url else None,
                     str(discord_user_id) if discord_user_id else None,
@@ -1214,6 +1220,40 @@ class PeaceDatabase:
             connection.commit()
         assert row is not None
         return row
+
+    def update_public_partner(
+        self,
+        partner_id: int | str,
+        *,
+        title: str,
+        description: str,
+        category: str | None,
+        image_url: str | None,
+        source_url: str | None,
+    ) -> sqlite3.Row | None:
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE public_partners
+                SET title = ?, description = ?, category = ?, image_url = ?, source_url = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (str(title)[:120], str(description)[:1200], str(category)[:80] if category else None,
+                 str(image_url) if image_url else None, str(source_url) if source_url else None,
+                 now_iso(), str(partner_id)),
+            )
+            row = connection.execute("SELECT * FROM public_partners WHERE id = ?", (str(partner_id),)).fetchone()
+            connection.commit()
+        return row
+
+    def set_requests_for_user(self, discord_user_id: int | str, *, limit: int = 12) -> list[sqlite3.Row]:
+        self.initialize()
+        with self.connect() as connection:
+            return list(connection.execute(
+                "SELECT id, discord_user_id, in_game_username, source, status, created_at, updated_at FROM set_requests WHERE discord_user_id = ? ORDER BY id DESC LIMIT ?",
+                (str(discord_user_id), max(1, min(50, int(limit)))),
+            ).fetchall())
 
     def public_partners(self, *, limit: int = 24) -> list[sqlite3.Row]:
         self.initialize()

@@ -112,15 +112,23 @@
     var controls = document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]");
     controls.forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
-      if (state === "loading" || state === "connected") node.hidden = true;
-      else node.hidden = false;
+      if (state === "connected") node.hidden = true;
+      else {
+        node.hidden = false;
+        node.classList.toggle("is-loading", state === "loading");
+        node.setAttribute("aria-disabled", state === "loading" ? "true" : "false");
+        if (state === "loading") node.setAttribute("tabindex", "-1");
+        else node.removeAttribute("tabindex");
+      }
     });
   }
 
   function renderLoading(host) {
     host.textContent = "";
     host.setAttribute("aria-busy", "true");
-    var loading = createElement("span", "discord-identity-loading");
+    var loading = createElement("button", "discord-identity-loading");
+    loading.type = "button";
+    loading.disabled = true;
     loading.setAttribute("role", "status");
     loading.setAttribute("aria-live", "polite");
     var icon = document.createElement("img");
@@ -310,7 +318,12 @@
   function hideConnectedDuplicates(connected, state) {
     document.querySelectorAll("[data-discord-connect], [data-manager-connect], [data-login-discord], [data-member-discord-connect]").forEach(function (node) {
       if (node.closest(".discord-identity-host")) return;
-      node.hidden = connected || state === "loading" || state === "retry";
+      node.hidden = connected || state === "retry";
+      if (state === "loading") {
+        node.classList.add("is-loading");
+        node.setAttribute("aria-disabled", "true");
+        node.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); }, { capture: true });
+      }
     });
   }
 

@@ -140,6 +140,16 @@
 
   document.documentElement.classList.add("js-ready");
 
+  // A restrained Peace-colored glow gives the otherwise flat gradient a quiet
+  // sense of depth. It is pointer-driven when available and remains static for
+  // keyboard/touch users.
+  if (!reducedMotion) {
+    document.addEventListener("pointermove", function (event) {
+      document.documentElement.style.setProperty("--peace-pointer-x", event.clientX + "px");
+      document.documentElement.style.setProperty("--peace-pointer-y", event.clientY + "px");
+    }, { passive: true });
+  }
+
   // Discord destinations always open outside the Peace flow so the current
   // page remains available for status, return navigation, and retry actions.
   document.querySelectorAll('a[href^="/discord"], a[href^="../discord"]').forEach(function (link) {

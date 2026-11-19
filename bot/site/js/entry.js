@@ -38,6 +38,10 @@
           : "Sua conta já participa da Peace. Conclua a verificação no Discord; não é necessário gerar outro convite.",
         server.is_verified === true ? "success" : "pending"
       );
+      // A connected member should land directly in the current entry state;
+      // the candidature page resolves verification versus interview from the
+      // live server response and never grants a role from this redirect.
+      window.setTimeout(function () { window.location.replace("/candidatura/?connected=1"); }, 220);
     }
     if (params.get("from") === "candidature") {
       showSessionState("Você voltou da candidatura. Seu rascunho continua salvo nesta sessão.", "pending");

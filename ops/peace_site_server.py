@@ -52,6 +52,8 @@ ACL_API_ROUTES = {
 }
 EXAM_MANAGER_REVIEW_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/review$")
 EXAM_MANAGER_REJECT_ROUTE = re.compile(r"^/api/exams/assignments/[0-9]{1,25}/reject$")
+PARTNER_ROUTE = re.compile(r"^/api/partners/[0-9]{1,12}$")
+SCAN_DECISION_ROUTE = re.compile(r"^/api/scan-only/[1-9][0-9]{0,11}/(?:approve|reject)$")
 INVESTIGATION_CASE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}$")
 INVESTIGATION_EVIDENCE_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/evidence$")
 INVESTIGATION_APPROVAL_LINKS_ROUTE = re.compile(r"^/api/investigations/[0-9]{1,12}/approval-links$")
@@ -182,7 +184,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         route = self.path.split("?", 1)[0]
-        if route not in ACL_API_ROUTES and not EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) and not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
+        if route not in ACL_API_ROUTES and not PARTNER_ROUTE.fullmatch(route) and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REVIEW_ROUTE.fullmatch(route) and not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
 
@@ -212,14 +214,14 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             "/api/exams/start",
             "/api/exams/submit",
             "/api/exams/assignments",
-        } and not EXAM_MANAGER_REJECT_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
+        } and not SCAN_DECISION_ROUTE.fullmatch(route) and not EXAM_MANAGER_REJECT_ROUTE.fullmatch(route) and not INVESTIGATION_EVIDENCE_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_LINKS_ROUTE.fullmatch(route) and not INVESTIGATION_APPROVAL_ROUTE.fullmatch(route):
             self.send_error(404)
             return
         self._proxy_api("POST")
 
     def do_PATCH(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         route = self.path.split("?", 1)[0]
-        if not INVESTIGATION_CASE_ROUTE.fullmatch(route):
+        if not INVESTIGATION_CASE_ROUTE.fullmatch(route) and not PARTNER_ROUTE.fullmatch(route):
             self.send_error(404)
             return
         self._proxy_api("PATCH")
@@ -250,7 +252,7 @@ class PeaceSiteHandler(SimpleHTTPRequestHandler):
             )
             if frontend_origin:
                 headers["Origin"] = frontend_origin
-        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
+        elif route.startswith("/api/auth/discord/") or route.startswith("/api/exams/") or route.startswith("/api/investigations") or route.startswith("/api/investigation-approvals/") or route.startswith("/api/scan-only/") or route in {"/api/peace/process", "/api/candidature/submit", "/api/clips", "/api/notices", "/api/partners", "/api/scan-only"}:
             headers.update(
                 filtered_oauth_proxy_headers(
                     self.headers.get("Cookie", ""),

@@ -14,22 +14,16 @@ body[data-page="manager"] {
 }
 
 body[data-page="candidatura"] {
-  background-image:
-    linear-gradient(90deg, rgba(5, 6, 7, 0.93) 0%, rgba(5, 6, 7, 0.84) 46%, rgba(5, 6, 7, 0.68) 100%),
-    url("/assets/peace-candidature-bg.png");
+  background-image: radial-gradient(circle at 18% 12%, rgba(137, 196, 190, 0.12), transparent 32rem), linear-gradient(135deg, #050709 0%, #0a1719 52%, #050709 100%);
 }
 
 body[data-page="process"] {
-  background-image:
-    linear-gradient(90deg, rgba(5, 6, 7, 0.93) 0%, rgba(5, 6, 7, 0.84) 48%, rgba(5, 6, 7, 0.68) 100%),
-    url("/assets/peace-process-bg.png");
+  background-image: radial-gradient(circle at 78% 16%, rgba(164, 196, 219, 0.1), transparent 32rem), linear-gradient(135deg, #050709 0%, #101a20 52%, #050709 100%);
 }
 
 body[data-page="exam"],
 body[data-page="manager"] {
-  background-image:
-    linear-gradient(90deg, rgba(5, 6, 7, 0.93) 0%, rgba(5, 6, 7, 0.84) 48%, rgba(5, 6, 7, 0.7) 100%),
-    url("/assets/peace-exam-bg.png");
+  background-image: radial-gradient(circle at 72% 20%, rgba(177, 207, 214, 0.1), transparent 30rem), linear-gradient(135deg, #050709 0%, #0c171b 52%, #050709 100%);
 }
 
 body[data-page="candidatura"] .flow-page,
@@ -45,9 +39,7 @@ body[data-page="member"] {
 
 body[data-page="member"] .member-page {
   min-height: 100dvh;
-  background-image:
-    linear-gradient(90deg, rgba(2, 3, 4, 0.97) 0%, rgba(2, 3, 4, 0.86) 45%, rgba(2, 3, 4, 0.7) 100%),
-    url("/assets/peace-members-bg.png");
+  background-image: radial-gradient(circle at 20% 12%, rgba(137, 196, 190, 0.09), transparent 34rem), linear-gradient(135deg, #050709 0%, #0a1418 52%, #050709 100%);
   background-repeat: no-repeat;
   background-position: center top;
   background-size: cover;

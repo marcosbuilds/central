@@ -2,7 +2,8 @@
 .discord-identity-host { position: relative; min-width: 0; }
 .discord-connect-action { white-space: nowrap; }
 .discord-identity-icon { flex: 0 0 auto; width: 1.05rem; height: auto; }
-.discord-identity-loading { display: inline-flex; min-height: 2.55rem; align-items: center; gap: 0.55rem; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.58rem; letter-spacing: 0.04em; white-space: nowrap; }
+.discord-identity-loading { display: inline-flex; min-height: 2.55rem; align-items: center; gap: 0.55rem; padding: 0.55rem 0.8rem; border: 1px solid var(--border); border-radius: 0.7rem; background: rgba(185, 202, 211, 0.06); color: var(--quiet); font: inherit; font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.58rem; letter-spacing: 0.04em; white-space: nowrap; }
+.discord-connect-action.is-loading { opacity: 0.58; cursor: wait; pointer-events: none; }
 .discord-identity-loading-icon { display: block; width: 1.15rem; height: auto; flex: 0 0 auto; opacity: 0.78; }
 .discord-identity-loading-copy { display: block; }
 @keyframes discord-identity-shimmer { to { background-position: -220% 0; } }
