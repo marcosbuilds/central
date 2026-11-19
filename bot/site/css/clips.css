@@ -74,16 +74,10 @@
 .clips-feed-heading [data-clips-status] { max-width: 18rem; margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.5; text-align: right; }
 .clips-search { margin: 1.35rem 0 2rem; }
 .clips-search label { display: block; margin-bottom: 0.55rem; color: var(--quiet); font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.clips-search-row { display: flex; align-items: stretch; gap: 0.7rem; max-width: 48rem; }
-.clips-search-row { position: relative; max-width: 38rem; }
-.clips-search-icon { position: absolute; z-index: 1; top: 50%; left: 0.85rem; display: grid; width: 1.1rem; height: 1.1rem; place-items: center; color: var(--quiet); pointer-events: none; transform: translateY(-50%); }
-.clips-search-icon svg { width: 100%; height: 100%; }
-.clips-search input { width: 100%; min-width: 0; min-height: 3rem; padding: 0.75rem 3rem 0.75rem 2.7rem; border: 1px solid var(--border); border-radius: 999px; outline: 0; background: var(--surface-soft); color: var(--text); font: inherit; font-size: 0.82rem; }
+.clips-search-row { position: relative; display: flex; align-items: stretch; width: min(100%, 38rem); max-width: 38rem; }
+.clips-search input { width: 100%; min-width: 0; min-height: 3rem; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 999px; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 0.82rem; }
 .clips-search input::placeholder { color: var(--quiet); }
 .clips-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(185, 202, 211, 0.09); }
-.clips-search-submit { position: absolute; top: 0.3rem; right: 0.3rem; display: grid; width: 2.4rem; height: 2.4rem; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
-.clips-search-submit svg { width: 1.05rem; height: 1.05rem; }
-.clips-search-submit:hover, .clips-search-submit:focus-visible { background: rgba(185, 202, 211, 0.1); color: var(--text); outline: none; }
 
 .clips-filter-row {
   display: flex;
@@ -91,7 +85,7 @@
   gap: 0.35rem;
   width: fit-content;
   max-width: 100%;
-  margin: 1rem 0 1.35rem;
+  margin: 1rem auto 1.35rem;
   padding: 0.28rem;
   border: 1px solid var(--border);
   border-radius: 0.85rem;

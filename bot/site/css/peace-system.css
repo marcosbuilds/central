@@ -2699,16 +2699,6 @@ body[data-page="member"] .member-toolbar-search input[data-study-search]:focus {
   box-shadow: 0 0 0 3px rgba(196, 219, 221, 0.09);
 }
 
-body[data-page="member"] .member-toolbar-search .clips-search-submit {
-  top: 0.2rem;
-  right: 0.2rem;
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 0.55rem;
-  background: rgba(196, 219, 221, 0.14);
-  color: var(--peace-ink);
-}
-
 body[data-page="member"] .member-toolbar-view-actions {
   display: flex;
   grid-column: 3;
@@ -3150,4 +3140,65 @@ body[data-page="member"] .member-modal .field:has(> select)::after {
     max-width: 100%;
     white-space: normal;
   }
+}
+
+/* Last-pass overrides keep legacy toolbar rules from restoring the old
+   search chrome or moving the independent account controls. */
+body[data-page="member"] .member-toolbar-account-cluster {
+  position: relative;
+  display: flex;
+  grid-area: account;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+  min-width: 0;
+}
+body[data-page="member"] .member-toolbar-account-cluster .member-toolbar-account,
+body[data-page="member"] .member-toolbar-account-cluster .member-notification-trigger {
+  position: static;
+  grid-column: auto;
+}
+body[data-page="member"] .member-view-refresh {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--peace-line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--peace-ink-muted);
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-fast), color 160ms var(--ease-fast), transform 160ms var(--ease-fast);
+}
+body[data-page="member"] .member-view-refresh:hover,
+body[data-page="member"] .member-view-refresh:focus-visible {
+  border-color: var(--peace-line-strong);
+  color: var(--peace-bird);
+  outline: none;
+  transform: rotate(-20deg);
+}
+body[data-page="member"] .member-view-refresh:disabled { cursor: wait; opacity: 0.58; }
+body[data-page="member"] .member-view-refresh svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+body[data-page="member"] .member-toolbar-search .clips-search-row { width: 100%; max-width: none; }
+body[data-page="member"] .member-toolbar-search .clips-search input,
+body[data-page="member"] .member-toolbar-search input[data-study-search] {
+  padding-inline: 0.82rem;
+  background: transparent;
+}
+@media (max-width: 900px) {
+  body[data-page="member"] .member-toolbar-account-cluster { grid-area: account; }
+}
+@media (max-width: 560px) {
+  body[data-page="member"] .member-toolbar-account-cluster { gap: 0.28rem; }
+  body[data-page="member"] .member-view-refresh { width: 2.1rem; height: 2.1rem; flex-basis: 2.1rem; }
 }

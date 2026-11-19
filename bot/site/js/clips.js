@@ -250,6 +250,7 @@
     if (activeFilter === "engagement") items.sort(function (a, b) { return Number((b && b.engagement) || 0) - Number((a && a.engagement) || 0); });
     if (activeFilter === "least_engagement") items.sort(function (a, b) { return Number((a && a.engagement) || 0) - Number((b && b.engagement) || 0); });
     if (activeFilter === "recent") items.sort(function (a, b) { return new Date(b && b.created_at || 0).getTime() - new Date(a && a.created_at || 0).getTime(); });
+    if (activeFilter === "oldest") items.sort(function (a, b) { return new Date(a && a.created_at || 0).getTime() - new Date(b && b.created_at || 0).getTime(); });
     list.replaceChildren();
     list.classList.remove("is-refreshing");
     list.setAttribute("aria-busy", "false");

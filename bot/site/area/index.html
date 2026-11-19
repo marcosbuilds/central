@@ -104,7 +104,7 @@
                 <div class="member-toolbar-context"><strong class="member-toolbar-title" data-member-context-title><span>VISÃO</span><span>GERAL</span></strong><div class="member-live-status" data-member-connection role="status" aria-live="polite" hidden>Validando sessão…</div></div>
                 <form class="member-toolbar-search member-toolbar-search--clips clips-search" data-member-toolbar-clips-search data-clips-search role="search" hidden>
                   <label class="sr-only" for="member-clips-query">Buscar clipes</label>
-                  <div class="clips-search-row"><span class="clips-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></span><input id="member-clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar clipes"><button class="clips-search-submit" data-clips-submit type="submit" aria-label="Buscar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg></button></div>
+                  <div class="clips-search-row"><input id="member-clips-query" data-clips-query name="q" type="search" maxlength="80" autocomplete="off" placeholder="Buscar clipes"></div>
                 </form>
                 <form class="member-toolbar-search member-toolbar-search--library" data-member-toolbar-library-search data-study-search-form hidden>
                   <label class="sr-only" for="member-study-search">Buscar na biblioteca</label>
@@ -115,11 +115,14 @@
                   <button class="button button--light button--small" type="button" data-member-partner-open hidden aria-haspopup="dialog" aria-controls="member-partner-modal">Adicionar parceiro <span class="button-icon" aria-hidden="true">+</span></button>
                   <button class="button button--light button--small" type="button" data-member-investigation-open hidden aria-haspopup="dialog" aria-controls="member-investigation-modal">Novo caso <span class="button-icon" aria-hidden="true">+</span></button>
                 </div>
-                <div class="member-toolbar-account" data-member-toolbar-account>
-                  <button class="member-toolbar-account-trigger" type="button" data-member-toolbar-account-trigger aria-expanded="false" aria-haspopup="menu"><span class="member-toolbar-account-avatar-wrap"><img data-member-toolbar-avatar alt="" width="32" height="32" hidden><span data-member-toolbar-avatar-fallback class="member-avatar-fallback" hidden aria-hidden="true"></span></span><span class="member-toolbar-account-copy"><strong data-member-toolbar-name>membro</strong><small data-member-toolbar-username>@discord</small></span><svg class="member-toolbar-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"></path></svg></button>
-                  <div class="member-toolbar-account-menu" data-member-toolbar-account-menu role="menu" hidden><a href="#overview" data-member-toolbar-profile role="menuitem">Meu perfil</a><button type="button" data-member-toolbar-logout role="menuitem">Sair da conta</button></div>
+                <div class="member-toolbar-account-cluster">
+                  <div class="member-toolbar-account" data-member-toolbar-account>
+                    <button class="member-toolbar-account-trigger" type="button" data-member-toolbar-account-trigger aria-expanded="false" aria-haspopup="menu"><span class="member-toolbar-account-avatar-wrap"><img data-member-toolbar-avatar alt="" width="32" height="32" hidden><span data-member-toolbar-avatar-fallback class="member-avatar-fallback" hidden aria-hidden="true"></span></span><span class="member-toolbar-account-copy"><strong data-member-toolbar-name>membro</strong><small data-member-toolbar-username>@discord</small></span><svg class="member-toolbar-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"></path></svg></button>
+                    <div class="member-toolbar-account-menu" data-member-toolbar-account-menu role="menu" hidden><a href="#overview" data-member-toolbar-profile role="menuitem">Meu perfil</a><button type="button" data-member-toolbar-logout role="menuitem">Sair da conta</button></div>
+                  </div>
+                  <button class="member-view-refresh" data-member-view-refresh type="button" aria-label="Recarregar view" title="Recarregar view" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.7-4.2L4 9"></path><path d="M4 4v5h5"></path><path d="M4 13a8 8 0 0 0 14.7 4.2L20 15"></path><path d="M20 20v-5h-5"></path></svg></button>
+                  <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
                 </div>
-                <button class="member-notification-trigger" type="button" data-member-notifications aria-haspopup="dialog" aria-controls="member-notification-panel" aria-expanded="false" aria-label="Abrir avisos" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 10.3a5.8 5.8 0 0 1 11.6 0c0 4 1.6 4.8 2.2 5.6H4c.6-.8 2.2-1.6 2.2-5.6Z"></path><path d="M9.8 19h4.4"></path></svg><span class="member-notification-badge" data-member-notification-badge hidden>0</span></button>
               </div>
 
               <div class="member-view member-view--overview" data-member-view="overview">
@@ -176,7 +179,7 @@
                 <h1 class="sr-only" id="member-clips-title">Clipes</h1>
                 <section class="clips-feed clips-feed--member" aria-label="Feed de clipes">
                   <form class="clips-search" data-clips-search role="search" hidden aria-hidden="true"></form>
-                  <div class="clips-filter-row" role="group" aria-label="Filtrar clipes"><button type="button" class="clips-filter is-active" data-clips-filter="all" aria-pressed="true">Tudo</button><button type="button" class="clips-filter" data-clips-filter="mine" aria-pressed="false">Meus clipes</button><button type="button" class="clips-filter" data-clips-filter="engagement" aria-pressed="false">Mais vistos</button><button type="button" class="clips-filter" data-clips-filter="least_engagement" aria-pressed="false">Menos vistos</button><button type="button" class="clips-filter" data-clips-filter="recent" aria-pressed="false">Mais recentes</button></div>
+                  <div class="clips-filter-row" role="group" aria-label="Filtrar clipes"><button type="button" class="clips-filter is-active" data-clips-filter="all" aria-pressed="true">Tudo</button><button type="button" class="clips-filter" data-clips-filter="mine" aria-pressed="false">Meus clipes</button><button type="button" class="clips-filter" data-clips-filter="engagement" aria-pressed="false">Mais vistos</button><button type="button" class="clips-filter" data-clips-filter="least_engagement" aria-pressed="false">Menos vistos</button><button type="button" class="clips-filter" data-clips-filter="recent" aria-pressed="false">Mais recentes</button><button type="button" class="clips-filter" data-clips-filter="oldest" aria-pressed="false">Mais antigos</button></div>
                   <div class="clips-feed-heading"><p data-clips-status role="status" aria-live="polite">Preparando a busca…</p></div>
                   <div class="clips-grid" data-clips-list role="list" aria-busy="true" aria-label="Clipes publicados"></div>
                   <p class="clips-empty" data-clips-empty hidden role="status"></p>
@@ -257,11 +260,16 @@
         <button class="member-modal-close" type="button" data-member-investigation-close aria-label="Fechar novo caso"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
         <p class="eyebrow">Registro investigativo</p>
         <h2 id="member-investigation-modal-title">Abrir ocorrência</h2>
-        <p class="member-view-lede" id="member-investigation-modal-description">Crie um caso com o mínimo necessário. Evidências entram depois como referências controladas.</p>
+        <p class="member-view-lede" id="member-investigation-modal-description">Registre uma ocorrência com contexto suficiente para a equipe continuar a apuração, anexar clipes e decidir o encaminhamento.</p>
         <form data-member-investigation-form>
           <div class="member-manager-form-grid">
-            <label class="field"><span>Título do caso</span><input name="title" maxlength="120" required placeholder="Ex.: Ocorrência no canal de voz"></label>
-            <label class="field member-form-field--wide"><span>Resumo da ocorrência</span><textarea name="summary" rows="5" minlength="10" maxlength="4000" required placeholder="Descreva o que precisa ser verificado, sem incluir dados desnecessários."></textarea></label>
+            <label class="field member-form-field--wide"><span>Título da ocorrência</span><input name="title" maxlength="120" required placeholder="Ex.: Suspeita de omissão operacional"></label>
+            <label class="field"><span>Natureza</span><select name="nature" required><option value="">Selecione a natureza</option><option value="Ameaça ou intimidação">Ameaça ou intimidação</option><option value="Omissão operacional">Omissão operacional</option><option value="Possível favorecimento">Possível favorecimento</option><option value="Conflito institucional">Conflito institucional</option><option value="Informação para apuração">Informação para apuração</option><option value="Outra ocorrência">Outra ocorrência</option></select></label>
+            <label class="field"><span>Data e hora aproximadas <em>(opcional)</em></span><input name="occurred_at" type="datetime-local"></label>
+            <label class="field"><span>Local ou referência</span><input name="location" maxlength="160" placeholder="Local, região ou referência da ocorrência"></label>
+            <label class="field"><span>Envolvidos ou organizações</span><input name="involved" maxlength="240" placeholder="Grupos, equipes ou pessoas envolvidas"></label>
+            <label class="field member-form-field--wide"><span>Relato da ocorrência</span><textarea name="report" rows="6" minlength="10" maxlength="4000" required placeholder="Descreva os fatos em ordem, separando o que foi observado do que ainda precisa ser confirmado."></textarea></label>
+            <label class="field member-form-field--wide"><span>Próximo passo sugerido <em>(opcional)</em></span><textarea name="next_step" rows="3" maxlength="1200" placeholder="Ex.: revisar o clipe, ouvir os envolvidos e confirmar a sequência dos fatos."></textarea></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-investigation-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-investigation-submit><span data-button-label>Registrar caso</span><span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-investigation-form-status role="status" aria-live="polite"></p>
@@ -274,16 +282,15 @@
         <button class="member-modal-close" type="button" data-member-evidence-close aria-label="Fechar nova evidência"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7 7 10 10M17 7 7 17"></path></svg></button>
         <p class="eyebrow">Referência controlada</p>
         <h2 id="member-evidence-modal-title">Adicionar evidência</h2>
-        <p class="member-view-lede" id="member-evidence-modal-description">Use links HTTPS, IDs de mensagens Discord e observações. Uploads ficam fora desta primeira etapa.</p>
+        <p class="member-view-lede" id="member-evidence-modal-description">Registre um clipe, imagem, documento ou referência pública e explique o que ele demonstra. O arquivo continua hospedado na origem indicada.</p>
         <form data-member-evidence-form>
           <input type="hidden" name="case_id">
           <div class="member-manager-form-grid">
             <label class="field"><span>Título</span><input name="title" maxlength="120" required placeholder="Ex.: Clipe do momento"></label>
-            <label class="field"><span>Tipo</span><select name="type"><option value="occurrence">Ocorrência</option><option value="discord_message">Mensagem Discord</option><option value="clip">Clipe</option><option value="reference">Referência</option><option value="note">Observação</option></select></label>
-            <label class="field"><span>Classificação</span><select name="classification"><option value="reference">Referência</option><option value="confirmed">Comprovado</option></select></label>
-            <label class="field"><span>ID da mensagem Discord <em>(opcional)</em></span><input name="discord_message_id" inputmode="numeric" pattern="[0-9]{15,25}" maxlength="25" placeholder="somente números"></label>
-            <label class="field member-form-field--wide"><span>Link HTTPS <em>(opcional)</em></span><input name="source_url" type="url" maxlength="500" placeholder="https://discord.com/channels/…"></label>
-            <label class="field member-form-field--wide"><span>Observação</span><textarea name="note" rows="5" minlength="2" maxlength="4000" required placeholder="O que esta referência demonstra ou precisa esclarecer?"></textarea></label>
+            <label class="field"><span>Tipo</span><select name="type"><option value="clip">Clipe</option><option value="image">Imagem</option><option value="document">Documento</option><option value="occurrence">Relato de ocorrência</option><option value="reference">Referência</option><option value="note">Observação</option></select></label>
+            <label class="field"><span>Classificação</span><select name="classification"><option value="reference">Indício / referência</option><option value="confirmed">Confirmada pela análise</option></select></label>
+            <label class="field member-form-field--wide"><span>Link público da evidência <em>(opcional)</em></span><input name="source_url" type="url" maxlength="500" placeholder="https://…"></label>
+            <label class="field member-form-field--wide"><span>O que a evidência demonstra?</span><textarea name="note" rows="5" minlength="2" maxlength="4000" required placeholder="Explique o momento, a relação com o caso e o que ainda precisa ser conferido."></textarea></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-evidence-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-evidence-submit><span data-button-label>Adicionar evidência</span><span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-evidence-form-status role="status" aria-live="polite"></p>
@@ -301,7 +308,7 @@
           <input type="hidden" name="case_id">
           <div class="member-manager-form-grid">
             <label class="field member-form-field--wide"><span>Expectativa para os avaliadores</span><textarea name="expected_outcome" rows="6" minlength="10" maxlength="2000" required placeholder="Ex.: espero que avaliem se o caso está concluído, se exige limpeza ou se precisa de intervenção."></textarea><small>Esta decisão será exibida antes da confirmação de aprovação.</small></label>
-            <label class="field member-form-field--wide"><span>Discord IDs dos avaliadores</span><textarea name="evaluator_discord_user_ids" rows="5" minlength="15" required placeholder="Um ID por linha"></textarea><small>O link será privado e só abrirá para o Discord ID correspondente.</small></label>
+            <label class="field member-form-field--wide"><span>IDs das contas avaliadoras</span><textarea name="evaluator_discord_user_ids" rows="5" minlength="15" required placeholder="Um ID por linha"></textarea><small>O link será privado e só abrirá para a conta autorizada correspondente.</small></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-approval-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-approval-submit><span data-button-label>Gerar links</span><span class="button-spinner" aria-hidden="true"></span></button></div>
           <p class="form-status" data-member-approval-form-status role="status" aria-live="polite"></p>
@@ -338,8 +345,7 @@
           <div class="member-manager-form-grid">
             <label class="field member-form-field--wide"><span>Nome do projeto</span><input name="title" maxlength="120" required placeholder="Ex.: Projeto Peaceiro"></label>
             <label class="field member-form-field--wide"><span>Descrição</span><textarea name="description" rows="5" minlength="5" maxlength="1200" required placeholder="Explique o projeto e a relação aprovada com a Peace."></textarea></label>
-            <label class="field"><span>Servidor ou site público</span><input name="url" type="url" maxlength="500" required placeholder="https://discord.gg/… ou https://…"></label>
-            <label class="field"><span>Categoria <em>(opcional)</em></span><input name="category" maxlength="80" placeholder="Comunidade, projeto, organização…"></label>
+            <label class="field"><span>Servidor ou site público</span><input name="url" type="url" maxlength="500" required placeholder="https://…"></label>
             <label class="field"><span>Capa da parceria <em>(opcional)</em></span><input name="image_url" type="url" maxlength="500" placeholder="https://…"></label>
           </div>
           <div class="member-manager-actions"><button class="button button--outline" type="button" data-member-partner-cancel>Cancelar</button><button class="button button--light" type="submit" data-member-partner-submit><span data-button-label>Adicionar parceiro</span><span class="button-spinner" aria-hidden="true"></span></button></div>

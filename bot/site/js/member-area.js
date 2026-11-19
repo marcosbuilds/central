@@ -26,6 +26,7 @@
     var toolbarClipsSearch = workspace && workspace.querySelector("[data-member-toolbar-clips-search]");
     var toolbarLibrarySearch = workspace && workspace.querySelector("[data-member-toolbar-library-search]");
     var toolbarAccount = workspace && workspace.querySelector("[data-member-toolbar-account]");
+    var toolbarRefresh = workspace && workspace.querySelector("[data-member-view-refresh]");
     var toolbarAccountTrigger = workspace && workspace.querySelector("[data-member-toolbar-account-trigger]");
     var toolbarAccountMenu = workspace && workspace.querySelector("[data-member-toolbar-account-menu]");
     var toolbarAccountAvatar = workspace && workspace.querySelector("[data-member-toolbar-avatar]");
@@ -143,6 +144,7 @@
     var investigationCases = [];
     var selectedInvestigationCaseId = null;
     var partnersLoading = false;
+    var partnerItems = [];
     var currentProcess = null;
     var currentView = "overview";
     var editingPartnerId = null;
@@ -260,6 +262,7 @@
       if (!partnerList) return;
       var block = payload && payload.partners ? payload.partners : {};
       var items = Array.isArray(block) ? block : (Array.isArray(block.items) ? block.items : []);
+      partnerItems = items.slice();
       var sourceState = payload && payload.source && payload.source.state
         ? payload.source.state
         : (block && block.state ? block.state : "");
@@ -292,12 +295,6 @@
         article.appendChild(copy);
         var links = document.createElement("div");
         links.className = "member-partner-links";
-        if (item.category) {
-          var category = document.createElement("span");
-          category.className = "partner-link-badge partner-link-badge--category";
-          category.textContent = String(item.category);
-          links.appendChild(category);
-        }
         if (/^https?:\/\//i.test(String(item.url || ""))) {
           var link = document.createElement("a");
           link.className = "partner-link-badge";
@@ -780,6 +777,7 @@
       if (workspaceToolbar) workspaceToolbar.dataset.memberToolbarView = nextView;
       if (notificationTrigger) notificationTrigger.hidden = nextView !== "overview";
       if (toolbarAccount) toolbarAccount.hidden = nextView === "overview" || nextView === "library";
+      if (toolbarRefresh) toolbarRefresh.hidden = nextView === "overview";
       if (toolbarClipsSearch) toolbarClipsSearch.hidden = nextView !== "clips";
       if (toolbarLibrarySearch) toolbarLibrarySearch.hidden = nextView !== "library";
       if (notificationPanel && (!notificationPanel.hidden || nextView !== "overview")) setNotificationsOpen(false, false);
@@ -838,33 +836,6 @@
       return "planned";
     }
 
-    function appendCopyId(parent, value, label) {
-      var id = String(value || "").trim();
-      var row = document.createElement("div");
-      row.className = "member-investigation-id-row";
-      var copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "member-copy-id";
-      copy.disabled = !id;
-      copy.title = id ? "Copiar " + (label || "Discord ID") : "ID indisponível";
-      copy.setAttribute("aria-label", id ? "Copiar " + (label || "Discord ID") : (label || "Discord ID") + " indisponível");
-      var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      icon.setAttribute("viewBox", "0 0 24 24");
-      icon.setAttribute("aria-hidden", "true");
-      icon.innerHTML = '<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-8A1.5 1.5 0 0 0 5 6.5v8A1.5 1.5 0 0 0 6.5 16H8"></path>';
-      var text = document.createElement("span");
-      text.textContent = id || "—";
-      copy.appendChild(icon);
-      copy.appendChild(text);
-      var status = document.createElement("span");
-      status.className = "sr-only";
-      status.setAttribute("role", "status");
-      if (id) copy.addEventListener("click", function () { copyValue(id, status); });
-      row.appendChild(copy);
-      row.appendChild(status);
-      parent.appendChild(row);
-    }
-
     function createInvestigationEvidence(item) {
       var article = document.createElement("article");
       article.className = "member-investigation-evidence";
@@ -879,7 +850,8 @@
       heading.appendChild(tag);
       article.appendChild(heading);
       var meta = document.createElement("small");
-      meta.textContent = (item.type || "referência") + " · " + date(item.created_at);
+      var typeLabels = { clip: "Clipe", image: "Imagem", document: "Documento", occurrence: "Relato", reference: "Referência", note: "Observação" };
+      meta.textContent = (typeLabels[item.type] || "Referência") + " · " + date(item.created_at);
       article.appendChild(meta);
       var note = document.createElement("p");
       note.textContent = item.note || "Sem observação.";
@@ -893,7 +865,6 @@
         source.textContent = "Abrir origem ↗";
         article.appendChild(source);
       }
-      if (item.discord_message_id) appendCopyId(article, item.discord_message_id, "Copiar ID da mensagem Discord");
       return article;
     }
 
@@ -996,7 +967,7 @@
           var approvalMeta = document.createElement("div");
           approvalMeta.className = "member-investigation-item-heading";
           var evaluator = document.createElement("strong");
-          evaluator.textContent = "Avaliador " + String(approval.evaluator_discord_user_id || "—");
+          evaluator.textContent = "Avaliador da equipe";
           var approvalStatus = document.createElement("span");
           approvalStatus.className = "status-tag status-tag--" + (approval.status === "approved" ? "ready" : approval.status === "rejected" ? "error" : "pending");
           approvalStatus.textContent = approval.status === "approved" ? "Aprovou" : approval.status === "rejected" ? "Reprovou" : approval.status === "expired" ? "Expirado" : "Pendente";
@@ -1025,7 +996,7 @@
         auditSection.appendChild(auditHeading);
         eventItems.slice(0, 8).forEach(function (event) {
           var line = document.createElement("p");
-          line.textContent = date(event.created_at) + " · " + event.type + " · Discord " + event.actor_discord_user_id;
+          line.textContent = date(event.created_at) + " · " + event.type;
           auditSection.appendChild(line);
         });
         content.appendChild(auditSection);
@@ -1896,9 +1867,23 @@
         return;
       }
       var formData = new FormData(investigationForm);
+      var occurredAt = String(formData.get("occurred_at") || "").trim();
+      var occurredAtLabel = "";
+      if (occurredAt) {
+        try { occurredAtLabel = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(occurredAt)); } catch (error) { occurredAtLabel = occurredAt; }
+      }
+      var reportParts = [
+        "Natureza: " + String(formData.get("nature") || "Outra ocorrência").trim(),
+        "Data/hora aproximadas: " + (occurredAtLabel || "não informada"),
+        "Local ou referência: " + (String(formData.get("location") || "").trim() || "não informado"),
+        "Envolvidos ou organizações: " + (String(formData.get("involved") || "").trim() || "não informado"),
+        "Relato:\n" + String(formData.get("report") || "").trim()
+      ];
+      var nextStep = String(formData.get("next_step") || "").trim();
+      if (nextStep) reportParts.push("Próximo passo sugerido:\n" + nextStep);
       var payload = {
         title: String(formData.get("title") || "").trim(),
-        summary: String(formData.get("summary") || "").trim()
+        summary: reportParts.join("\n\n").slice(0, 4000)
       };
       if (investigationFormStatus) {
         investigationFormStatus.textContent = "Registrando caso…";
@@ -1997,7 +1982,6 @@
         type: String(formData.get("type") || "reference").trim(),
         classification: String(formData.get("classification") || "reference").trim(),
         title: String(formData.get("title") || "").trim(),
-        discord_message_id: String(formData.get("discord_message_id") || "").trim(),
         source_url: String(formData.get("source_url") || "").trim(),
         note: String(formData.get("note") || "").trim()
       };
@@ -2059,14 +2043,14 @@
           var heading = document.createElement("strong");
           heading.textContent = "Links gerados — copie e envie individualmente";
           approvalGenerated.appendChild(heading);
-          response.links.forEach(function (linkItem) {
+          response.links.forEach(function (linkItem, index) {
             var row = document.createElement("div");
             row.className = "member-generated-link-row";
             var link = document.createElement("a");
             link.href = linkItem.url;
             link.target = "_blank";
             link.rel = "noopener noreferrer";
-            link.textContent = "Avaliador " + linkItem.evaluator_discord_user_id;
+            link.textContent = "Avaliador " + (index + 1);
             var copy = document.createElement("button");
             copy.type = "button";
             copy.className = "button button--outline member-generated-link-copy";
@@ -2216,7 +2200,6 @@
       var payload = {
         title: String(formData.get("title") || "").trim(),
         description: String(formData.get("description") || "").trim(),
-        category: String(formData.get("category") || "").trim(),
         url: String(formData.get("url") || "").trim(),
         image_url: String(formData.get("image_url") || "").trim()
       };
@@ -2251,13 +2234,12 @@
     if (partnerList) partnerList.addEventListener("click", function (event) {
       var button = event.target.closest ? event.target.closest("[data-member-partner-edit]") : null;
       if (!button || !partnerForm) return;
-      var partnerBlock = currentProcess && currentProcess.partners;
-      var partnerItems = Array.isArray(partnerBlock) ? partnerBlock : (partnerBlock && Array.isArray(partnerBlock.items) ? partnerBlock.items : []);
       var item = partnerItems.find(function (candidate) { return String(candidate.id) === String(button.dataset.memberPartnerEdit); });
       if (!item) return;
       editingPartnerId = item.id;
+      openMemberModal(partnerModal, partnerForm, partnerFormStatus);
       partnerForm.reset();
-      ["title", "description", "category", "url", "image_url"].forEach(function (name) {
+      ["title", "description", "url", "image_url"].forEach(function (name) {
         if (partnerForm.elements[name]) partnerForm.elements[name].value = item[name] || "";
       });
       if (partnerModalTitle) partnerModalTitle.textContent = "Editar parceria";
@@ -2265,7 +2247,12 @@
         var label = partnerSubmit.querySelector("[data-button-label]");
         if (label) label.textContent = "Salvar alterações";
       }
-      openMemberModal(partnerModal, partnerForm, partnerFormStatus);
+    });
+    if (toolbarRefresh) toolbarRefresh.addEventListener("click", function () {
+      if (toolbarRefresh.disabled) return;
+      toolbarRefresh.disabled = true;
+      toolbarRefresh.setAttribute("aria-busy", "true");
+      window.location.reload();
     });
     if (window.matchMedia) {
       var sidebarMedia = window.matchMedia("(max-width: 900px)");

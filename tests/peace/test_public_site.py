@@ -2541,6 +2541,10 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'data-member-manager-submit' in member_html
     assert 'data-member-partner-open' in member_html
     assert 'data-member-investigation-open' in member_html
+    assert 'data-member-view-refresh' in member_html
+    assert 'data-clips-filter="oldest"' in member_html
+    assert 'name="category"' not in member_html
+    assert 'name="discord_message_id"' not in member_html
     assert 'data-member-scan-link' in member_html
     assert "Atribuir prova" in member_html
     assert "/api/exams/assignments" in member_script
@@ -2614,6 +2618,7 @@ def test_netlify_redirects_keep_the_short_discord_route():
     assert "/api/status https://peace-tools-8be02694.aclclouds.online/api/status 200!" in redirects
     assert "/api/media https://peace-tools-8be02694.aclclouds.online/api/media 200!" in redirects
     assert "/api/scan-only https://peace-tools-8be02694.aclclouds.online/api/scan-only 200!" in redirect_lines
+    assert "/api/scan-only/:request_id/:decision https://peace-tools-8be02694.aclclouds.online/api/scan-only/:request_id/:decision 200!" in redirect_lines
     assert "/api/member/overview https://peace-tools-8be02694.aclclouds.online/api/member/overview 200!" in redirects
     assert sum(line.startswith("/api/member/overview ") for line in redirects.splitlines()) == 1
     assert "/api/peace/process https://peace-tools-8be02694.aclclouds.online/api/peace/process 200!" in redirects

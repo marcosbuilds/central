@@ -5926,7 +5926,6 @@ class PeaceBot(commands.Bot):
                     "classification": str(item["classification"]),
                     "title": str(item["title"]),
                     "source_url": item["source_url"],
-                    "discord_message_id": item["discord_message_id"],
                     "note": str(item["note"]),
                     "collected_by_discord_user_id": str(item["collected_by_discord_user_id"]),
                     "created_at": str(item["created_at"]),
@@ -6295,7 +6294,7 @@ class PeaceBot(commands.Bot):
         source_url = self.public_https_url(payload.get("source_url"), limit=500)
         raw_source_url = str(payload.get("source_url", "") or "").strip()
         message_id = str(payload.get("discord_message_id", "") or "").strip()
-        if evidence_type not in {"occurrence", "clip", "discord_message", "reference", "note"}:
+        if evidence_type not in {"occurrence", "clip", "image", "document", "report", "discord_message", "reference", "note"}:
             return web.json_response({"ok": False, "code": "INVALID_EVIDENCE_TYPE", "message": "Tipo de evidência inválido."}, status=400)
         if classification not in {"confirmed", "reference"}:
             return web.json_response({"ok": False, "code": "INVALID_EVIDENCE_CLASSIFICATION", "message": "Classificação de evidência inválida."}, status=400)
@@ -6330,7 +6329,6 @@ class PeaceBot(commands.Bot):
                     "classification": str(row["classification"]),
                     "title": str(row["title"]),
                     "source_url": row["source_url"],
-                    "discord_message_id": row["discord_message_id"],
                     "note": str(row["note"]),
                     "collected_by_discord_user_id": str(row["collected_by_discord_user_id"]),
                     "created_at": str(row["created_at"]),
