@@ -18,9 +18,8 @@
   var form = app.querySelector("[data-approval-form]");
   var acknowledge = form && form.elements.acknowledge;
   var note = form && form.elements.note;
-  var submit = app.querySelector("[data-approval-submit]");
+  var decisionButtons = form ? Array.prototype.slice.call(form.querySelectorAll("[data-approval-decision]")) : [];
   var status = app.querySelector("[data-approval-status]");
-  var decision = "";
   var token = new URL(window.location.href).searchParams.get("token") || "";
 
   function setStatus(message, state) {
@@ -52,32 +51,88 @@
     if (app) app.setAttribute("aria-busy", "false");
   }
 
+  function safeUrl(value) {
+    var raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      var parsed = new URL(raw, window.location.href);
+      return parsed.protocol === "https:" ? parsed.href : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function appendSourceLink(parent, source) {
+    if (!source) return;
+    var link = document.createElement("a");
+    link.className = "text-link approval-evidence-source";
+    link.href = source;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Abrir origem ↗";
+    parent.appendChild(link);
+  }
+
+  function renderDirectMedia(parent, item, source) {
+    var type = String(item && item.type || "").toLowerCase();
+    if (!source || ["clip", "video", "image"].indexOf(type) < 0) return false;
+    var preview = document.createElement("div");
+    preview.className = "approval-evidence-preview";
+    var fallback = document.createElement("div");
+    fallback.className = "approval-evidence-fallback";
+    fallback.hidden = true;
+    var fallbackCopy = document.createElement("span");
+    fallbackCopy.textContent = "A prévia direta não pôde ser carregada.";
+    fallback.appendChild(fallbackCopy);
+    appendSourceLink(fallback, source);
+    function showFallback() {
+      preview.replaceChildren(fallback);
+      fallback.hidden = false;
+    }
+    if (type === "image") {
+      var image = document.createElement("img");
+      image.src = source;
+      image.alt = item.title || "Imagem da ocorrência";
+      image.loading = "lazy";
+      image.decoding = "async";
+      image.onerror = showFallback;
+      preview.appendChild(image);
+    } else {
+      var video = document.createElement("video");
+      video.src = source;
+      video.controls = true;
+      video.preload = "metadata";
+      video.playsInline = true;
+      video.setAttribute("aria-label", "Reproduzir " + (item.title || "clipe da ocorrência"));
+      video.onerror = showFallback;
+      preview.appendChild(video);
+    }
+    parent.appendChild(preview);
+    return true;
+  }
+
   function renderEvidence(items) {
     if (!evidence) return;
     evidence.textContent = "";
     if (!Array.isArray(items) || !items.length) {
-      var empty = document.createElement("li");
+      var empty = document.createElement("p");
+      empty.className = "member-block-state";
       empty.textContent = "Nenhuma evidência adicional foi anexada.";
       evidence.appendChild(empty);
       return;
     }
     items.forEach(function (item) {
-      var row = document.createElement("li");
+      var row = document.createElement("article");
+      row.className = "approval-evidence-card";
       var heading = document.createElement("strong");
       heading.textContent = item.title || "Referência investigativa";
+      row.appendChild(heading);
+      var source = safeUrl(item.source_url);
+      var previewed = renderDirectMedia(row, item, source);
       var copy = document.createElement("small");
       copy.textContent = (item.note || "Sem observação") + " · " + (item.classification === "confirmed" ? "comprovado" : "referência");
-      row.appendChild(heading);
       row.appendChild(copy);
-      if (/^https:\/\//i.test(String(item.source_url || ""))) {
-        var link = document.createElement("a");
-        link.className = "text-link";
-        link.href = item.source_url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = "Abrir origem ↗";
-        row.appendChild(link);
-      }
+      if (source && !previewed) appendSourceLink(row, source);
       evidence.appendChild(row);
     });
   }
@@ -101,22 +156,9 @@
       form.hidden = false;
       if (acknowledge) acknowledge.checked = false;
       if (note) note.value = "";
-      updateSubmit();
+      decisionButtons.forEach(function (button) { button.disabled = false; });
     }
     if (app) app.setAttribute("aria-busy", "false");
-  }
-
-  function updateSubmit() {
-    if (submit) submit.disabled = !(decision && acknowledge && acknowledge.checked && note && note.value.trim().length >= 2);
-  }
-
-  function setDecision(value) {
-    decision = value;
-    app.querySelectorAll("[data-approval-decision]").forEach(function (button) {
-      button.classList.toggle("is-selected", button.dataset.approvalDecision === value);
-      button.setAttribute("aria-pressed", String(button.dataset.approvalDecision === value));
-    });
-    updateSubmit();
   }
 
   function request(url, options) {
@@ -133,24 +175,24 @@
     return;
   }
 
-  app.querySelectorAll("[data-approval-decision]").forEach(function (button) {
-    button.addEventListener("click", function () { setDecision(button.dataset.approvalDecision || ""); });
-  });
-  if (acknowledge) acknowledge.addEventListener("change", updateSubmit);
-  if (note) note.addEventListener("input", updateSubmit);
   if (form) form.addEventListener("submit", function (event) {
     event.preventDefault();
-    if (!decision || !acknowledge || !acknowledge.checked || !note || note.value.trim().length < 2) {
-      setStatus("Confirme a ciência da expectativa, escolha uma decisão e escreva uma observação.", "error");
-      updateSubmit();
+    var submitter = event.submitter || document.activeElement;
+    var selectedDecision = submitter && submitter.dataset ? submitter.dataset.approvalDecision : "";
+    if (["approved", "rejected"].indexOf(selectedDecision) < 0) {
+      setStatus("Escolha explicitamente Aprovar caso ou Reprovar caso.", "error");
       return;
     }
-    if (submit) submit.disabled = true;
-    setStatus("Registrando sua decisão…", "pending");
+    if (!acknowledge || !acknowledge.checked || !note || note.value.trim().length < 2) {
+      setStatus("Confirme a ciência da expectativa e escreva uma observação antes de decidir.", "error");
+      return;
+    }
+    decisionButtons.forEach(function (button) { button.disabled = true; });
+    setStatus(selectedDecision === "approved" ? "Aprovando o caso…" : "Reprovando o caso…", "pending");
     request("/api/investigation-approvals/" + encodeURIComponent(token), {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ acknowledge: true, decision: decision, note: note.value.trim() })
+      body: JSON.stringify({ acknowledge: true, decision: selectedDecision, note: note.value.trim() })
     }).then(function (payload) {
       if (!payload || payload.ok !== true) {
         var error = new Error(payload && payload.message || "Não foi possível registrar a decisão.");
@@ -160,7 +202,7 @@
       renderPayload(payload);
       setStatus(payload.case && ["approved", "rejected"].indexOf(payload.case.status) >= 0 ? "O caso recebeu a decisão final deste fluxo." : "Decisão registrada. O caso continua aguardando os demais avaliadores.", "success");
     }).catch(function (error) {
-      if (submit) submit.disabled = false;
+      decisionButtons.forEach(function (button) { button.disabled = false; });
       setStatus(error.message || "Não foi possível registrar a decisão.", "error");
     });
   });

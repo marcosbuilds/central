@@ -2694,6 +2694,30 @@ def test_member_area_is_gated_and_has_no_unauthenticated_preview():
     assert 'cover.querySelectorAll(".status-tag")' in (site_root / "js" / "site-core.js").read_text(encoding="utf-8")
 
 
+def test_investigation_media_and_private_decision_are_explicit_frontend_flows():
+    from pathlib import Path
+
+    site_root = Path(__file__).parents[2] / "bot" / "site"
+    approval_html = (site_root / "investigacao" / "aprovacao" / "index.html").read_text(encoding="utf-8")
+    approval_script = (site_root / "js" / "investigation-approval.js").read_text(encoding="utf-8")
+    member_script = (site_root / "js" / "member-area.js").read_text(encoding="utf-8")
+    system_stylesheet = (site_root / "css" / "peace-system.css").read_text(encoding="utf-8")
+
+    assert 'class="approval-evidence-grid" data-approval-evidence' in approval_html
+    assert 'data-approval-submit' not in approval_html
+    assert 'name="decision" value="approved"' in approval_html
+    assert 'name="decision" value="rejected"' in approval_html
+    assert "Esta expectativa serve apenas como contexto" in approval_html
+    assert "renderDirectMedia" in approval_script
+    assert "video.onerror = showFallback" in approval_script
+    assert "selectedDecision" in approval_script
+    assert "Registrando sua decisão" not in approval_script
+    assert "member-investigation-media-grid" in member_script
+    assert "appendInvestigationMedia" in member_script
+    assert "Prévia direta indisponível" in member_script
+    assert "body[data-page=\"login\"] .login-card" in system_stylesheet
+
+
 def test_netlify_redirects_keep_the_short_discord_route():
     from pathlib import Path
 

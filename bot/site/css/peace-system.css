@@ -2281,6 +2281,58 @@ body[data-page="member"] .member-workspace-shell[data-sidebar-collapsed="true"] 
   gap: 0.6rem;
 }
 
+.member-investigation-media-heading {
+  margin: 0.25rem 0 0;
+  color: var(--peace-ink);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.member-investigation-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 0.75rem;
+}
+
+.member-investigation-media-grid .member-investigation-evidence {
+  border: 1px solid var(--peace-line);
+  border-left: 2px solid var(--peace-line-strong);
+  border-radius: 0 var(--peace-radius-sm) var(--peace-radius-sm) 0;
+}
+
+.member-investigation-media-preview {
+  min-height: 9rem;
+  overflow: hidden;
+  border-radius: var(--peace-radius-sm);
+  background: rgba(5, 8, 10, 0.72);
+}
+
+.member-investigation-media-preview video,
+.member-investigation-media-preview img {
+  display: block;
+  width: 100%;
+  min-height: 9rem;
+  max-height: 18rem;
+  object-fit: cover;
+}
+
+.member-investigation-media-preview video { background: #05080a; }
+
+.member-investigation-media-fallback {
+  display: grid;
+  min-height: 9rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  color: var(--peace-ink-muted);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.member-investigation-source { overflow-wrap: anywhere; }
+
 .member-investigation-evidence,
 .member-investigation-approval {
   display: grid;
@@ -2416,6 +2468,21 @@ body[data-page="member"] .member-investigation-delete:hover,
 body[data-page="member"] .member-investigation-delete:focus-visible { background: rgba(225, 96, 96, 0.12); outline: 2px solid var(--peace-danger); outline-offset: 2px; }
 body[data-page="member"] .member-investigation-delete svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 body[data-page="member"] .member-investigation-delete--evidence { width: 1.8rem; height: 1.8rem; margin-left: 0.55rem; }
+body[data-page="login"] .login-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+body[data-page="login"] .login-layout--focused { max-width: 38rem; }
+body[data-page="login"] .login-lede { max-width: 34rem; }
+body[data-page="member"] .member-gate {
+  border-top: 0;
+  border-bottom: 0;
+  background: transparent;
+}
 body[data-page="member"] .member-members-view,
 body[data-page="member"] .member-members-view .member-panel,
 body[data-page="member"] .member-members-view .member-members-list {

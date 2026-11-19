@@ -8,24 +8,33 @@
     <meta name="description" content="Aprovação privada de um caso investigativo da Peace.">
     <title>Aprovação investigativa — Peace</title>
     <link rel="icon" href="../../assets/peace-bird.png" type="image/png">
-    <link rel="stylesheet" href="../../styles.css?v=20261116-06">
+    <link rel="stylesheet" href="../../styles.css?v=20261119-02">
     <style>
       .approval-page { min-height: 100dvh; padding: 7rem 1.25rem 4rem; }
       .approval-shell { width: min(100%, 60rem); margin: 0 auto; }
-      .approval-card { display: grid; gap: 1.5rem; padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid rgba(196, 219, 221, 0.14); border-radius: 1rem; background: rgba(8, 12, 16, 0.78); box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.24); backdrop-filter: blur(18px); }
+      .approval-card { display: grid; gap: clamp(1.65rem, 4vw, 2.6rem); padding: clamp(1.25rem, 3vw, 2.5rem) 0; }
       .approval-card h1, .approval-card h2 { margin: 0; }
       .approval-case-summary, .approval-expectation { padding: 1rem 1.1rem; border-left: 2px solid var(--peace-bird); background: rgba(196, 219, 221, 0.06); }
       .approval-case-summary p, .approval-expectation p { margin: 0.5rem 0 0; color: var(--peace-ink-muted); line-height: 1.65; }
-      .approval-evidence-list { display: grid; gap: 0.7rem; margin: 0; padding: 0; list-style: none; }
-      .approval-evidence-list li { padding: 0.85rem 1rem; border-radius: 0.7rem; background: rgba(196, 219, 221, 0.045); }
-      .approval-evidence-list strong, .approval-evidence-list small { display: block; }
-      .approval-evidence-list small { margin-top: 0.35rem; color: var(--peace-ink-muted); line-height: 1.5; }
+      .approval-evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; margin-top: 0.8rem; }
+      .approval-evidence-card { display: grid; gap: 0.75rem; min-width: 0; padding: 0.9rem; border: 1px solid rgba(196, 219, 221, 0.12); border-radius: 0.85rem; background: rgba(196, 219, 221, 0.045); }
+      .approval-evidence-card strong, .approval-evidence-card small { display: block; overflow-wrap: anywhere; }
+      .approval-evidence-card small { color: var(--peace-ink-muted); line-height: 1.5; }
+      .approval-evidence-preview { position: relative; min-height: 10rem; overflow: hidden; border-radius: 0.65rem; background: rgba(5, 8, 10, 0.72); }
+      .approval-evidence-preview video, .approval-evidence-preview img { display: block; width: 100%; height: auto; min-height: 10rem; max-height: 22rem; object-fit: cover; }
+      .approval-evidence-preview video { background: #05080a; }
+      .approval-evidence-fallback { display: grid; min-height: 10rem; place-content: center; gap: 0.6rem; padding: 1rem; text-align: center; }
+      .approval-evidence-fallback[hidden] { display: none; }
+      .approval-evidence-source { overflow-wrap: anywhere; }
+      .approval-expectation-note { color: var(--peace-ink-quiet) !important; font-size: 0.72rem; }
       .approval-auth { display: grid; gap: 0.75rem; padding-top: 0.25rem; }
       .approval-decision { display: grid; gap: 1rem; }
       .approval-decision-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; }
-      .approval-decision-actions .is-selected { box-shadow: 0 0 0 2px var(--peace-focus); }
+      .approval-decision-actions .button { min-width: 10rem; }
       .approval-confirm { display: flex; align-items: flex-start; gap: 0.65rem; color: var(--peace-ink-muted); line-height: 1.5; }
       .approval-confirm input { margin-top: 0.25rem; }
+      .approval-decision-note { display: grid; gap: 0.45rem; }
+      .approval-decision-note > span { color: var(--peace-ink); font-size: 0.78rem; font-weight: 600; }
       .approval-state { min-height: 1.5rem; color: var(--peace-ink-muted); }
       .approval-state[data-state="error"] { color: var(--peace-danger); }
       .approval-state[data-state="success"] { color: var(--peace-success); }
@@ -56,16 +65,15 @@
             <p class="eyebrow">Revisão investigativa</p>
             <h1 data-approval-title>Você foi convidado para avaliar um caso.</h1>
             <div class="approval-case-summary"><strong data-approval-case-title></strong><p data-approval-case-summary></p></div>
-            <section class="approval-expectation" aria-labelledby="approval-expectation-title"><h2 id="approval-expectation-title">Expectativa do Investigador</h2><p data-approval-expectation></p></section>
-            <section aria-labelledby="approval-evidence-title"><p class="eyebrow" id="approval-evidence-title">Material consultável</p><ul class="approval-evidence-list" data-approval-evidence></ul></section>
+            <section class="approval-expectation" aria-labelledby="approval-expectation-title"><h2 id="approval-expectation-title">Expectativa do Investigador</h2><p data-approval-expectation></p><p class="approval-expectation-note">Esta expectativa serve apenas como contexto. Ela não aprova nem reprova o caso.</p></section>
+            <section aria-labelledby="approval-evidence-title"><p class="eyebrow" id="approval-evidence-title">Material consultável</p><div class="approval-evidence-grid" data-approval-evidence></div></section>
             <div class="approval-auth" data-approval-auth>
               <p class="member-view-lede">Você está conectado como <strong data-approval-evaluator></strong>. Confirme que essa é a conta autorizada para este link.</p>
             </div>
             <form class="approval-decision" data-approval-form hidden>
               <label class="approval-confirm"><input type="checkbox" name="acknowledge" required><span>Li e compreendi a expectativa acima. Estou ciente de que minha decisão será registrada para dar continuidade a este caso.</span></label>
-              <div class="approval-decision-actions" role="group" aria-label="Escolha uma decisão"><button class="button button--light" type="button" data-approval-decision="approved">Aprovar caso</button><button class="button button--outline" type="button" data-approval-decision="rejected">Reprovar caso</button></div>
-              <label class="field"><span>Observação obrigatória</span><textarea name="note" rows="6" minlength="2" maxlength="4000" required placeholder="Explique a decisão, a limpeza esperada ou a intervenção necessária."></textarea></label>
-              <button class="button button--light" type="submit" data-approval-submit disabled>Registrar decisão</button>
+              <label class="approval-decision-note"><span>Observação da decisão <em>(obrigatória)</em></span><textarea name="note" rows="6" minlength="2" maxlength="4000" required placeholder="Explique por que você aprova ou reprova o caso."></textarea></label>
+              <div class="approval-decision-actions" role="group" aria-label="Registre uma decisão final"><button class="button button--light" type="submit" name="decision" value="approved" data-approval-decision="approved">Aprovar caso</button><button class="button button--outline" type="submit" name="decision" value="rejected" data-approval-decision="rejected">Reprovar caso</button></div>
             </form>
             <p class="approval-state" data-approval-status role="status" aria-live="polite"></p>
           </div>
@@ -73,6 +81,6 @@
         </section>
       </div>
     </main>
-    <script src="../../js/investigation-approval.js?v=20261116-07"></script>
+    <script src="../../js/investigation-approval.js?v=20261119-02"></script>
   </body>
 </html>

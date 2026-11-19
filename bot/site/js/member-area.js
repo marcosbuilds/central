@@ -892,6 +892,66 @@
       return "planned";
     }
 
+    function safeInvestigationUrl(value) {
+      var raw = String(value || "").trim();
+      if (!raw) return "";
+      try {
+        var parsed = new URL(raw, window.location.href);
+        return parsed.protocol === "https:" ? parsed.href : "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+    function appendInvestigationSourceLink(parent, source) {
+      if (!source) return;
+      var link = document.createElement("a");
+      link.className = "text-link member-investigation-source";
+      link.href = source;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Abrir origem ↗";
+      parent.appendChild(link);
+    }
+
+    function appendInvestigationMedia(parent, item, source) {
+      var type = String(item && item.type || "").toLowerCase();
+      if (!source || ["clip", "video", "image"].indexOf(type) < 0) return false;
+      var preview = document.createElement("div");
+      preview.className = "member-investigation-media-preview";
+      var fallback = document.createElement("div");
+      fallback.className = "member-investigation-media-fallback";
+      fallback.hidden = true;
+      var fallbackCopy = document.createElement("span");
+      fallbackCopy.textContent = "Prévia direta indisponível.";
+      fallback.appendChild(fallbackCopy);
+      appendInvestigationSourceLink(fallback, source);
+      function showFallback() {
+        preview.replaceChildren(fallback);
+        fallback.hidden = false;
+      }
+      if (type === "image") {
+        var image = document.createElement("img");
+        image.src = source;
+        image.alt = item.title || "Imagem da ocorrência";
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.onerror = showFallback;
+        preview.appendChild(image);
+      } else {
+        var video = document.createElement("video");
+        video.src = source;
+        video.controls = true;
+        video.preload = "metadata";
+        video.playsInline = true;
+        video.setAttribute("aria-label", "Reproduzir " + (item.title || "clipe da ocorrência"));
+        video.onerror = showFallback;
+        preview.appendChild(video);
+      }
+      parent.appendChild(preview);
+      return true;
+    }
+
     function createInvestigationEvidence(item) {
       var article = document.createElement("article");
       article.className = "member-investigation-evidence";
@@ -921,18 +981,12 @@
       var typeLabels = { clip: "Clipe", image: "Imagem", document: "Documento", occurrence: "Relato", reference: "Referência", note: "Observação" };
       meta.textContent = (typeLabels[item.type] || "Referência") + " · " + date(item.created_at);
       article.appendChild(meta);
+      var source = safeInvestigationUrl(item.source_url);
+      var previewed = appendInvestigationMedia(article, item, source);
       var note = document.createElement("p");
       note.textContent = item.note || "Sem observação.";
       article.appendChild(note);
-      if (/^https:\/\//i.test(String(item.source_url || ""))) {
-        var source = document.createElement("a");
-        source.className = "text-link";
-        source.href = item.source_url;
-        source.target = "_blank";
-        source.rel = "noopener noreferrer";
-        source.textContent = "Abrir origem ↗";
-        article.appendChild(source);
-      }
+      if (source && !previewed) appendInvestigationSourceLink(article, source);
       return article;
     }
 
@@ -1027,10 +1081,28 @@
         noEvidence.textContent = "Nenhuma evidência foi registrada ainda.";
         evidenceSection.appendChild(noEvidence);
       } else {
-        var evidenceList = document.createElement("div");
-        evidenceList.className = "member-investigation-evidence-list";
-        evidenceItems.forEach(function (item) { evidenceList.appendChild(createInvestigationEvidence(item)); });
-        evidenceSection.appendChild(evidenceList);
+        var mediaItems = evidenceItems.filter(function (item) { return ["clip", "video", "image"].indexOf(String(item && item.type || "").toLowerCase()) >= 0; });
+        var otherItems = evidenceItems.filter(function (item) { return ["clip", "video", "image"].indexOf(String(item && item.type || "").toLowerCase()) < 0; });
+        if (mediaItems.length) {
+          var mediaHeading = document.createElement("h4");
+          mediaHeading.className = "member-investigation-media-heading";
+          mediaHeading.textContent = "Clipes e imagens";
+          evidenceSection.appendChild(mediaHeading);
+          var mediaGrid = document.createElement("div");
+          mediaGrid.className = "member-investigation-media-grid";
+          mediaItems.forEach(function (item) { mediaGrid.appendChild(createInvestigationEvidence(item)); });
+          evidenceSection.appendChild(mediaGrid);
+        }
+        if (otherItems.length) {
+          var evidenceHeading = document.createElement("h4");
+          evidenceHeading.className = "member-investigation-media-heading";
+          evidenceHeading.textContent = mediaItems.length ? "Outras evidências" : "Evidências e referências";
+          evidenceSection.appendChild(evidenceHeading);
+          var evidenceList = document.createElement("div");
+          evidenceList.className = "member-investigation-evidence-list";
+          otherItems.forEach(function (item) { evidenceList.appendChild(createInvestigationEvidence(item)); });
+          evidenceSection.appendChild(evidenceList);
+        }
       }
       content.appendChild(evidenceSection);
 
